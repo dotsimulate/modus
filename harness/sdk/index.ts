@@ -1,4 +1,5 @@
 export { ModusClient, ModusError } from "./client";
+export type { SearchOptions, SearchSort } from "../session-search";
 export type {
   ModusClientOptions,
   InteractOptions,

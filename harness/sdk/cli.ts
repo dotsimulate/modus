@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { ModusClient, ModusError } from "./client";
+import { normalizeSearchSort } from "../session-search";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -50,7 +51,7 @@ Commands:
   archive    <session-id>
   unarchive  <session-id>
   branch     <session-id> <seq> [--confirm]
-  search     <query> [--limit <n>]
+  search     <query> [--sort relevance|latest|oldest] [--limit <n>] [--offset <n>] [--user-profile <name>]
   tag        <session-id> add|remove <tag>
   config     <session-id> --model <model> --provider <provider>
   pause      <session-id>
@@ -272,9 +273,15 @@ async function main() {
     case "search": {
       const query = positional.join(" ");
       if (!query) { console.error("Error: query required"); process.exit(1); }
-      const results = await c.searchSessions(query, { limit: Number(flags.limit) || 20 });
+      const results = await c.searchSessions(query, {
+        limit: Number(flags.limit ?? 20),
+        offset: Number(flags.offset ?? 0),
+        sort: normalizeSearchSort(flags.sort),
+        userProfile: flags["user-profile"],
+      });
       for (const s of results) {
-        console.log(`${s.id}  ${s.status.padEnd(8)}  ${s.preview.slice(0, 60)}`);
+        console.log(`${s.session_id}  ${new Date(s.last_message_at).toISOString()}  ${s.preview.slice(0, 60)}`);
+        console.log(`  ${s.snippet}`);
       }
       break;
     }

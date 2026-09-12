@@ -121,6 +121,33 @@
   color: var(--text);
 }
 
+/* Shown only while a query is up, where the quoting rule is about to matter. */
+.sh-search-help {
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+/* Replaces the view/sort controls during a search: neither applies to hits. */
+.sh-search-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+.sh-search-sort select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
 /* ── Controls row ── */
 
 .sh-controls {
@@ -159,19 +186,24 @@
   background: var(--bg-surface);
 }
 
-.sh-connection {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: 0 0 6px;
-  background: var(--text-muted);
-  opacity: 0.5;
+/* Unread tab — a bare count, so it stays narrow next to the word-width modes. */
+.sh-mode-btn--unread {
+  padding: 3px 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.sh-connection--connected { background: var(--success, #69b578); opacity: 0.9; }
-.sh-connection--connecting,
-.sh-connection--reconnecting { background: var(--warning, #c68a2b); opacity: 0.9; }
-.sh-connection--offline { background: var(--error, #e06c75); opacity: 0.9; }
+.sh-mode-btn--unread:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.sh-mode-btn--unread.active {
+  color: var(--bg-surface);
+  background: var(--accent);
+}
 
 .sh-sort {
   position: relative;
@@ -349,6 +381,14 @@
   opacity: 0.6;
 }
 
+.sh-section-unread {
+  color: var(--accent);
+  font-size: calc(8px * var(--font-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .sh-section-active {
   margin-left: auto;
   color: var(--accent);
@@ -522,6 +562,32 @@
   50% { opacity: 0.5; box-shadow: 0 0 4px color-mix(in srgb, var(--dot-running) 20%, transparent); }
 }
 
+/* ── Unread state — a reply landed and has not been read ── */
+
+.sh-row--unread {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.sh-row--unread:hover {
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+.sh-row--unread::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.sh-row--unread .sh-row-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
 /* ── Row content ── */
 
 .sh-row-content {
@@ -646,6 +712,14 @@
 
 .sh-tag--agent {
   color: var(--text-label);
+}
+
+.sh-tag--unread {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .sh-tag--project {

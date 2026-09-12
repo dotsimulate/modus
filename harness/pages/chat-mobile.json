@@ -10,12 +10,14 @@
     "context": { "sessionId": null },
     "children": [{
       "kind": "tabs",
+      "id": "cm-tabs",
       "editable": true,
       "children": [
         {
           "kind": "widget",
-          "widget": { "type": "session-list", "id": "cm-sessions" },
-          "publish": { "selectedSession": "sessionId" }
+          "widget": { "type": "session-history", "id": "cm-history", "focusTabOnSelect": "cm-chat" },
+          "publish": { "selectedSession": "sessionId" },
+          "subscribe": { "selectedSession": "sessionId" }
         },
         {
           "kind": "widget",

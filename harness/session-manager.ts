@@ -21,7 +21,7 @@ import {
   getStoredSessionConfig, getSessionsByTag,
   copyEventsToSession, copyMessagesToSession, findAssistantUuid, clearBranchFields,
   addSessionTag, parseTags, getMaxSeq, insertSessionArtifact, insertMessage, syncSessionMessageCount,
-  insertFileObservation,
+  insertFileObservation, recordSessionReply,
 } from "./db";
 import type { SessionOutcome } from "./action-types";
 import { userMessagePreviewText } from "./message-context";
@@ -820,6 +820,15 @@ function flushPendingAssistantTurn(
     createdAt: materializedAt,
   });
   syncSessionMessageCount(session.sessionId, { activityAt: materializedAt });
+  if (content.trim() && terminalEvent.type === "result"
+    && (terminalEvent.subtype === "success" || terminalEvent.subtype === "error_max_turns")) {
+    recordSessionReply(session.sessionId, session.seq);
+    const row = getSession(session.sessionId)!;
+    emitGlobalSessionEvent({
+      type: "session:read-state", sessionId: session.sessionId,
+      lastReplySeq: row.last_reply_seq, readReplySeq: row.read_reply_seq,
+    });
+  }
   session.pendingAssistantTurn = null;
   return true;
 }
@@ -2440,6 +2449,7 @@ export function subscribe(sessionId: string, writer: SSEWriter): () => void {
 // subscribers. SessionWeb uses this for real-time updates without polling.
 
 export type GlobalSessionEvent =
+  | { type: "session:read-state"; sessionId: string; lastReplySeq: number; readReplySeq: number }
   | { type: "session:created"; sessionId: string; status: SessionStatus; profile?: string; userProfile?: string; preview?: string }
   | { type: "session:status"; sessionId: string; status: SessionStatus; costUsd?: number; preview?: string }
   | { type: "session:activity"; sessionId: string; status: SessionStatus; seq: number; lastText: string | null; lastEventAt: number; costUsd?: number }

@@ -6,6 +6,7 @@ import type {
   Session, SessionInfo, SessionProjectSummary, Attachment, MoveBinding, RewindPreview,
 } from "../../../sdk/index";
 import { toApiAttachments } from "../api-attachments";
+import { onControlIntent, stepSessionId } from "../control-intents";
 import { createInitialState } from "../eventReducer";
 import {
   agentConfigToOverrides,
@@ -380,6 +381,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setQueuedMessage(null);
   }, [allServerSessions, saveDraftForCurrent, refreshSessions]);
 
+  // ── Control intents ──
+  // The fallback owner of session.cycle, for a page that mounts a transcript with
+  // no session list beside it. A list surface knows which sessions it is actually
+  // showing — which view, which filter, which search — and claims the intent over
+  // this one when mounted. Registered as a fallback rather than relying on mount
+  // order: this provider is an ancestor, so its effect runs last and would
+  // otherwise outrank the widget. Pending sessions are skipped here too: they have
+  // no history to land in.
+  useEffect(() => onControlIntent("session.cycle", (intent) => {
+    if (intent.intent !== "session.cycle") return;
+    const ids = serverSessions.map((session) => session.id).filter((id) => !id.startsWith("pending-"));
+    const next = stepSessionId(ids, activeSessionId, intent.delta);
+    if (next) void selectSession(next);
+  }, { fallback: true }), [serverSessions, activeSessionId, selectSession]);
+
   const archiveSession = useCallback(async (id: string) => {
     await modus.archiveSession(id).catch(() => {});
     if (activeSessionId === id) {
@@ -393,7 +409,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── Send message ──
 
   const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver: DeliverMode = "queue", sendOpts?: SendOpts) => {
-    const prompt = (textOverride ?? getInputValue()).trim();
+    const prompt = (textOverride ?? getInputValue()).trim() || (moves?.length ? " " : "");
     if (!prompt && sendAttachments.length === 0) return;
 
     if (draftTimerRef.current) {

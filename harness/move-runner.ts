@@ -985,7 +985,7 @@ function buildApiOpsProtocol(apiToken: string, config: MoveConfig): string {
 /**
  * Run a move's gather() once and return the prompt text.
  * Used by action-runner to prepend move context to action prompts.
- * Returns null if the move doesn't exist, has no gather(), or gather bails.
+ * Uses the configured/default prompt when there is no gather(); null skips activation.
  *
  * For API moves (moves with ops + handlers), registers the handlers and
  * passes the apiToken to gather() so the agent can call ops via modus_submit.
@@ -998,18 +998,17 @@ export async function gatherMoveOnce(
   inputs: Record<string, unknown>,
   opts?: { persistApiRegistration?: boolean },
 ): Promise<{ text: string; apiToken?: string } | null> {
-  const mod = await loadMoveModule(moveName, cwd);
-  if (!mod?.gather) {
-    console.warn(`[gatherMoveOnce] move "${moveName}" has no gather() export — skipping`);
-    return null;
-  }
-
   const config = getMove(moveName, cwd);
+  if (!config || config.enabled === false) return null;
+  const mod = await loadMoveModule(moveName, cwd);
+  // A broken module must still surface as a load failure, not a fallback prompt.
+  if (!mod && getMoveLoadError(moveName, cwd)) return null;
+
   let apiToken: string | undefined;
   let instanceId: string | undefined;
 
   // Register API handlers if this move declares ops and has handlers
-  if (config?.api?.ops && mod.handlers) {
+  if (config?.api?.ops && mod?.handlers) {
     instanceId = generateInstanceId();
     apiToken = registerMoveApi(
       moveName,
@@ -1026,7 +1025,7 @@ export async function gatherMoveOnce(
   }
 
   // Generate submit token + schema if the move uses submit
-  const needsSubmit = config?.submit?.required !== false && config?.submit;
+  const needsSubmit = config.submit?.required !== false && (config.submit || !mod?.gather);
   const token = needsSubmit ? generateToken() : undefined;
   const schema = config?.schemaHint ?? (config?.schema ? JSON.stringify(config.schema, null, 2) : undefined);
 
@@ -1043,10 +1042,17 @@ export async function gatherMoveOnce(
     ctx.setStore = (value: unknown) => { instanceStore.set(instanceId!, value); };
   }
 
+  if (mod?.prepare) {
+    await Promise.race([
+      mod.prepare(ctx),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("prepare() timed out")), prepareTimeoutFor(config))),
+    ]);
+  }
   const gatherTimeout = gatherTimeoutFor(config);
   const gatherStart = Date.now();
   const result = await Promise.race([
-    mod.gather(ctx),
+    mod?.gather ? mod.gather(ctx) : (config.prompt ?? buildDefaultPrompt(config, token ?? "")),
     new Promise<null>((resolve) => setTimeout(() => resolve(null), gatherTimeout)),
   ]);
   if (result === null) {

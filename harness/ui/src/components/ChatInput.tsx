@@ -7,6 +7,7 @@ import { ComposerMoveForm } from "./ComposerMoveForm";
 import type { ComposerMoveFormSource } from "./ComposerMoveForm";
 import { pendingProfileAsks, pendingProfileInjections } from "../composer-move-forms";
 import type { PendingAsk } from "../composer-move-forms";
+import { stageMove, type ComposerMoveAttachment } from "../composer-move-attachments";
 import { PasteBlock } from "./PasteBlock";
 import type { ComposerAttachResult } from "./MoveWidget";
 import { activateComposer, registerComposer, useComposerActions, useComposerToggles } from "../client-extensions";
@@ -217,12 +218,13 @@ export function ChatInput({
       window.removeEventListener("keyup", onKeyUp);
     };
   }, []);
-  const [attachedMove, setAttachedMove] = useState<{
-    item: MoveListItem;
-    inputs: Record<string, unknown>;
-    apiToken?: string;     // set for mountOnAttach moves (from attach phase)
-    instanceId?: string;   // set for mountOnAttach moves (from attach phase)
-  } | null>(null);
+  const [attachedMoves, setAttachedMoves] = useState<ComposerMoveAttachment[]>([]);
+  const [moveSendError, setMoveSendError] = useState<string | null>(null);
+  const moveSendPending = useRef(false);
+  const attachMove = useCallback((item: MoveListItem, inputs: Record<string, unknown>) => {
+    setAttachedMoves((prev) => stageMove(prev, { item, inputs }));
+    setMoveSendError(null);
+  }, []);
   const [widgetContent, setWidgetContent] = useState<{
     moveName: string;
     label: string;
@@ -285,12 +287,12 @@ export function ChatInput({
           console.error("[ChatInput] attach from sidebar failed:", err);
         }
       } else {
-        setAttachedMove({ item: move, inputs });
+        attachMove(move, inputs);
       }
     };
     window.addEventListener("modus:attach-move", handler);
     return () => window.removeEventListener("modus:attach-move", handler);
-  }, [projectCwd, sessionId, userProfile, onMoveAttached, dispatchMoveAttach]);
+  }, [projectCwd, sessionId, userProfile, onMoveAttached, dispatchMoveAttach, attachMove]);
 
   // Listen for widget-composer-attach events from move widgets
   useEffect(() => {
@@ -367,8 +369,8 @@ export function ChatInput({
       }
       return;
     }
-    setAttachedMove({ item: move, inputs });
-  }, [projectCwd, sessionId, userProfile, handleMoveActivated, onMoveAttached, dispatchMoveAttach]);
+    attachMove(move, inputs);
+  }, [projectCwd, sessionId, userProfile, handleMoveActivated, onMoveAttached, dispatchMoveAttach, attachMove]);
 
   /**
    * Move bindings on this session's agent profile that declared `ask: true`.
@@ -543,10 +545,10 @@ export function ChatInput({
           }).catch((err) => console.error("[ChatInput] attachMove via registry failed:", err));
           return;
         }
-        setAttachedMove({ item: move, inputs });
+        attachMove(move, inputs);
       },
     });
-  }, [composerId, onMoveAttached, dispatchMoveAttach]);
+  }, [composerId, onMoveAttached, dispatchMoveAttach, attachMove]);
 
   // Global Escape to stop — works regardless of focus, but not when picker is open
   useEffect(() => {
@@ -646,6 +648,7 @@ export function ChatInput({
   // ── Send ──
 
   async function handleSend(textOverride?: string, deliver: DeliverMode = "queue") {
+    if (moveSendPending.current) return;
     const text = (textOverride ?? value).trim();
     const pasteBlock = serializePastes(pastes);
     const authoredText = pasteBlock ? (text ? `${pasteBlock}\n\n${text}` : pasteBlock) : text;
@@ -655,7 +658,7 @@ export function ChatInput({
       ? (authoredText ? `${skillBlock}\n\n${authoredText}` : skillBlock)
       : authoredText;
     const hasText = !!finalText || attachments.length > 0;
-    if (!attachedMove && !widgetContent && !hasText) return;
+    if (!attachedMoves.length && !widgetContent && !hasText) return;
 
     // Widget content attachment — resolve the promise and prepend label
     if (widgetContent) {
@@ -664,78 +667,54 @@ export function ChatInput({
       wc.resolve({ sent: true, userText: text });
       // The widget's move is responsible for the actual message content;
       // we just send whatever the user typed (the widget label is informational).
-      // If there's also an attachedMove, let it fall through to that branch.
+      // Attached moves are gathered along with this message below.
     }
 
-    if (attachedMove) {
-      const { item, inputs, apiToken: _attachApiToken, instanceId: attachInstanceId } = attachedMove;
-      setAttachedMove(null);
-      if (projectCwd) {
-        const mode = item.mode ?? "inline";
-
-        // Server-side injection path: for inline moves on an active session
-        // without widget attach, send moves in the message payload and let the
-        // backend handle activation + gather + prepend.
-        if (mode === "inline" && sessionId && !attachInstanceId) {
-          const moveBinding: MoveBinding = { name: item.name, inputs: inputs || undefined };
-          const sendText = finalText || "";
-          if (text) {
-            sentHistory.push(text);
-            if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
-            historyIndex.current = -1;
-            draft.current = "";
+    const moveBindings: MoveBinding[] = [];
+    const prompts: string[] = [];
+    if (attachedMoves.length) {
+      if (!projectCwd) {
+        setMoveSendError("Select a project before sending attached moves.");
+        return;
+      }
+      moveSendPending.current = true;
+      setMoveSendError(null);
+      try {
+        for (const attachment of attachedMoves) {
+          const { item, inputs, instanceId: attachInstanceId } = attachment;
+          const mode = item.mode ?? "inline";
+          // Both session creation and follow-up messages accept the whole array.
+          if (mode === "inline" && !attachInstanceId) {
+            moveBindings.push({ name: item.name, inputs });
+            continue;
           }
-          onSend(attachments, sendText || " ", [moveBinding], deliver, currentSendOpts());
-          setAttachments([]);
-          setPastes([]);
-          setStagedSkills([]);
-          return;
-        }
-
-        // Legacy path: widget-attached moves, branch/background modes, no-session activation
-        const moveInputs = attachInstanceId ? { ...inputs, instanceId: attachInstanceId } : inputs;
-        const body = { moveName: item.name, inputs: moveInputs, cwd: projectCwd, userProfile };
-        try {
+          const moveInputs = attachInstanceId ? { ...inputs, instanceId: attachInstanceId } : inputs;
+          const body = { moveName: item.name, inputs: moveInputs, cwd: projectCwd, userProfile };
           const result = sessionId
             ? await modus.activateMove(sessionId, body)
             : await modus.activateProjectMove(body);
-          if (result.persistent) {
-            // Persistent move — just refresh chips, don't send a message
-            handleMoveActivated(result);
-            return;
-          }
-          if (mode === "inline") {
-            const combined = result.prompt
-              ? finalText ? `${result.prompt}\n\n${finalText}` : result.prompt
-              : finalText;
-            if (combined) {
-              if (text) {
-                sentHistory.push(text);
-                if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
-              }
-              historyIndex.current = -1;
-              draft.current = "";
-              onSend(attachments, combined, undefined, deliver, currentSendOpts());
-              setAttachments([]);
-              setPastes([]);
-              setStagedSkills([]);
-            }
-            handleMoveActivated(result);
-            return;
-          }
+          if (mode === "inline" && !result.persistent && result.prompt) prompts.push(result.prompt);
           handleMoveActivated(result);
-        } catch {}
+          setAttachedMoves((prev) => prev.filter((entry) => entry !== attachment));
+        }
+      } catch (error) {
+        setMoveSendError(error instanceof Error ? error.message : "Move activation failed. Try again.");
+        return;
+      } finally {
+        moveSendPending.current = false;
       }
     }
 
-    if (hasText) {
+    const combined = [...prompts, finalText].filter(Boolean).join("\n\n");
+    if (hasText || combined || moveBindings.length) {
       if (text) {
         sentHistory.push(text);
         if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
         historyIndex.current = -1;
         draft.current = "";
       }
-      onSend(attachments, finalText, undefined, deliver, currentSendOpts());
+      onSend(attachments, combined || " ", moveBindings.length ? moveBindings : undefined, deliver, currentSendOpts());
+      setAttachedMoves((prev) => prev.filter((entry) => !attachedMoves.includes(entry)));
       setAttachments([]);
       setPastes([]);
       setStagedSkills([]);
@@ -829,7 +808,7 @@ export function ChatInput({
     }
   };
 
-  const hasContent = value.trim() || attachments.length > 0 || !!attachedMove || !!widgetContent;
+  const hasContent = value.trim() || attachments.length > 0 || attachedMoves.length > 0 || !!widgetContent;
 
   // Icon-only actions and compact toggles go to the top-left corner; labelled actions stay in the button row
   const iconActions = composerActions.filter((a) => a.icon && !a.label);
@@ -998,8 +977,9 @@ export function ChatInput({
         />
       )}
 
-      {attachedMove && (
+      {attachedMoves.map((attachedMove) => (
         <AttachedMove
+          key={attachedMove.item.name}
           move={attachedMove.item}
           inputs={attachedMove.inputs}
           onDetach={() => {
@@ -1007,10 +987,11 @@ export function ChatInput({
               modus.detachMove(attachedMove.item.name, attachedMove.apiToken).catch(() => {});
               onMoveDetached?.(attachedMove.apiToken);
             }
-            setAttachedMove(null);
+            setAttachedMoves((prev) => prev.filter((entry) => entry !== attachedMove));
           }}
         />
-      )}
+      ))}
+      {moveSendError && <div role="alert">{moveSendError}</div>}
 
       {widgetContent && (
         <AttachedWidgetContent
@@ -1081,7 +1062,7 @@ export function ChatInput({
           <textarea
             ref={ref}
             className="chat-textarea"
-            placeholder={attachedMove || widgetContent ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
+            placeholder={attachedMoves.length || widgetContent ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}

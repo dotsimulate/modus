@@ -133,7 +133,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   const handleSend = useCallback(
     (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode, sendOpts?: SendOpts) => {
       if (!sessionId) return;
-      const prompt = (textOverride ?? "").trim();
+      const prompt = (textOverride ?? "").trim() || (moves?.length ? " " : "");
       if (!prompt && attachments.length === 0) return;
 
       // When composer drives the active session, delegate to SessionProvider.send

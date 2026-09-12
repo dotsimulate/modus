@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef, memo } from "react";
 import { MessageBubble } from "./MessageBubble";
+import { ReplyReadMarker } from "./ReplyReadMarker";
 import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
@@ -14,6 +15,7 @@ import { navigateToGitRoute } from "../git-route";
 import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interface-settings";
 import { buildLatestMoveToolCallIds, partitionToolRun } from "../move-tool-view";
 import { buildTurns, segmentContentBlocks } from "../turn-segments";
+import { currentTurnKey, onControlIntent, stepTurnKey } from "../control-intents";
 import { TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
 import { isTodoTool } from "../tool-names";
 
@@ -537,6 +539,36 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     listControlsRef.current?.scrollToKey(key, { within });
   }, []);
 
+  // ── Control intents ──
+  // Turn anchors are the user messages — the same landmarks the ruler indexes —
+  // so one detent on a desk control and one rung on the spine mean the same
+  // thing. See control-intents.ts for the vocabulary and its limits.
+  const turnAnchorKeys = useMemo(
+    () => spineItems
+      .filter((item) => item.kind === "message" && item.message.role === "user")
+      .map((item) => item.key),
+    [spineItems],
+  );
+
+  useEffect(() => onControlIntent("transcript.follow", () => {
+    setScrollTrigger((n) => n + 1);
+  }), []);
+
+  useEffect(() => onControlIntent("transcript.scrollByTurns", (intent) => {
+    if (intent.intent !== "transcript.scrollByTurns") return;
+    const offsets = measuredLayoutRef.current?.offsets;
+    if (!scrollEl || !offsets) return;
+    const from = currentTurnKey(turnAnchorKeys, offsets, scrollEl.scrollTop);
+    const next = stepTurnKey(turnAnchorKeys, from, intent.delta);
+    if (next) {
+      listControlsRef.current?.scrollToKey(next, { within: 0 });
+      return;
+    }
+    // Stepping forward off the newest turn is how you ask for live without a
+    // second control: the transcript has an end, and running into it means go there.
+    if (intent.delta > 0) setScrollTrigger((n) => n + 1);
+  }), [scrollEl, turnAnchorKeys]);
+
   const estimateHeight = useCallback(
     (item: DisplayItem, containerWidth: number): number => {
       if (item.kind === "commit") return 48;
@@ -635,6 +667,9 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
               </>
             )}
           </MessageBubble>
+          {sessionId && msg.role === "assistant" && msg.seq != null && (
+            <ReplyReadMarker sessionId={sessionId} seq={msg.seq} />
+          )}
           {msg.role === "user" && (
             <UserMeta msg={msg} sessionId={sessionId} provider={provider} onBranch={onBranch} />
           )}

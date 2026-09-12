@@ -1,6 +1,6 @@
 ---
 title: Session Lifecycle & Reclamation
-lastUpdated: 2026-08-12
+lastUpdated: 2026-09-09
 covers: harness/session-manager.ts harness/session-reap-policy.ts harness/process-memory.ts harness/memory-guard.ts harness/process-registry.ts harness/provider-process-identity.ts
 ---
 
@@ -31,9 +31,37 @@ Only sessions in `activeSessions` have a process. A session that has been
 reclaimed still appears in the session list and still opens; sending it a
 message starts a **new** provider process and resumes the conversation.
 
+## Unread replies
+
+Unread replies are independent of runtime status. The sidebar shows a dot and
+bold title when a session has a completed assistant reply that has not been
+viewed. Intermediate assistant/tool rounds, interrupted output, title changes,
+project switches, and process reclamation do not create or clear this marker.
+
+The transcript acknowledges the latest completed reply when its end is visible
+in the focused browser or desktop window. Opening a conversation while scrolled
+above the reply does not acknowledge it. Read state persists across refreshes
+and synchronizes between clients of the same Vault. Existing history starts
+unmarked when this feature is first installed.
+
+The session row and session index expose `last_reply_seq` and `read_reply_seq`.
+Completion advances the first watermark for nonempty assistant text on a
+`result/success` or `result/error_max_turns` event. `POST /api/sessions/:id/read`
+with `{ "seq": <viewed reply sequence> }` advances the read watermark, bounded
+by the latest completion. Older receipts cannot acknowledge a newer reply.
+The SDK exposes `markSessionReplyRead(id, seq)`. Both completion and reading
+broadcast `session:read-state` with `lastReplySeq` and `readReplySeq`.
+
 ## The reaper
 
 `startSessionReaper()` sweeps every 60 seconds.
+
+Process-table commands run asynchronously with an eight-second timeout per
+command. Concurrent requests share one sample, cached for 15 seconds after
+completion. The sweep checks current session state after sampling completes;
+a session resumed during that wait is not treated as still idle. On Windows,
+`tasklist` is the fallback when `wmic` is unavailable; it reports root-process
+memory only because it provides no parent-process IDs.
 
 | Status | Reclaimed when |
 |---|---|

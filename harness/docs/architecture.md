@@ -252,6 +252,14 @@ follow Vault selection rather than the `data/` override.
 Sessions are archived via tags rather than normally deleted. Durable event rows
 are append-only except for explicit maintenance such as streaming-delta pruning.
 
+`GET /api/stats/resources` reports backend heap/RSS, uptime, active sessions,
+terminals, and subscriber counts. The same snapshot is recorded every five
+minutes as `resource_snapshot` in `activity.db`. Compare runs using uptime resets;
+a stable JavaScript heap alone does not prove that process RSS is stable.
+Activity and action-run history currently have no automatic age-based pruning.
+Skipped action ticks still create run records. The activity log has a dedicated
+time index so its newest-first reads do not sort the entire retained history.
+
 ## Frontend
 
 React app served by Vite in dev, static build in production. Key architectural
@@ -261,6 +269,13 @@ decisions:
 - SSE subscription per active session for real-time events
 - One elected browser tab owns the global session-index stream and fallback poll;
   sibling tabs receive snapshots and patches through `BroadcastChannel`.
+- The index returns session metadata and prompt/response previews of up to 320
+  characters, excluding drafts and saved UI state. Full session list/detail
+  reads retain their existing text fields. Visible-session ordering and legacy
+  provider-config lookups use dedicated partial SQLite indexes.
+- Streaming events for sessions outside the index (internal sessions or rows
+  beyond its limit) do not trigger a full fetch per event. Membership changes
+  refresh immediately; unknown activity targets use the fallback poll interval.
 - Returning from browser suspension (`visibilitychange`, page restore, focus, or
   network recovery) forces an authoritative session-index refresh and reopens
   both the global lifecycle stream and active transcript stream. This is required
@@ -374,5 +389,6 @@ button re-centers the view on the newest session.
 - [Panels](./panels.md) — side-panel architecture, widget registry, and persisted panel trees
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/
 - [Client Extensions](./client-extensions.md) — browser-side extension discovery and runtime API
+- [Control Intents](./control-intents.md) — navigation commands pushed to the client from outside the browser
 - [Plugins](./plugins.md) — Vault-registered external `.modus/` bundles
 - [PI Agent](./pi-agent-system.md) — the multi-provider lightweight agent

@@ -108,6 +108,10 @@ grows with matches even when `limit` is small.
 
 **Search scoping**: `searchSessions(query, limit, scope?)` accepts `scope.agentProfiles` and `scope.userProfileName` in addition to `scope.cwdPrefixes`.
 
+Conversation search supports word prefixes across messages, quoted phrases, and
+relevance/latest/oldest ordering with pagination. See [Session Search](./session-search.md)
+for sidebar behavior, syntax, installed-app support and the API contract.
+
 **Managed by**: `session-manager.ts` (lifecycle, routing), `db.ts` (persistence).
 
 ## Agent Profiles

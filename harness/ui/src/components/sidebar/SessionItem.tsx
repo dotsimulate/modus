@@ -3,6 +3,7 @@ import type { SessionInfo } from "../../../../sdk/index";
 import { modus } from "../../modusClient";
 import { useSessionState } from "../../sessionStore";
 import { sessionActivityAt as activityAt } from "../../sessionActivity";
+import { hasUnreadReply } from "../../session-read-state";
 import { formatSidebarProviderStat, getLatestAssistantUsage } from "../providerStats";
 import { compactModelName, isEmptySession, sessionDisplayText, timeAgo } from "../../utils/format";
 
@@ -49,6 +50,7 @@ export const SessionItem = memo(function SessionItem({ session: s, active, onSel
   const compactModel = model ? compactModelName(model) : null;
   const pendingPermissionCount = liveSession?.pendingPermissions?.length ?? s.pending_permission_count ?? 0;
   const status = liveSession?.status ?? s.status;
+  const unread = hasUnreadReply(s);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -74,10 +76,11 @@ export const SessionItem = memo(function SessionItem({ session: s, active, onSel
 
   return (
     <div
-      className={`session-item ${active ? "active" : ""}`}
+      className={`session-item ${active ? "active" : ""}${unread ? " session-item--unread" : ""}`}
       onClick={() => !editing && onSelect(s.id)}
     >
       <div className="session-item-preview">
+        {unread && <span className="session-unread-dot" role="img" aria-label="Unread reply" title="Unread reply" />}
         <span className={`dash-dot ${isEmptySession(s) && draftInput?.trim() ? "dash-dot--draft" : statusDotClass(status)}`} />
         {editing ? (
           <input

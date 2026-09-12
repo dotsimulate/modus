@@ -18,6 +18,7 @@
       "children": [
         {
           "kind": "tabs",
+          "id": "cs-left-tabs",
           "editable": true,
           "children": [
             {
@@ -25,11 +26,6 @@
               "widget": { "type": "session-history", "id": "cs-history" },
               "publish": { "selectedSession": "sessionId" },
               "subscribe": { "selectedSession": "sessionId" }
-            },
-            {
-              "kind": "widget",
-              "widget": { "type": "session-list", "id": "cs-sessions" },
-              "publish": { "selectedSession": "sessionId" }
             },
             {
               "kind": "widget",
@@ -144,11 +140,6 @@
                 "widget": { "type": "session-history", "id": "cm-history", "focusTabOnSelect": "cm-chat" },
                 "publish": { "selectedSession": "sessionId" },
                 "subscribe": { "selectedSession": "sessionId" }
-              },
-              {
-                "kind": "widget",
-                "widget": { "type": "session-list", "id": "cm-sessions", "focusTabOnSelect": "cm-chat" },
-                "publish": { "selectedSession": "sessionId" }
               },
               {
                 "kind": "widget",

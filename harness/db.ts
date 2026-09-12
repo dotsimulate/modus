@@ -10,6 +10,7 @@ import {
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 import { buildProjectCwdScope } from "./project-cwd-scope";
 import { runStartupMaintenanceTasks } from "./startup-maintenance";
+import { normalizeSearchLimit, normalizeSearchOffset, normalizeSearchSort, parseSessionSearch, type SearchOptions } from "./session-search";
 
 const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
@@ -51,6 +52,9 @@ db.run(`
 try { db.run(`ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'done'`); } catch { /* already exists */ }
 // Migration: add archived column if missing
 try { db.run(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+// Only replies completed after this migration participate in read receipts.
+try { db.run(`ALTER TABLE sessions ADD COLUMN last_reply_seq INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE sessions ADD COLUMN read_reply_seq INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
 // Migration: add draft_text column for persisting unsent user input
 try { db.run(`ALTER TABLE sessions ADD COLUMN draft_text TEXT DEFAULT ''`); } catch { /* already exists */ }
 // Migration: add last_message_at — tracks actual conversation activity (not drafts/status changes)
@@ -141,6 +145,12 @@ db.run(`
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
+// Lists filter JSON tags rather than the legacy archived column. An index led
+// by archived cannot supply their global ordering without sorting the history.
+db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_visible_activity ON sessions(last_message_at DESC)
+  WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_config ON events(session_id, seq DESC)
+  WHERE type = 'system' AND (subtype = 'config_updated' OR subtype = 'init')`);
 
 // Older builds refreshed last_message_at while appending a reap notice (and a
 // late provider callback could do the same). Repair those already-persisted
@@ -362,6 +372,8 @@ repairActionRunSessionLinks();
 // ── Types ──
 
 export type SessionRow = {
+  last_reply_seq: number;
+  read_reply_seq: number;
   id: string;
   preview: string;
   profile: string | null;
@@ -537,6 +549,16 @@ const stmts = {
   updateStatus: db.prepare(`UPDATE sessions SET status = $status, updated_at = $now WHERE id = $id`),
   updateTitle: db.prepare(`UPDATE sessions SET title = $title, updated_at = $now WHERE id = $id`),
   list: db.prepare(`SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' ORDER BY last_message_at DESC LIMIT $limit`),
+  listIndex: db.prepare(`
+    SELECT id, preview, title, profile, user_profile, provider, provider_session_id,
+      model, status, archived, created_at, updated_at, last_message_at,
+      message_count, total_cost_usd, substr(last_prompt, 1, 320) AS last_prompt,
+      substr(last_response, 1, 320) AS last_response, cwd, action_name,
+      parent_session_id, branch_message_uuid, tags, archived_at,
+      last_reply_seq, read_reply_seq
+    FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'
+    ORDER BY last_message_at DESC LIMIT $limit
+  `),
   archive: db.prepare(`UPDATE sessions SET archived = 1, archived_at = $now, updated_at = $now WHERE id = $id`),
   unarchive: db.prepare(`UPDATE sessions SET archived = 0, archived_at = NULL, updated_at = $now WHERE id = $id`),
   listArchived: db.prepare(`SELECT * FROM sessions WHERE tags LIKE '%"archived"%' ORDER BY archived_at DESC, updated_at DESC LIMIT $limit`),
@@ -853,6 +875,11 @@ export function listSessions(limit = 50): SessionRow[] {
   return result;
 }
 
+/** Sidebar snapshot: bounded text previews, without drafts or saved UI state. */
+export function listSessionIndex(limit = 250): SessionRow[] {
+  return stmts.listIndex.all({ $limit: limit }) as SessionRow[];
+}
+
 /** List sessions spawned by a specific action */
 export function listSessionsByAction(actionName: string, limit = 50): SessionRow[] {
   return db.prepare(
@@ -981,6 +1008,18 @@ export function listSessionsScoped(
 
 export function getSession(id: string): SessionRow | null {
   return (stmts.get.get({ $id: id }) as SessionRow) ?? null;
+}
+
+/** Completion/read receipts never change conversation ordering or runtime status. */
+export function recordSessionReply(id: string, seq: number): void {
+  db.prepare(`UPDATE sessions SET last_reply_seq = MAX(last_reply_seq, $seq) WHERE id = $id`)
+    .run({ $id: id, $seq: seq });
+}
+
+export function markSessionReplyRead(id: string, seq: number): SessionRow | null {
+  db.prepare(`UPDATE sessions SET read_reply_seq = MAX(read_reply_seq, MIN(last_reply_seq, $seq)) WHERE id = $id`)
+    .run({ $id: id, $seq: seq });
+  return getSession(id);
 }
 
 export function archiveSession(id: string) {
@@ -2730,8 +2769,8 @@ db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index_v2 USING fts5(
   columnsize = 0
 )`);
 
-// Set default rank to bm25 with column weights: role=1, content=1, title=10
-try { db.run(`INSERT INTO search_index_v2(search_index_v2, rank) VALUES('rank', 'bm25(1.0, 1.0, 10.0)')`); } catch { /* already set */ }
+// Weights follow every column, including UNINDEXED: session_id=0, role=0, content=1, title=10.
+try { db.run(`INSERT INTO search_index_v2(search_index_v2, rank) VALUES('rank', 'bm25(0.0, 0.0, 1.0, 10.0)')`); } catch { /* already set */ }
 
 /** Extract text blocks from an assistant event's message.content array */
 function extractAssistantText(data: string): string | null {
@@ -2808,10 +2847,10 @@ export function indexEvent(sessionId: string, type: string, data: string) {
 /** Index or re-index a session's title/preview in FTS */
 export function indexSessionTitle(sessionId: string, title: string, preview?: string) {
   const titleText = [title, preview].filter(Boolean).join(" — ");
-  if (!titleText) return;
   // Remove old title row for this session, then insert fresh
   db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $sid AND role = 'title'`)
     .run({ $sid: sessionId });
+  if (!titleText) return;
   db.prepare(`INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, 'title', '', $title)`)
     .run({ $sid: sessionId, $title: titleText });
 }
@@ -2831,20 +2870,21 @@ export function searchSessions(
   query: string,
   limit = 20,
   scope?: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string; role?: string },
+  options?: Pick<SearchOptions, "sort" | "offset">,
 ): SearchHit[] {
-  // Build FTS query — optionally prefix with role column filter
-  const baseTerms = query.trim().split(/\s+/).map(t => `"${t}"*`).join(" ");
-  const ftsQuery = scope?.role && ["user", "assistant"].includes(scope.role)
-    ? `role:"${scope.role}" AND ${baseTerms}`
-    : baseTerms;
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = parseSessionSearch(query);
+  if (!terms.length) return [];
+  const termQueries = terms.map(({ fts }) => scope?.role && ["user", "assistant"].includes(scope.role)
+    ? `role:"${scope.role}" AND {content title}: (${fts})`
+    : `{content title}: (${fts})`);
+  const ftsQuery = termQueries.map(term => `(${term})`).join(" OR ");
 
   const matchConditions = [
-    `search_index_v2 MATCH $fts`,
+    `search_index_v2 MATCH ?`,
     `s.tags NOT LIKE '%"archived"%'`,
     `s.tags NOT LIKE '%"internal"%'`,
   ];
-  const matchParams: any[] = [ftsQuery];
+  const matchParams: (string | number)[] = [];
 
   if (scope?.userProfileName) {
     matchConditions.push(`(s.user_profile = ? OR s.user_profile IS NULL)`);
@@ -2867,22 +2907,31 @@ export function searchSessions(
   // with a recency bonus so recent sessions float up when relevance is similar.
   // rank is negative (lower = better), recency term is 0..2 (higher = more recent).
   const now = Date.now();
+  // Each term may occur in a different message or title within the session.
+  const termSelects = termQueries.map((_, index) => `
+    SELECT search_index_v2.session_id AS sid, MIN(rank) AS best_rank,
+      s.last_message_at AS lma, ${index} AS term
+    FROM search_index_v2
+    JOIN sessions s ON s.id = search_index_v2.session_id
+    WHERE ${matchConditions.join(" AND ")}
+    GROUP BY search_index_v2.session_id
+  `);
+  const sort = normalizeSearchSort(options?.sort);
+  const order = sort === "latest" ? "lma DESC, sid ASC"
+    : sort === "oldest" ? "lma ASC, sid ASC" : "blended ASC, lma DESC, sid ASC";
   const matches = db.prepare(`
     SELECT sid, best_rank, lma,
       (best_rank - 2.0 * (CAST(lma AS REAL) / ${now})) AS blended
     FROM (
       SELECT
-        search_index_v2.session_id AS sid,
-        MIN(rank) AS best_rank,
-        s.last_message_at AS lma
-      FROM search_index_v2
-      JOIN sessions s ON s.id = search_index_v2.session_id
-      WHERE ${matchConditions.join(" AND ")}
-      GROUP BY search_index_v2.session_id
+        sid, MIN(best_rank) AS best_rank, MAX(lma) AS lma
+      FROM (${termSelects.join(" UNION ALL ")})
+      GROUP BY sid
+      HAVING COUNT(DISTINCT term) = ${terms.length}
     )
-    ORDER BY blended
-    LIMIT ?
-  `).all(...matchParams, limit) as { sid: string; best_rank: number; lma: number }[];
+    ORDER BY ${order}
+    LIMIT ? OFFSET ?
+  `).all(...termQueries.flatMap(term => [term, ...matchParams]), normalizeSearchLimit(limit), normalizeSearchOffset(options?.offset)) as { sid: string; best_rank: number; lma: number }[];
 
   if (matches.length === 0) return [];
 
@@ -2910,7 +2959,8 @@ export function searchSessions(
         const source = row.role === "title" ? row.title : row.content;
         if (source) {
           const lower = source.toLowerCase();
-          const idx = lower.indexOf(terms[0] ?? "");
+          const positions = terms.map(term => lower.indexOf(term.text.toLowerCase())).filter(index => index >= 0);
+          const idx = positions.length ? Math.min(...positions) : -1;
           if (idx >= 0) {
             const start = Math.max(0, idx - 60);
             const raw = source.slice(start, start + 160);

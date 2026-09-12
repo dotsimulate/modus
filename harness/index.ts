@@ -3,6 +3,9 @@ delete process.env.CLAUDECODE;
 
 import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin, disablePin, resetPin } from "./secrets";
 import { BrowserSessionStore } from "./browser-auth";
+import { normalizeSearchSort, parseSessionSearch } from "./session-search";
+import { escapeEverythingQuery } from "./file-search";
+import { registerSessionReadRoute } from "./session-read";
 import { probeClaudeAccount } from "./claude-account";
 import { rehydrateHome } from "./modus-home-rehydrate";
 loadSecrets();
@@ -88,7 +91,7 @@ import {
   InteractRequestSchema,
 } from "./session-schemas";
 import {
-  listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
+  listSessions, listSessionIndex, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
   getSession, getStoredSessionConfig, archiveSession, unarchiveSession, listArchivedSessions, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getMaxSeq,
@@ -114,6 +117,7 @@ import {
   startSessionReaper, stopSessionReaper,
   type SSEWriter,
 } from "./session-manager";
+import { parseControlIntent, publishControlIntent, subscribeControlIntents } from "./control-intents";
 import { startMemoryWatchdog, stopMemoryWatchdog, getMemoryStatus } from "./memory-guard";
 import {
   createTerminal, killTerminal, resizeTerminal as resizeTerminalPty,
@@ -326,6 +330,11 @@ async function buildPreviewManifest(filePath: string, roots: string[], scopeQuer
   };
 }
 
+/** How long es.exe may wait for Everything's database to load before giving up. */
+const ES_DB_WAIT_MS = 5_000;
+/** Outer bound on the whole es.exe run, covering anything -timeout does not. */
+const ES_RUN_LIMIT_MS = 10_000;
+
 async function searchFilesWithEverything(root: string, query: string, limit: number) {
   if (process.platform !== "win32") {
     return {
@@ -355,16 +364,29 @@ async function searchFilesWithEverything(root: string, query: string, limit: num
   }
 
   const proc = Bun.spawn({
-    cmd: [esPath, "-path", root, "-n", String(limit), "-sort", "path-ascending", query],
+    cmd: [
+      esPath,
+      // Bound the wait for Everything's database so a service that is stopped or
+      // still starting fails the request rather than holding the connection.
+      "-timeout", String(ES_DB_WAIT_MS),
+      "-path", root,
+      "-n", String(limit),
+      "-sort", "path-ascending",
+      escapeEverythingQuery(query),
+    ],
     stdout: "pipe",
     stderr: "pipe",
   });
 
+  // -timeout covers the database wait, not the whole run. This is the outer
+  // bound: it is the only spawn here whose output is awaited, so a wedged es.exe
+  // would otherwise hold the request open indefinitely.
+  const deadline = setTimeout(() => { try { proc.kill(); } catch { /* already exited */ } }, ES_RUN_LIMIT_MS);
   const [stdoutText, stderrText, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
-  ]);
+  ]).finally(() => clearTimeout(deadline));
 
   if (exitCode !== 0) {
     return {
@@ -1452,11 +1474,16 @@ app.get("/api/sessions/search", (c) => {
   const q = params.get("q")?.trim();
   if (!q) return c.json([]);
   const limit = Number(params.get("limit") ?? 20);
+  try { parseSessionSearch(q); }
+  catch (error) { return c.json({ error: (error as Error).message }, 400); }
   const scope = resolveUserProfileScope(c);
   return c.json(searchSessions(q, limit, {
     cwdPrefixes: scope?.cwdPrefixes,
     agentProfiles: scope?.agentProfiles,
     userProfileName: params.get("userProfile") ?? undefined,
+  }, {
+    sort: normalizeSearchSort(params.get("sort")),
+    offset: Number(params.get("offset") ?? 0),
   }));
 });
 
@@ -1467,7 +1494,7 @@ function configuredSessionProjects(): SessionProjectDescriptor[] {
 function enrichSessionRows(rows: ReturnType<typeof listSessions>, projects = configuredSessionProjects()) {
   return rows.map((session) => {
     const active = getActiveSession(session.id);
-    const storedConfig = session.provider ? null : getStoredSessionConfig(session.id);
+    const storedConfig = active?.provider || session.provider ? null : getStoredSessionConfig(session.id);
     const provider = active?.provider ?? session.provider ?? storedConfig?.provider ?? null;
     const isEmptyIdlePlaceholder = session.status === "idle"
       && (session.message_count ?? 0) === 0
@@ -1506,7 +1533,7 @@ app.get("/api/sessions/index", (c) => {
   const requested = Number(new URL(c.req.url).searchParams.get("limit") ?? 250);
   const limit = Number.isFinite(requested) ? Math.min(1000, Math.max(1, Math.floor(requested))) : 250;
   const configured = configuredSessionProjects();
-  const sessions = enrichSessionRows(listSessions(limit), configured);
+  const sessions = enrichSessionRows(listSessionIndex(limit), configured);
   const projects = configured.map((project) => {
     const rows = sessions.filter((session) => session.project_id === project.id);
     return {
@@ -2168,6 +2195,56 @@ app.get("/api/events/fs", (c) => {
   });
 });
 
+// ── Control intents ──
+// Inbound view commands from outside the browser: a desk control, a pedal, a
+// script. See control-intents.ts for why the vocabulary is navigation-only.
+
+/**
+ * Publish one intent to every listening client.
+ *
+ * Deliberately NOT in `allowsQueryCredential`: a publisher is a program, not a
+ * browser element that cannot set headers, so there is no reason to accept a
+ * credential from a URL here. The response reports how many clients received
+ * it, so a hardware producer can distinguish "nobody is listening" from "the
+ * call failed" without a second health endpoint.
+ */
+app.post("/api/control", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const intent = parseControlIntent(body);
+  if (!intent) return c.json({ error: "unknown or malformed control intent" }, 400);
+  const delivered = publishControlIntent(intent);
+  return c.json({ ok: true, intent: intent.intent, delivered });
+});
+
+/** Client subscription. Header credential only, same reasoning as the publisher. */
+app.get("/api/events/control", (c) => {
+  return sseResponse(c.req.raw, async (writer, signal) => {
+    let resolve: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
+    const unregisterBrowser = registerBrowserConnection(c, () => resolve());
+
+    const keepAlive = setInterval(async () => {
+      try { await writer.write("ping", "{}", ""); } catch { /* dead */ }
+    }, 30_000);
+
+    const unsubscribe = subscribeControlIntents({
+      async write(data: string) {
+        await writer.write("control", data, String(Date.now()));
+      },
+      close() { resolve(); },
+    });
+
+    const onAbort = () => { clearInterval(keepAlive); unsubscribe(); resolve(); };
+    signal.addEventListener("abort", onAbort);
+
+    await done;
+    signal.removeEventListener("abort", onAbort);
+    clearInterval(keepAlive);
+    unsubscribe();
+    unregisterBrowser();
+  });
+});
+
 // Get reconstructed message content for a session (from events)
 app.get("/api/sessions/:id/messages-content", (c) => {
   const id = c.req.param("id");
@@ -2354,8 +2431,9 @@ app.post("/api/sessions/:id/steer", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  if (!prompt) return c.json({ error: "prompt required" }, 400);
-  const result = await steerMessage(id, prompt, body.attachments, body.moves);
+  const v = validate(SendMessageRequestSchema, { ...body, prompt: prompt || (body.moves?.length ? " " : "") });
+  if (!v.ok) return c.json({ error: "invalid message request", details: v.errors }, 400);
+  const result = await steerMessage(id, prompt || " ", body.attachments, body.moves);
   if (result.mode === "none") return c.json({ error: "session not found" }, 404);
   return c.json(result);
 });
@@ -2432,6 +2510,10 @@ app.patch("/api/sessions/:id/profile", async (c) => {
     metadata: { fromProfile, toProfile: profile, contextMode },
   });
   return c.json({ ok: true, profile });
+});
+
+registerSessionReadRoute(app, (sessionId, lastReplySeq, readReplySeq) => {
+  emitGlobalSessionEvent({ type: "session:read-state", sessionId, lastReplySeq, readReplySeq });
 });
 
 // Archive session (soft-delete — preserves data in DB)
@@ -2675,6 +2757,11 @@ app.get("/api/browse", async (c) => {
 });
 
 app.get("/api/files/search", async (c) => {
+  // Same gate as every other file route: `root` is an arbitrary absolute path,
+  // so this discloses directory structure and must not be reachable on a harness
+  // running with neither a token nor a PIN.
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const params = new URL(c.req.url).searchParams;
   const root = params.get("root");
   const query = params.get("q")?.trim() ?? "";

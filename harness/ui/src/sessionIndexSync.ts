@@ -20,6 +20,8 @@ type LifecycleEvent = {
   lastText?: string | null;
   lastEventAt?: number;
   pendingCount?: number;
+  lastReplySeq?: number;
+  readReplySeq?: number;
 };
 
 type SyncMessage =
@@ -63,10 +65,20 @@ function updateState(patch: Partial<SessionIndexConnectionState>) {
 }
 
 function notifyIndex(index: SessionIndex) {
+  // A snapshot requested before a completion/read event must not undo it.
+  const previous = new Map(currentIndex?.sessions.map((session) => [session.id, session]));
+  index = { ...index, sessions: index.sessions.map((session) => {
+    const prior = previous.get(session.id);
+    const lastReply = Math.max(session.last_reply_seq ?? 0, prior?.last_reply_seq ?? 0);
+    const readReply = Math.max(session.read_reply_seq ?? 0, prior?.read_reply_seq ?? 0);
+    if (lastReply === (session.last_reply_seq ?? 0) && readReply === (session.read_reply_seq ?? 0)) return session;
+    return { ...session, last_reply_seq: lastReply, read_reply_seq: readReply };
+  }) };
   currentIndex = index;
   for (const listener of indexListeners) listener(index);
   for (const resolve of refreshWaiters) resolve(index);
   refreshWaiters.clear();
+  return index;
 }
 
 function post(message: SyncMessage) {
@@ -85,7 +97,7 @@ async function fetchIndex(broadcast = true, force = false): Promise<SessionIndex
       return fetchPromise ?? currentIndex ?? index;
     }
     lastFetchAt = Date.now();
-    notifyIndex(index);
+    index = notifyIndex(index);
     if (broadcast) post({ kind: "index", source: tabId, index });
     return index;
   }).finally(() => {
@@ -96,6 +108,13 @@ async function fetchIndex(broadcast = true, force = false): Promise<SessionIndex
 }
 
 function patchSession(session: SessionInfo, event: LifecycleEvent, at: number): SessionInfo {
+  if (event.type === "session:read-state") {
+    return {
+      ...session,
+      last_reply_seq: Math.max(session.last_reply_seq ?? 0, event.lastReplySeq ?? 0),
+      read_reply_seq: Math.max(session.read_reply_seq ?? 0, event.readReplySeq ?? 0),
+    };
+  }
   if (event.type === "session:activity") {
     return {
       ...session,
@@ -135,11 +154,15 @@ function applyPatch(event: LifecycleEvent, at: number, broadcast: boolean): bool
   return true;
 }
 
-async function handleLifecycle(event: LifecycleEvent) {
+export async function handleSessionIndexLifecycleEvent(event: LifecycleEvent) {
   const at = Date.now();
   updateState({ status: "connected", lastEventAt: at });
-  if ((event.type === "session:activity" || event.type === "session:status" || event.type === "session:permission") && applyPatch(event, at, true)) {
-    return;
+  if (event.type === "session:activity" || event.type === "session:status" || event.type === "session:permission" || event.type === "session:read-state") {
+    if (applyPatch(event, at, true)) return;
+    // Internal sessions and rows beyond the index limit also stream events.
+    // They stay absent after a refresh; fetching again on every token creates
+    // a request loop. Membership events still refresh immediately below.
+    if (at - lastFetchAt < FALLBACK_POLL_MS) return;
   }
   // Creation, archive, rekey, and an unknown status target change membership
   // or identity, so refresh the authoritative compact index once.
@@ -166,7 +189,7 @@ async function runLifecycleStream(generation: number) {
       for await (const envelope of handle.events) {
         if (!started || !leader || generation !== streamGeneration) break;
         failures = 0;
-        await handleLifecycle((envelope as any).data as LifecycleEvent);
+        await handleSessionIndexLifecycleEvent((envelope as any).data as LifecycleEvent);
       }
       if (started && leader && generation === streamGeneration) throw new Error("session lifecycle stream closed");
     } catch {
@@ -371,4 +394,11 @@ export function resumeSessionIndex(): void {
 
 export function getSessionIndexSnapshot(): SessionIndex | null {
   return currentIndex;
+}
+
+export function applySessionReadReceipt(sessionId: string, receipt: { last_reply_seq: number; read_reply_seq: number }): void {
+  applyPatch({
+    type: "session:read-state", sessionId,
+    lastReplySeq: receipt.last_reply_seq, readReplySeq: receipt.read_reply_seq,
+  }, Date.now(), true);
 }

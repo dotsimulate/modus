@@ -311,6 +311,9 @@ export type Session = {
 
 /** Lightweight session info returned by list/search endpoints (DB row shape, snake_case). */
 export type SessionInfo = {
+  /** Completed reply/read watermarks, shared by clients of this Vault. */
+  last_reply_seq?: number;
+  read_reply_seq?: number;
   id: string;
   preview: string;
   title: string | null;
@@ -401,7 +404,7 @@ export type SearchHit = {
   cwd: string | null;
   last_message_at: number;
   total_cost_usd: number;
-  /** Highlighted text snippet showing the search match in context. */
+  /** Plain-text snippet showing a search match in context (not HTML). */
   snippet: string;
 };
 

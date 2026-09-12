@@ -248,6 +248,9 @@ const sessions = await client.listSessions({ limit: 20 });
 
 // Search session content (full-text, FTS5)
 const hits = await client.searchSessions("auth refactor");
+const latest = await client.searchSessions('auth "access token"', {
+  sort: "latest", limit: 20, offset: 0,
+});
 ```
 
 ### Branching

@@ -294,6 +294,12 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
   },
   "session-history": {
     type: "session-history",
+    description:
+      "The full session browser: sessions grouped by project, timeline, agent, or status, with search, pinning, live activity, and unread-reply marking.",
+    config: [
+      { name: "hideProfilePanel", type: "boolean", description: "Hide the profile/seed panel above the list." },
+      { name: "focusTabOnSelect", type: "string", description: "Tab id to focus after a row is chosen." },
+    ],
     minHeight: 200,
     preferredHeight: 400,
   },

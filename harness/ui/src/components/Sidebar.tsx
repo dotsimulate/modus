@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import type { Profile, SessionInfo, SearchHit, UserProfile } from "../../../sdk/index";
+import { useState, useCallback, useEffect } from "react";
+import type { Profile, SessionInfo, SearchHit, SearchSort, UserProfile } from "../../../sdk/index";
 import { modus } from "../modusClient";
+import { scheduleSessionSearch } from "../session-search-request";
 import type { SessionSetupState } from "./SessionSetup";
 import { SessionList } from "./sidebar/SessionList";
 import { SearchResults } from "./sidebar/SearchResults";
@@ -55,29 +56,47 @@ export function Sidebar({
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
+  const searchKey = JSON.stringify([searchQuery.trim(), searchSort, activeUserProfileObj?.name]);
+  const [searchState, setSearchState] = useState<{ key: string; hits: SearchHit[] }>({ key: "", hits: [] });
+  const [page, setPage] = useState({ key: "", offset: 0 });
+  const offset = page.key === searchKey ? page.offset : 0;
+  const searchResults = searchState.key === searchKey ? searchState.hits : [];
   const [searching, setSearching] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => { setPage({ key: "", offset: 0 }); }, [activeUserProfileObj?.name]);
 
   const handleSetGroupMode = useCallback((mode: GroupMode) => {
     setGroupMode(mode);
     onGroupModeChange?.(mode);
   }, [onGroupModeChange]);
 
-  const doSearch = useCallback((q: string) => {
-    clearTimeout(searchTimer.current);
-    if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
+  useEffect(() => {
+    setSearchError(null);
+    setHasMore(false);
+    if (!searchQuery.trim()) { setSearching(false); return; }
     setSearching(true);
-    searchTimer.current = setTimeout(async () => {
-      try {
-        const hits = await modus.searchSessions(q, { limit: 20, userProfile: activeUserProfileObj?.name ?? undefined });
-        setSearchResults(hits);
-      } catch { /* silent */ }
-      setSearching(false);
-    }, 250);
-  }, [activeUserProfileObj?.name]);
-
-  useEffect(() => () => clearTimeout(searchTimer.current), []);
+    return scheduleSessionSearch(
+      (query, options) => modus.searchSessions(query, options),
+      searchQuery,
+      { limit: 21, offset, sort: searchSort, userProfile: activeUserProfileObj?.name },
+      (hits) => {
+        setSearchState(previous => {
+          const combined = [...(offset && previous.key === searchKey ? previous.hits : []), ...hits.slice(0, 20)];
+          return { key: searchKey, hits: [...new Map(combined.map(hit => [hit.session_id, hit])).values()] };
+        });
+        setHasMore(hits.length > 20);
+        setSearching(false);
+      },
+      (error) => {
+        setSearchError(error instanceof Error ? error.message : "Search failed. Please retry.");
+        setSearching(false);
+      },
+    );
+  }, [searchQuery, searchSort, activeUserProfileObj?.name, searchKey, offset, retry]);
 
   return (
     <>
@@ -136,15 +155,27 @@ export function Sidebar({
                   className="sidebar-search"
                   type="text"
                   placeholder="search sessions..."
+                  aria-label="Search sessions"
+                  aria-describedby="session-search-help"
                   value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); doSearch(e.target.value); }}
-                  onKeyDown={(e) => { if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); (e.target as HTMLInputElement).blur(); } }}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage({ key: "", offset: 0 }); }}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setSearchQuery(""); setPage({ key: "", offset: 0 }); (e.target as HTMLInputElement).blur(); } }}
                 />
                 {searchQuery && (
-                  <button className="sidebar-search-clear" onClick={() => { setSearchQuery(""); setSearchResults([]); }}>×</button>
+                  <button className="sidebar-search-clear" aria-label="Clear search" onClick={() => { setSearchQuery(""); setPage({ key: "", offset: 0 }); }}>×</button>
                 )}
               </div>
-              <div className="group-toggle">
+              <div id="session-search-help" className="sidebar-search-help">All words match. Use "quotes" for a phrase.</div>
+              {searchQuery.trim() ? (
+                <label className="sidebar-search-sort">
+                  Sort
+                  <select value={searchSort} onChange={e => { setSearchSort(e.target.value as SearchSort); setPage({ key: "", offset: 0 }); }}>
+                    <option value="relevance">Relevance</option>
+                    <option value="latest">Latest</option>
+                    <option value="oldest">Oldest</option>
+                  </select>
+                </label>
+              ) : <div className="group-toggle">
                 <button
                   className={`group-toggle-btn ${groupMode === "time" ? "group-toggle-btn--active" : ""}`}
                   onClick={() => handleSetGroupMode("time")}
@@ -157,7 +188,7 @@ export function Sidebar({
                 >
                   agent
                 </button>
-              </div>
+              </div>}
             </div>
           )}
 
@@ -165,6 +196,10 @@ export function Sidebar({
             <SearchResults
               results={searchResults}
               searching={searching}
+              error={searchError}
+              hasMore={hasMore}
+              onLoadMore={() => setPage({ key: searchKey, offset: offset + 20 })}
+              onRetry={() => setRetry(value => value + 1)}
               activeSessionId={activeSessionId}
               onSelectSession={onSelectSession}
             />

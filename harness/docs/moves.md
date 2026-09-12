@@ -1,6 +1,6 @@
 ---
 title: Moves
-lastUpdated: 2026-08-14
+lastUpdated: 2026-09-09
 covers: harness/move-runner.ts harness/move-types.ts harness/move-activation-failure.ts harness/move-test-context.ts harness/move-file-input.ts harness/move-file-accept.ts harness/harness-context.ts harness/move-op-request.ts harness/move-api-result.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
 ---
 
@@ -83,6 +83,17 @@ the transpiler and need no entry.
 | `persistent` | Ambient gather-only move; re-runs `gather()` on every user turn until deactivated |
 
 ### When a move can be attached
+
+The composer can stage several distinct moves on one message. Each has its own
+removable chip; selecting the same move again updates its inputs in place.
+Inline attachments travel together in the request's `moves` array, both when
+creating a session and when sending a follow-up. Their gathered contexts and
+individual API tokens are prepended to that one message. Ordinary text is optional.
+
+Profile-bound inline moves still run on the first message alongside composer
+attachments. Removing a profile chip sends `skipProfileMoves`; removing a composer
+chip removes only that explicit attachment. Persistent activation, widget mounting,
+and branch/background execution retain their separate lifecycles.
 
 A move does not need a fresh session. Sending `moves: [{ name, inputs }]` with
 `POST /api/sessions/:id/messages` activates it against the live session and
@@ -553,7 +564,7 @@ own live directories.
 
 | Export | When your edit takes effect |
 |---|---|
-| `gather()`, `onSubmit()`, `prepare()`, `onAssistantTurn()`, `listInstances()` | **Next activation.** `loadMoveModule()` evicts cached move-authored modules under the resolved move directory before `await import()`, so edits to `context.ts` and its local sibling imports are re-read. Move-local `node_modules` stays cached. |
+| `gather()`, `onSubmit()`, `prepare()`, `onAssistantTurn()`, `listInstances()` | **Next call after the file changes.** `loadMoveModule()` fingerprints `context.ts`, every move-local file the last import loaded, `package.json`, and `node_modules` (mtime + size). While that fingerprint holds it returns the already-evaluated module; when it changes, it evicts move-local modules and imports again. Move-local `node_modules` stays cached. |
 | `handlers` (API ops) | **Next registration, not next call.** `registerMoveApi()` captures the `handlers` object into the in-memory registry, and op dispatch reads `reg.handlers[op]` from that snapshot. Editing the file changes nothing for an already-registered instance. |
 
 To pick up a handler edit: **detach and re-attach the move.**
@@ -572,10 +583,22 @@ Two traps that make an edit look like it did not land:
   the reason (see Activation failures below). Before that existed, the symptom
   of a syntax error was "my change did nothing", with no failure anywhere the
   user could see.
-- **Only `context.ts` itself is evicted.** Imports below it can remain in Bun's
-  module cache, so an edit to a sibling helper may require a harness restart.
+- **Only files inside the move directory are tracked.** A helper imported from
+  outside it (another project, a shared library, harness source) stays in Bun's
+  module cache and is never re-evaluated, so an edit there requires a harness
+  restart.
+- **A failed import is not retried until a tracked file changes.** Bun never
+  frees an evaluated module, so retrying a broken `context.ts` on every call
+  would retain a copy per attempt. The failure is re-reported on each call; fix
+  the file and the next call imports it. After a failed import, local source
+  files and directory additions are also watched: creating a missing dependency
+  or repairing its syntax error retries the import without an entry-file edit.
 
 ## MoveContext (passed to gather/onSubmit)
+
+Detaching a move or deactivating an ambient API move releases its in-memory
+state, process store, and assistant-turn listener. State explicitly persisted
+on disk remains available for a later instance resume.
 
 - `moveName`, `sessionId`, `cwd`, `userProfile`, `inputs`
 - `session` — lastAssistantText, seq, profile, exchangeCount

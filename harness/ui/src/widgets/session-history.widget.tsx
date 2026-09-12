@@ -4,15 +4,20 @@ import { useSessionActions, useSessionIndex } from "../providers/SessionContext"
 import { useProfiles } from "../providers/ProfileContext";
 import { getSessionState } from "../sessionStore";
 import { sessionActivityAt as activityAt } from "../sessionActivity";
+import { hasUnreadReply } from "../session-read-state";
 import { useWidgetUiState } from "./ui-state";
 import { ProfilePanel } from "../components/sidebar/ProfilePanel";
+import { SearchResults } from "../components/sidebar/SearchResults";
+import { scheduleSessionSearch } from "../session-search-request";
+import { onControlIntent, stepSessionId } from "../control-intents";
 import {
   isActiveProjectSessionStatus,
+  selectVisibleGroupSessions,
   selectVisibleProjectSessions,
   type ProjectWindow,
 } from "../sessionHistoryVisibility";
 import type { WidgetBase, WidgetProps } from "./types";
-import type { SessionInfo } from "../../../sdk/index";
+import type { SearchHit, SearchSort, SessionInfo } from "../../../sdk/index";
 
 type SessionHistoryConfig = WidgetBase & {
   type: "session-history";
@@ -21,12 +26,36 @@ type SessionHistoryConfig = WidgetBase & {
   focusTabOnSelect?: string;
 };
 
-type ViewMode = "projects" | "timeline" | "agents" | "status";
+type ViewMode = "unread" | "projects" | "timeline" | "agents" | "status";
+
+/** Views that list every project's sessions and label each row with its project. */
+function isProjectScoped(mode: ViewMode): boolean {
+  return mode === "projects" || mode === "unread";
+}
+
+/**
+ * The unread view exists only while something is waiting. Reading the last
+ * reply empties it, so the widget falls back to projects rather than stranding
+ * the user on a tab that has just stopped being offered.
+ *
+ * `sessionsLoaded` is the guard that makes this safe to persist: before the
+ * index arrives the count is zero because nothing is known, not because nothing
+ * is waiting, and falling back then would discard the stored view on every boot.
+ */
+export function resolveViewMode(stored: ViewMode, unreadCount: number, sessionsLoaded: boolean): ViewMode {
+  return stored === "unread" && sessionsLoaded && unreadCount === 0 ? "projects" : stored;
+}
+
 type SortKey = "updated" | "created" | "cost" | "messages";
 type Density = "spacey" | "compact";
 
-const PROJECT_RECENT_LIMIT = 8;
-const PROJECT_REVEAL_STEP = 10;
+/**
+ * Rows shown per group before the reveal control takes over. Deliberately small:
+ * the list is for finding the conversation you were just in, and everything
+ * older is one click away rather than in front of you by default.
+ */
+const GROUP_RECENT_LIMIT = 5;
+const GROUP_REVEAL_STEP = 10;
 
 type LiveInfo = {
   status: string;
@@ -156,6 +185,10 @@ function isActiveStatus(status: string): boolean {
   return isActiveProjectSessionStatus(status);
 }
 
+function countUnread(sessions: SessionInfo[]): number {
+  return sessions.reduce((total, session) => total + (hasUnreadReply(session) ? 1 : 0), 0);
+}
+
 function groupByProject(sessions: SessionInfo[]): TimelineGroup[] {
   const map = new Map<string, { label: string; sessions: SessionInfo[] }>();
   for (const session of sessions) {
@@ -188,10 +221,10 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     selectedProfile, selectProfile,
     setupState, setSetupState,
   } = useProfiles();
-  const { serverSessions, allServerSessions, sessionIndexConnection } = useSessionIndex();
+  const { serverSessions, allServerSessions, sessionsLoaded } = useSessionIndex();
   const { archiveSession, refreshSessions, newSession } = useSessionActions();
 
-  const [viewMode, setViewMode] = useWidgetUiState<ViewMode>(
+  const [storedViewMode, setViewMode] = useWidgetUiState<ViewMode>(
     { userProfile: activeUserProfile },
     widgetId, "view-mode-v2", "projects",
   );
@@ -214,9 +247,28 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     widgetId, "project-window", "12h",
   );
 
+  // ── Search ──
+  // A query replaces the grouped list with full-text hits from the backend index
+  // rather than filtering the rows already loaded: the point of searching is to
+  // reach a conversation by something said inside it, which is not in this list's
+  // metadata. Clearing the box restores the list.
   const [search, setSearch] = useState("");
+  const [searchSort, setSearchSort] = useState<SearchSort>("relevance");
+  const query = search.trim();
+  const searchKey = JSON.stringify([query, searchSort, activeUserProfile]);
+  const [searchState, setSearchState] = useState<{ key: string; hits: SearchHit[] }>({ key: "", hits: [] });
+  const [page, setPage] = useState({ key: "", offset: 0 });
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [retry, setRetry] = useState(0);
+  // Stale keys read as empty rather than as the previous query's answers, so
+  // changing the words never shows the old results under the new ones.
+  const offset = page.key === searchKey ? page.offset : 0;
+  const searchResults = searchState.key === searchKey ? searchState.hits : [];
+
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
-  const [projectRevealCounts, setProjectRevealCounts] = useState<Record<string, number>>({});
+  const [revealCounts, setRevealCounts] = useState<Record<string, number>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -231,6 +283,37 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     return () => document.removeEventListener("mousedown", close);
   }, [sortOpen]);
 
+  useEffect(() => { setPage({ key: "", offset: 0 }); }, [activeUserProfile]);
+
+  useEffect(() => {
+    setSearchError(null);
+    setHasMore(false);
+    if (!query) { setSearching(false); return; }
+    setSearching(true);
+    // Scoped to the active user profile, matching every other read in this
+    // widget. The server applies its own project and agent visibility on top;
+    // this narrows within it, it does not widen.
+    return scheduleSessionSearch(
+      (text, options) => modus.searchSessions(text, options),
+      query,
+      { limit: 21, offset, sort: searchSort, userProfile: activeUserProfile ?? undefined },
+      (hits) => {
+        setSearchState((previous) => {
+          const carried = offset && previous.key === searchKey ? previous.hits : [];
+          const combined = [...carried, ...hits.slice(0, 20)];
+          return { key: searchKey, hits: [...new Map(combined.map((hit) => [hit.session_id, hit])).values()] };
+        });
+        // The 21st hit is the probe for another page, never a row.
+        setHasMore(hits.length > 20);
+        setSearching(false);
+      },
+      (error) => {
+        setSearchError(error instanceof Error ? error.message : "Search failed. Please retry.");
+        setSearching(false);
+      },
+    );
+  }, [query, searchSort, activeUserProfile, searchKey, offset, retry]);
+
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: "updated", label: "recent" },
     { value: "created", label: "created" },
@@ -244,7 +327,17 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     ?? null
   );
 
-  const sourceSessions = viewMode === "projects" ? allServerSessions : serverSessions;
+  // Counted across every project, not the current view's slice, so the tab reads
+  // the same number whichever view is open. The open conversation is excluded:
+  // it is not waiting on anyone, and counting it made the tab appear and vanish
+  // on every turn of the chat being watched.
+  const unreadCount = useMemo(
+    () => countUnread(allServerSessions.filter((session) => session.id !== selectedId)),
+    [allServerSessions, selectedId],
+  );
+  const viewMode = resolveViewMode(storedViewMode, unreadCount, sessionsLoaded);
+
+  const sourceSessions = isProjectScoped(viewMode) ? allServerSessions : serverSessions;
 
   const liveMap = useMemo(() => {
     const map = new Map<string, LiveInfo>();
@@ -261,33 +354,22 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   }, [sourceSessions]);
 
   const sessions = useMemo(() => {
-    return sourceSessions.map(s => {
+    const withLiveStatus = sourceSessions.map(s => {
       const live = getSessionState(s.id);
       const active = liveMap.get(s.id);
       const status = live?.status ?? active?.status ?? s.status;
       return { ...s, status };
     });
-  }, [sourceSessions, liveMap]);
+    // Narrowing here rather than after the pin split keeps the pinned section
+    // from showing read sessions while the unread view is open.
+    return viewMode === "unread" ? withLiveStatus.filter(hasUnreadReply) : withLiveStatus;
+  }, [sourceSessions, liveMap, viewMode]);
 
   const pinned = useMemo(() => sessions.filter(s => parseTagList(s.tags).includes("pinned")), [sessions]);
   const unpinned = useMemo(() => sessions.filter(s => !parseTagList(s.tags).includes("pinned")), [sessions]);
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return unpinned;
-    const q = search.toLowerCase();
-    return unpinned.filter(s =>
-      (s.title ?? "").toLowerCase().includes(q) ||
-      (s.last_prompt ?? "").toLowerCase().includes(q) ||
-      (s.preview ?? "").toLowerCase().includes(q) ||
-      (s.profile ?? "").toLowerCase().includes(q) ||
-      (s.model ?? "").toLowerCase().includes(q) ||
-      (s.project_name ?? "").toLowerCase().includes(q) ||
-      (s.cwd ?? "").toLowerCase().includes(q)
-    );
-  }, [unpinned, search]);
-
   const sorted = useMemo(() => {
-    const arr = [...filtered];
+    const arr = [...unpinned];
     switch (sortKey) {
       case "created": arr.sort((a, b) => b.created_at - a.created_at); break;
       case "cost": arr.sort((a, b) => (b.total_cost_usd ?? 0) - (a.total_cost_usd ?? 0)); break;
@@ -295,11 +377,11 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
       default: arr.sort((a, b) => activityAt(b) - activityAt(a));
     }
     return arr;
-  }, [filtered, sortKey]);
+  }, [unpinned, sortKey]);
 
   const groups = useMemo(() => {
     switch (viewMode) {
-      case "projects": return groupByProject(sorted);
+      case "projects": case "unread": return groupByProject(sorted);
       case "agents": return groupByAgent(sorted);
       case "status": return groupByStatus(sorted);
       default: return groupByTimeline(sorted);
@@ -307,35 +389,59 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   }, [sorted, viewMode]);
 
   const displayGroups = useMemo(() => groups.map((group) => {
-    if (viewMode !== "projects") {
-      return { ...group, visibleSessions: group.sessions, hiddenCount: 0, revealCount: 0 };
+    // The unread view is already the short list; capping it would hide the very
+    // thing it exists to show, and its heads never repeat the count.
+    if (viewMode === "unread") {
+      return {
+        ...group, visibleSessions: group.sessions,
+        hiddenCount: 0, revealCount: 0, unreadCount: 0,
+      };
     }
-    const revealCount = projectRevealCounts[group.key] ?? 0;
-    const visibleSessions = selectVisibleProjectSessions(group.sessions, {
-      window: projectWindow,
-      selectedId,
-      searching: !!search.trim(),
-      recentLimit: PROJECT_RECENT_LIMIT,
-      revealCount,
-    });
+    const revealCount = revealCounts[group.key] ?? 0;
+    const visibleSessions = viewMode === "projects"
+      ? selectVisibleProjectSessions(group.sessions, {
+          window: projectWindow, selectedId,
+          recentLimit: GROUP_RECENT_LIMIT, revealCount,
+        })
+      : selectVisibleGroupSessions(group.sessions, {
+          limit: GROUP_RECENT_LIMIT, selectedId, revealCount,
+        });
     return {
       ...group,
       visibleSessions,
       hiddenCount: group.sessions.length - visibleSessions.length,
       revealCount,
+      unreadCount: countUnread(group.sessions),
     };
-  }), [groups, projectRevealCounts, projectWindow, search, selectedId, viewMode]);
+  }), [groups, revealCounts, projectWindow, selectedId, viewMode]);
 
   useEffect(() => {
-    setProjectRevealCounts({});
-  }, [projectWindow, search]);
+    setRevealCounts({});
+  }, [projectWindow, search, viewMode]);
 
   const expandedModeRef = useRef<ViewMode | null>(null);
   useEffect(() => {
     if (groups.length === 0 || expandedModeRef.current === viewMode) return;
     expandedModeRef.current = viewMode;
-    setExpandedGroups(new Set(viewMode === "projects" ? groups.map((group) => group.key) : [groups[0]!.key]));
-  }, [groups, viewMode]);
+    if (!isProjectScoped(viewMode)) {
+      setExpandedGroups(new Set([groups[0]!.key]));
+      return;
+    }
+    // Opening every project at once is the reason this list reads as a wall.
+    // Open the ones with something going on and leave the rest one click away;
+    // fall back to the most recent so the panel is never blank.
+    const worthOpening = groups.filter((group) => group.sessions.some((session) =>
+      isActiveStatus(session.status) || hasUnreadReply(session) || session.id === selectedId));
+    setExpandedGroups(new Set((worthOpening.length > 0 ? worthOpening : [groups[0]!]).map((g) => g.key)));
+  }, [groups, viewMode, selectedId]);
+
+  // `resolveViewMode` already renders the fallback; this persists it, so the tab
+  // does not spring back to unread the next time a reply lands.
+  useEffect(() => {
+    if (resolveViewMode(storedViewMode, unreadCount, sessionsLoaded) !== storedViewMode) {
+      setViewMode("projects");
+    }
+  }, [unreadCount, storedViewMode, sessionsLoaded, setViewMode]);
 
   const toggleGroup = useCallback((label: string) => {
     setExpandedGroups(prev => {
@@ -346,15 +452,15 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     });
   }, []);
 
-  const revealProjectSessions = useCallback((key: string, count: number) => {
-    setProjectRevealCounts((previous) => ({
+  const revealGroupSessions = useCallback((key: string, count: number) => {
+    setRevealCounts((previous) => ({
       ...previous,
       [key]: (previous[key] ?? 0) + count,
     }));
   }, []);
 
-  const collapseProjectSessions = useCallback((key: string) => {
-    setProjectRevealCounts((previous) => {
+  const collapseGroupSessions = useCallback((key: string) => {
+    setRevealCounts((previous) => {
       const next = { ...previous };
       delete next[key];
       return next;
@@ -371,6 +477,29 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
       onSelectSession(id);
     }
   }, [config.focusTabOnSelect, pageContext, onSelectSession]);
+
+  // ── Control intents ──
+  // This list claims session.cycle while it is mounted, because it is the thing
+  // the user is looking at: cycling follows the current view, in render order,
+  // or the search hits while a query is up. Without this the provider's fallback
+  // cycles the unfiltered project list, so a knob visits sessions that are not on
+  // screen and skips ones that are.
+  //
+  // Group collapse and the per-group row cap are presentation, not filtering, so
+  // they do not narrow the ring — landing inside a collapsed group expands it.
+  // Pending sessions are skipped: they have no history to land in.
+  const cycleIds = useMemo(() => {
+    const ids = query
+      ? searchResults.map((hit) => hit.session_id)
+      : [...pinned, ...displayGroups.flatMap((group) => group.sessions)].map((session) => session.id);
+    return ids.filter((id) => !id.startsWith("pending-"));
+  }, [query, searchResults, pinned, displayGroups]);
+
+  useEffect(() => onControlIntent("session.cycle", (intent) => {
+    if (intent.intent !== "session.cycle") return;
+    const next = stepSessionId(cycleIds, selectedId, intent.delta);
+    if (next) handleSelect(next);
+  }), [cycleIds, selectedId, handleSelect]);
 
   const handleNew = useCallback(async () => {
     const id = await newSession();
@@ -435,151 +564,156 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
             ref={searchRef}
             className="sh-search"
             type="text"
-            placeholder="search sessions..."
+            placeholder="search conversations..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => { if (e.key === "Escape") { setSearch(""); searchRef.current?.blur(); } }}
+            onChange={e => { setSearch(e.target.value); setPage({ key: "", offset: 0 }); }}
+            onKeyDown={e => { if (e.key === "Escape") { setSearch(""); setPage({ key: "", offset: 0 }); searchRef.current?.blur(); } }}
           />
           {search && (
-            <button className="sh-search-clear" onClick={() => setSearch("")}>&times;</button>
+            <button
+              className="sh-search-clear"
+              aria-label="Clear search"
+              onClick={() => { setSearch(""); setPage({ key: "", offset: 0 }); }}
+            >&times;</button>
           )}
         </div>
+        {query && (
+          <div className="sh-search-help">All words match. Use &ldquo;quotes&rdquo; for a phrase.</div>
+        )}
 
         {/* Controls row */}
         <div className="sh-controls">
-          <div className="sh-view-modes">
-            {(["projects", "timeline", "agents", "status"] as ViewMode[]).map(m => (
+          {query ? (
+            <label className="sh-search-sort">
+              sort
+              <select
+                value={searchSort}
+                onChange={event => { setSearchSort(event.target.value as SearchSort); setPage({ key: "", offset: 0 }); }}
+              >
+                <option value="relevance">relevance</option>
+                <option value="latest">latest</option>
+                <option value="oldest">oldest</option>
+              </select>
+            </label>
+          ) : (
+            <>
+            <div className="sh-view-modes">
+              {unreadCount > 0 && (
+                <button
+                  className={`sh-mode-btn sh-mode-btn--unread${viewMode === "unread" ? " active" : ""}`}
+                  onClick={() => setViewMode("unread")}
+                  title={`${unreadCount} session${unreadCount === 1 ? "" : "s"} waiting to be read`}
+                  aria-label={`${unreadCount} unread`}
+                  type="button"
+                >{unreadCount}</button>
+              )}
+              {(["projects", "timeline", "agents", "status"] as ViewMode[]).map(m => (
+                <button
+                  key={m}
+                  className={`sh-mode-btn${viewMode === m ? " active" : ""}`}
+                  onClick={() => setViewMode(m)}
+                >{m}</button>
+              ))}
+            </div>
+            <div className={`sh-sort${sortOpen ? " open" : ""}`} ref={sortRef}>
               <button
-                key={m}
-                className={`sh-mode-btn${viewMode === m ? " active" : ""}`}
-                onClick={() => setViewMode(m)}
-              >{m}</button>
-            ))}
-          </div>
-          <span
-            className={`sh-connection sh-connection--${sessionIndexConnection.status}`}
-            title={`session index: ${sessionIndexConnection.status} · ${sessionIndexConnection.role}${sessionIndexConnection.reconnects ? ` · ${sessionIndexConnection.reconnects} reconnects` : ""}`}
-          />
-          <div className={`sh-sort${sortOpen ? " open" : ""}`} ref={sortRef}>
-            <button
-              className="sh-sort-btn"
-              onClick={() => setSortOpen(v => !v)}
-              title={`sort: ${sortOptions.find(o => o.value === sortKey)?.label ?? ""}`}
-              type="button"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-              </svg>
-            </button>
-            {sortOpen && (
-              <div className="sh-sort-menu">
-                {sortOptions.map(opt => (
-                  <button
-                    key={opt.value}
-                    className={`sh-sort-option${opt.value === sortKey ? " active" : ""}`}
-                    onClick={() => { setSortKey(opt.value); setSortOpen(false); }}
-                    type="button"
-                  >{opt.label}</button>
-                ))}
-                <div className="sh-sort-separator" />
-                <div className="sh-sort-density">
-                  <span className="sh-sort-density-label">density</span>
-                  <div className="sh-sort-density-toggle">
-                    {(["spacey", "compact"] as Density[]).map(d => (
-                      <button
-                        key={d}
-                        className={`sh-density-btn${effectiveDensity === d ? " active" : ""}`}
-                        onClick={e => { e.stopPropagation(); setDensity(d); }}
-                        type="button"
-                      >{d}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="sh-sort-density">
-                  <span className="sh-sort-density-label">corners</span>
-                  <div className="sh-sort-density-toggle">
-                    {([["square", false], ["rounded", true]] as [string, boolean][]).map(([label, val]) => (
-                      <button
-                        key={label}
-                        className={`sh-density-btn${rounded === val ? " active" : ""}`}
-                        onClick={e => { e.stopPropagation(); setRounded(val); }}
-                        type="button"
-                      >{label}</button>
-                    ))}
-                  </div>
-                </div>
-                {viewMode === "projects" && (
+                className="sh-sort-btn"
+                onClick={() => setSortOpen(v => !v)}
+                title={`sort: ${sortOptions.find(o => o.value === sortKey)?.label ?? ""}`}
+                type="button"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </button>
+              {sortOpen && (
+                <div className="sh-sort-menu">
+                  {sortOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      className={`sh-sort-option${opt.value === sortKey ? " active" : ""}`}
+                      onClick={() => { setSortKey(opt.value); setSortOpen(false); }}
+                      type="button"
+                    >{opt.label}</button>
+                  ))}
+                  <div className="sh-sort-separator" />
                   <div className="sh-sort-density">
-                    <span className="sh-sort-density-label">show</span>
+                    <span className="sh-sort-density-label">density</span>
                     <div className="sh-sort-density-toggle">
-                      {(["12h", "24h", "7d", "all"] as ProjectWindow[]).map(window => (
+                      {(["spacey", "compact"] as Density[]).map(d => (
                         <button
-                          key={window}
-                          className={`sh-density-btn${projectWindow === window ? " active" : ""}`}
-                          onClick={event => { event.stopPropagation(); setProjectWindow(window); }}
+                          key={d}
+                          className={`sh-density-btn${effectiveDensity === d ? " active" : ""}`}
+                          onClick={e => { e.stopPropagation(); setDensity(d); }}
                           type="button"
-                        >{window}</button>
+                        >{d}</button>
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
+                  <div className="sh-sort-density">
+                    <span className="sh-sort-density-label">corners</span>
+                    <div className="sh-sort-density-toggle">
+                      {([["square", false], ["rounded", true]] as [string, boolean][]).map(([label, val]) => (
+                        <button
+                          key={label}
+                          className={`sh-density-btn${rounded === val ? " active" : ""}`}
+                          onClick={e => { e.stopPropagation(); setRounded(val); }}
+                          type="button"
+                        >{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {viewMode === "projects" && (
+                    <div className="sh-sort-density">
+                      <span className="sh-sort-density-label">show</span>
+                      <div className="sh-sort-density-toggle">
+                        {(["12h", "24h", "7d", "all"] as ProjectWindow[]).map(window => (
+                          <button
+                            key={window}
+                            className={`sh-density-btn${projectWindow === window ? " active" : ""}`}
+                            onClick={event => { event.stopPropagation(); setProjectWindow(window); }}
+                            type="button"
+                          >{window}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Scrollable body */}
       <div className="sh-body">
-        {/* Pinned section */}
-        {pinned.length > 0 && (
-          <div className="sh-section sh-section--pinned">
-            <div className="sh-section-head" onClick={() => toggleGroup("__pinned")}>
-              <span className="sh-section-icon">&#9670;</span>
-              <span className="sh-section-label">pinned</span>
-              <span className="sh-section-count">{pinned.length}</span>
-            </div>
-            <div className="sh-section-items">
-              {pinned.map(s => (
-                <SessionRow
-                  key={s.id}
-                  session={s}
-                  selected={s.id === selectedId}
-                  hovered={s.id === hoveredId}
-                  liveInfo={liveMap.get(s.id)}
-                  onHover={setHoveredId}
-                  onSelect={handleSelect}
-                  onArchive={handleArchive}
-                  onTogglePin={handleTogglePin}
-                  onRename={handleRename}
-                  isPinned
-                  showProject={viewMode === "projects"}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Dynamic groups */}
-        {displayGroups.map(g => (
-          <div key={g.key} className="sh-section">
-            <div className="sh-section-head" onClick={() => toggleGroup(g.key)}>
-              <span className={`sh-section-chevron${expandedGroups.has(g.key) ? " open" : ""}`}>
-                <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
-                  <path d="M2 3l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </span>
-              <span className="sh-section-label">{g.label}</span>
-              {!!g.activeCount && <span className="sh-section-active">{g.activeCount} active</span>}
-              <span className="sh-section-count">
-                {g.visibleSessions.length === g.sessions.length
-                  ? g.sessions.length
-                  : `${g.visibleSessions.length} / ${g.sessions.length}`}
-              </span>
-            </div>
-            {expandedGroups.has(g.key) && (
+        {query ? (
+          <SearchResults
+            results={searchResults}
+            searching={searching}
+            error={searchError}
+            hasMore={hasMore}
+            onLoadMore={() => setPage({ key: searchKey, offset: offset + 20 })}
+            onRetry={() => setRetry(value => value + 1)}
+            activeSessionId={selectedId}
+            onSelectSession={handleSelect}
+          />
+        ) : (
+          <>
+          {/* Pinned section */}
+          {pinned.length > 0 && (
+            <div className="sh-section sh-section--pinned">
+              <div className="sh-section-head" onClick={() => toggleGroup("__pinned")}>
+                <span className="sh-section-icon">&#9670;</span>
+                <span className="sh-section-label">pinned</span>
+                {countUnread(pinned) > 0 && (
+                  <span className="sh-section-unread">{countUnread(pinned)} unread</span>
+                )}
+                <span className="sh-section-count">{pinned.length}</span>
+              </div>
               <div className="sh-section-items">
-                {g.visibleSessions.map(s => (
+                {pinned.map(s => (
                   <SessionRow
                     key={s.id}
                     session={s}
@@ -591,39 +725,78 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
                     onArchive={handleArchive}
                     onTogglePin={handleTogglePin}
                     onRename={handleRename}
-                    isPinned={parseTagList(s.tags).includes("pinned")}
-                    showProject={viewMode === "projects"}
+                    isPinned
+                    showProject={isProjectScoped(viewMode)}
                   />
                 ))}
-                {viewMode === "projects" && (g.hiddenCount > 0 || g.revealCount > 0) && (
-                  <div className="sh-project-reveal">
-                    {g.hiddenCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => revealProjectSessions(g.key, PROJECT_REVEAL_STEP)}
-                      >show {Math.min(PROJECT_REVEAL_STEP, g.hiddenCount)} more</button>
-                    )}
-                    {g.hiddenCount > PROJECT_REVEAL_STEP && (
-                      <button
-                        type="button"
-                        onClick={() => revealProjectSessions(g.key, g.sessions.length)}
-                      >show all {g.sessions.length}</button>
-                    )}
-                    {g.revealCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => collapseProjectSessions(g.key)}
-                      >show less</button>
-                    )}
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          )}
 
-        {groups.length === 0 && search && (
-          <div className="sh-empty">no matches for &ldquo;{search}&rdquo;</div>
+          {/* Dynamic groups */}
+          {displayGroups.map(g => (
+            <div key={g.key} className="sh-section">
+              <div className="sh-section-head" onClick={() => toggleGroup(g.key)}>
+                <span className={`sh-section-chevron${expandedGroups.has(g.key) ? " open" : ""}`}>
+                  <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
+                    <path d="M2 3l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+                <span className="sh-section-label">{g.label}</span>
+                {g.unreadCount > 0 && <span className="sh-section-unread">{g.unreadCount} unread</span>}
+                {!!g.activeCount && <span className="sh-section-active">{g.activeCount} active</span>}
+                <span className="sh-section-count">
+                  {g.visibleSessions.length === g.sessions.length
+                    ? g.sessions.length
+                    : `${g.visibleSessions.length} / ${g.sessions.length}`}
+                </span>
+              </div>
+              {expandedGroups.has(g.key) && (
+                <div className="sh-section-items">
+                  {g.visibleSessions.map(s => (
+                    <SessionRow
+                      key={s.id}
+                      session={s}
+                      selected={s.id === selectedId}
+                      hovered={s.id === hoveredId}
+                      liveInfo={liveMap.get(s.id)}
+                      onHover={setHoveredId}
+                      onSelect={handleSelect}
+                      onArchive={handleArchive}
+                      onTogglePin={handleTogglePin}
+                      onRename={handleRename}
+                      isPinned={parseTagList(s.tags).includes("pinned")}
+                      showProject={isProjectScoped(viewMode)}
+                    />
+                  ))}
+                  {viewMode !== "unread" && (g.hiddenCount > 0 || g.revealCount > 0) && (
+                    <div className="sh-project-reveal">
+                      {g.hiddenCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => revealGroupSessions(g.key, GROUP_REVEAL_STEP)}
+                        >show {Math.min(GROUP_REVEAL_STEP, g.hiddenCount)} more</button>
+                      )}
+                      {g.hiddenCount > GROUP_REVEAL_STEP && (
+                        <button
+                          type="button"
+                          onClick={() => revealGroupSessions(g.key, g.sessions.length)}
+                        >show all {g.sessions.length}</button>
+                      )}
+                      {g.revealCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => collapseGroupSessions(g.key)}
+                        >show less</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          </>
         )}
       </div>
     </div>
@@ -632,7 +805,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
 
 // ── Row Component ──
 
-function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect, onArchive, onTogglePin, onRename, isPinned, showProject }: {
+export function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect, onArchive, onTogglePin, onRename, isPinned, showProject }: {
   session: SessionInfo;
   selected: boolean;
   hovered: boolean;
@@ -651,6 +824,7 @@ function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect
   const isRunning = s.status === "running";
   const isError = s.status === "error";
   const isEmpty = !s.title && !s.last_prompt && !s.preview;
+  const unread = hasUnreadReply(s);
 
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -685,7 +859,7 @@ function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect
 
   return (
     <div
-      className={`sh-row${selected ? " selected" : ""}${isRunning ? " running" : ""}${isError ? " error" : ""}`}
+      className={`sh-row${selected ? " selected" : ""}${isRunning ? " running" : ""}${isError ? " error" : ""}${unread ? " sh-row--unread" : ""}`}
       onClick={() => !editing && onSelect(s.id)}
       onMouseEnter={() => onHover(s.id)}
       onMouseLeave={() => onHover(null)}
@@ -750,6 +924,7 @@ function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect
       {/* Full-width meta row — identity on the left, stats on the right */}
       <div className="sh-row-meta">
         <div className="sh-row-meta-left">
+          {unread && <span className="sh-tag sh-tag--unread" title="Unread reply">new reply</span>}
           {showProject && <span className="sh-tag sh-tag--project">{s.project_name ?? "other"}</span>}
           {s.profile && <span className="sh-tag sh-tag--agent">{s.profile}</span>}
           {model && <span className="sh-tag sh-tag--model">{model}</span>}

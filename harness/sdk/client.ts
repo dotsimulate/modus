@@ -1,4 +1,5 @@
 import { readFileMutationResponse, type FileMutationResult } from "../file-mutation-errors";
+import type { SearchOptions } from "../session-search";
 import type {
   ModusClientOptions,
   InteractOptions,
@@ -364,6 +365,13 @@ export class ModusClient {
   }
   /** Soft-deletes (archives) a session. */
   async archiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}`, { method: "DELETE" }); }
+
+  async markSessionReplyRead(id: string, seq: number): Promise<{ last_reply_seq: number; read_reply_seq: number }> {
+    const response = await this.fetchOrThrow(`/api/sessions/${encodeURIComponent(id)}/read`, {
+      method: "POST", body: JSON.stringify({ seq }),
+    });
+    return response.json();
+  }
   /** Restores an archived session. */
   async unarchiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}/unarchive`, { method: "POST" }); }
   /** Lists archived sessions. */
@@ -375,11 +383,13 @@ export class ModusClient {
   async updateTitle(id: string, title: string | null): Promise<void> {
     await this.fetch(`/api/sessions/${id}/title`, { method: "PATCH", body: JSON.stringify({ title }) });
   }
-  /** Full-text search across session content (FTS5). Returns empty array for blank queries. */
-  async searchSessions(query: string, opts?: { limit?: number; userProfile?: string }): Promise<SearchHit[]> {
+  /** All words/quoted phrases must match within a session. Defaults to relevance order. */
+  async searchSessions(query: string, opts?: SearchOptions): Promise<SearchHit[]> {
     if (!query.trim()) return [];
     const p = new URLSearchParams({ q: query });
-    if (opts?.limit) p.set("limit", String(opts.limit));
+    if (opts?.limit !== undefined) p.set("limit", String(opts.limit));
+    if (opts?.offset !== undefined) p.set("offset", String(opts.offset));
+    if (opts?.sort) p.set("sort", opts.sort);
     if (opts?.userProfile) p.set("userProfile", opts.userProfile);
     return (await this.fetch(`/api/sessions/search?${p}`)).json();
   }
