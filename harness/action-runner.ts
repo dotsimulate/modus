@@ -32,6 +32,7 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join, resolve } from "path";
 import { APP_PATHS } from "./app-paths";
+import { importAuthoredModule } from "./authored-module-loader";
 import { buildModusMcpServer, getAllUserProfiles, getProfile, getUserProfile, resolveProfileKey } from "./profiles";
 import { bindSessionSkillScope, collectSkills, createSkillScope } from "./skill-attachment";
 import { acceptsInjectedSkillPaths } from "./providers/provider-names";
@@ -871,7 +872,9 @@ async function fireAction(
     if (!existsSync(contextPath)) {
       throw new Error(`Missing context.ts for action "${name}"`);
     }
-    const mod: ActionModule = await import(`${contextPath}?t=${Date.now()}`);
+    // Re-evaluated only when context.ts or a sibling changed. A fresh import URL
+    // per run leaked a retained module copy on every tick of an interval action.
+    const mod = await importAuthoredModule<ActionModule>(contextPath, { unitDir: actionDir });
     if (typeof mod.gather !== "function") {
       throw new Error(`context.ts for "${name}" does not export a gather() function`);
     }

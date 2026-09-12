@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createProcessTableSampler,
   measureProcessTree,
   normalizeImageName,
   parsePsOutput,
@@ -9,6 +10,74 @@ import {
 } from "../process-memory";
 
 const MB = 1024 * 1024;
+
+describe("process table sampling", () => {
+  const wmic = "Node,Name,ParentProcessId,ProcessId,WorkingSetSize\nHOST,cli.exe,1,20,4096";
+  const tasklist = '"cli.exe","20","Console","1","4 K"';
+
+  test("concurrent samples share one asynchronous command and cache from completion", async () => {
+    let now = 0;
+    let calls = 0;
+    let finish!: (output: string) => void;
+    const sampler = createProcessTableSampler("linux", () => {
+      calls++;
+      return new Promise((resolve) => { finish = resolve; });
+    }, () => now);
+    const first = sampler.sample();
+    expect(sampler.sample()).toBe(first);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    expect(calls).toBe(1); // Event loop progressed while the command was pending.
+    now = 20_000;
+    finish("20 1 4 cli");
+    const table = await first;
+    now += 14_999;
+    expect(await sampler.sample()).toBe(table);
+    expect(calls).toBe(1);
+    now++;
+    const next = sampler.sample();
+    expect(calls).toBe(2);
+    finish("20 1 8 cli");
+    expect((await next).get(20)?.rssBytes).toBe(8192);
+  });
+
+  test("an unavailable wmic is attempted once, then tasklist is used", async () => {
+    const calls: string[] = [];
+    const sampler = createProcessTableSampler("win32", async (command) => {
+      calls.push(command);
+      return command === "cmd.exe" ? null : tasklist;
+    });
+    expect((await sampler.sample()).get(20)?.rssBytes).toBe(4096);
+    sampler.reset();
+    await sampler.sample();
+    expect(calls).toEqual(["cmd.exe", "tasklist", "tasklist"]);
+  });
+
+  test("a previously working wmic recovers after a transient failure", async () => {
+    let attempts = 0;
+    const sampler = createProcessTableSampler("win32", async (command) => {
+      if (command === "cmd.exe") return ++attempts === 2 ? null : wmic;
+      return tasklist;
+    });
+    expect((await sampler.sample()).get(20)?.ppid).toBe(1);
+    sampler.reset();
+    expect((await sampler.sample()).get(20)?.ppid).toBe(0);
+    sampler.reset();
+    expect((await sampler.sample()).get(20)?.ppid).toBe(1);
+  });
+
+  test("command failure is unknown, and reset during a sample does not repopulate the cache", async () => {
+    let calls = 0;
+    const sampler = createProcessTableSampler("linux", async () => {
+      calls++;
+      throw new Error("tool unavailable");
+    });
+    const pending = sampler.sample();
+    sampler.reset();
+    expect((await pending).size).toBe(0);
+    expect((await sampler.sample()).size).toBe(0);
+    expect(calls).toBe(2);
+  });
+});
 
 function table(rows: Array<[pid: number, ppid: number, name: string, rssBytes: number]>): ProcessTable {
   return new Map(rows.map(([pid, ppid, name, rssBytes]) => [pid, { pid, ppid, name, rssBytes }]));

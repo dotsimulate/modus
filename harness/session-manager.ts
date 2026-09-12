@@ -2553,8 +2553,7 @@ export function forceClearActiveSession(
  * unknown, never as zero, so an unmeasurable session is not mistaken for a free
  * one. The process table is sampled once for the whole sweep.
  */
-function sampleIdleSessions(sessions: ActiveSession[], now: number): IdleSessionSample[] {
-  const table: ProcessTable = sessions.length > 0 ? sampleProcessTable(now) : new Map();
+function sampleIdleSessions(sessions: ActiveSession[], now: number, table: ProcessTable): IdleSessionSample[] {
   const measurable = table.size > 0;
 
   return sessions.map((session) => {
@@ -2643,7 +2642,12 @@ function reclaimSession(sessionId: string, reason: string, now: number): void {
     + `reason=${reason} totalActive=${activeSessions.size}`);
 }
 
-function reapStaleSessions(): void {
+async function reapStaleSessions(generation: number): Promise<void> {
+  const needsSample = [...activeSessions.values()].some((session) => session.status === "idle" && session.osPids.size > 0);
+  const table: ProcessTable = needsSample ? await sampleProcessTable() : new Map();
+  if (generation !== reapGeneration) return;
+  // Sampling yields to incoming messages. Decide from current session state only
+  // after it finishes, so a resumed session cannot be reclaimed as stale idle work.
   const now = Date.now();
   const toReap: Array<{ id: string; reason: string }> = [];
   const idleSessions: ActiveSession[] = [];
@@ -2671,7 +2675,7 @@ function reapStaleSessions(): void {
   }
 
   if (idleSessions.length > 0) {
-    const samples = sampleIdleSessions(idleSessions, now);
+    const samples = sampleIdleSessions(idleSessions, now, table);
     const ctx = { underPressure: isUnderMemoryPressure() };
     const limits = resolveReapLimits();
     // Recorded every sweep, not only when something is reclaimed: a policy that
@@ -2703,25 +2707,35 @@ function reapStaleSessions(): void {
 }
 
 let reapTimer: ReturnType<typeof setInterval> | null = null;
+let reapGeneration = 0;
+let reapInFlight = false;
 
 export function startSessionReaper(): void {
   if (reapTimer) return;
+  const generation = ++reapGeneration;
   // Probe the process table once at startup. Whether the platform tooling works
   // inside a packaged backend is otherwise only observable after a session has
   // been idle long enough to be surveyed, and it is the first thing to rule out
   // when the memory rules never fire.
-  try {
-    const table = sampleProcessTable();
+  void sampleProcessTable().then((table) => {
+    if (generation !== reapGeneration) return;
     sseLog("REAP-PROBE", undefined, table.size > 0
       ? `process table readable, rows=${table.size}`
       : "process table UNREADABLE — memory rules cannot fire, only the idle backstop");
-  } catch (err) {
+  }).catch((err) => {
     sseLog("REAP-PROBE", undefined, `process table sample threw: ${err}`);
-  }
-  reapTimer = setInterval(reapStaleSessions, REAP_INTERVAL_MS);
+  });
+  reapTimer = setInterval(() => {
+    if (reapInFlight) return;
+    reapInFlight = true;
+    void reapStaleSessions(generation)
+      .catch((err) => console.error("[session-reaper] sweep failed:", err))
+      .finally(() => { reapInFlight = false; });
+  }, REAP_INTERVAL_MS);
 }
 
 export function stopSessionReaper(): void {
+  reapGeneration++;
   if (reapTimer) { clearInterval(reapTimer); reapTimer = null; }
 }
 

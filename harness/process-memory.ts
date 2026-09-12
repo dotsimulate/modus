@@ -16,7 +16,7 @@
  * touching a session whose subprocess is doing real work.
  */
 
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 export type ProcessRow = {
   pid: number;
@@ -205,58 +205,92 @@ export function measureProcessTree(
 
 // ── Sampling ──
 
-function runCommand(command: string, args: string[]): string | null {
-  try {
-    const result = spawnSync(command, args, {
+function runCommand(command: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(command, args, {
       encoding: "utf8",
       windowsHide: true,
       timeout: COMMAND_TIMEOUT_MS,
-    });
-    if (result.status !== 0 || !result.stdout?.trim()) return null;
-    return result.stdout;
-  } catch {
-    return null;
+      maxBuffer: 16 * 1024 * 1024,
+    }, (error, stdout) => resolve(error || !stdout.trim() ? null : stdout));
+  });
+}
+
+/** An independent sampler; injected commands let tests avoid the real process table. */
+export function createProcessTableSampler(
+  platform: string = process.platform,
+  command: typeof runCommand = runCommand,
+  clock: () => number = Date.now,
+) {
+  /** null until the first sample; false once wmic failed without ever working. */
+  let wmicUsable: boolean | null = null;
+
+  async function sampleWindows(): Promise<ProcessTable> {
+    // wmic reports working set in bytes and includes the parent pid, so it is
+    // preferred. It is being removed from Windows, hence the tasklist fallback.
+    // Where it is already gone, asking again every sweep spawns a failing shell for
+    // nothing, so a wmic that has never worked is not retried. One that has worked
+    // keeps being tried: a single failure under load should not demote it.
+    if (wmicUsable !== false) {
+      const wmic = await command("cmd.exe", [
+        "/c",
+        "wmic process get Name,ParentProcessId,ProcessId,WorkingSetSize /format:csv",
+      ]);
+      const table = wmic ? parseWmicProcessCsv(wmic) : new Map();
+      if (table.size > 0) {
+        wmicUsable = true;
+        return table;
+      }
+      if (wmicUsable === null) wmicUsable = false;
+    }
+    const tasklist = await command("tasklist", ["/FO", "CSV", "/NH"]);
+    return tasklist ? parseTasklistCsv(tasklist) : new Map();
   }
-}
 
-function sampleWindows(): ProcessTable {
-  // wmic reports working set in bytes and includes the parent pid, so it is
-  // preferred. It is being removed from Windows, hence the tasklist fallback.
-  const wmic = runCommand("cmd.exe", [
-    "/c",
-    "wmic process get Name,ParentProcessId,ProcessId,WorkingSetSize /format:csv",
-  ]);
-  if (wmic) {
-    const table = parseWmicProcessCsv(wmic);
-    if (table.size > 0) return table;
+  async function samplePosix(): Promise<ProcessTable> {
+    const ps = await command("ps", ["-eo", "pid=,ppid=,rss=,comm="]);
+    return ps ? parsePsOutput(ps) : new Map();
   }
-  const tasklist = runCommand("tasklist", ["/FO", "CSV", "/NH"]);
-  return tasklist ? parseTasklistCsv(tasklist) : new Map();
+
+  let cachedTable: ProcessTable | null = null;
+  let cachedAt = 0;
+  let inFlight: Promise<ProcessTable> | null = null;
+  let generation = 0;
+
+  /**
+   * Read the current process table. Results are cached briefly so several
+   * lookups in one reaper sweep cost a single spawn. Returns an empty table when
+   * the platform tooling is unavailable; callers must treat that as "unknown",
+   * never as "zero".
+   */
+  function sample(): Promise<ProcessTable> {
+    if (inFlight) return inFlight;
+    if (cachedTable && clock() - cachedAt < SAMPLE_TTL_MS) return Promise.resolve(cachedTable);
+    const startedGeneration = generation;
+    const pending = (platform === "win32" ? sampleWindows() : samplePosix())
+      .catch(() => new Map() as ProcessTable)
+      .then((table) => {
+        if (generation === startedGeneration) {
+          cachedTable = table;
+          cachedAt = clock();
+        }
+        return table;
+      }).finally(() => {
+        if (inFlight === pending) inFlight = null;
+      });
+    inFlight = pending;
+    return pending;
+  }
+
+  /** Drop the cached table so the next sample re-reads the system. */
+  function reset(): void {
+    generation++;
+    cachedTable = null;
+    cachedAt = 0;
+  }
+  return { sample, reset };
 }
 
-function samplePosix(): ProcessTable {
-  const ps = runCommand("ps", ["-eo", "pid=,ppid=,rss=,comm="]);
-  return ps ? parsePsOutput(ps) : new Map();
-}
-
-let cachedTable: ProcessTable | null = null;
-let cachedAt = 0;
-
-/**
- * Read the current process table. Results are cached briefly so several
- * lookups in one reaper sweep cost a single spawn. Returns an empty table when
- * the platform tooling is unavailable; callers must treat that as "unknown",
- * never as "zero".
- */
-export function sampleProcessTable(now: number = Date.now()): ProcessTable {
-  if (cachedTable && now - cachedAt < SAMPLE_TTL_MS) return cachedTable;
-  cachedTable = process.platform === "win32" ? sampleWindows() : samplePosix();
-  cachedAt = now;
-  return cachedTable;
-}
-
-/** Drop the cached table so the next sample re-reads the system. */
-export function resetProcessTableCache(): void {
-  cachedTable = null;
-  cachedAt = 0;
-}
+const sampler = createProcessTableSampler();
+export const sampleProcessTable = sampler.sample;
+export const resetProcessTableCache = sampler.reset;

@@ -31,6 +31,7 @@ adb.run(`
 adb.run(`CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_profile, created_at DESC)`);
 adb.run(`CREATE INDEX IF NOT EXISTS idx_activity_session ON activity_log(session_id)`);
 adb.run(`CREATE INDEX IF NOT EXISTS idx_activity_type ON activity_log(event_type, created_at DESC)`);
+adb.run(`CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC)`);
 
 // ── Types ──
 

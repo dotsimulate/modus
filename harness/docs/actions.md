@@ -307,6 +307,12 @@ so re-enabling never causes a catch-up burst.
 
 ## Reload semantics
 
+Session listing through an action's `ctx.db` is scoped to its project for
+project-discovered actions. Plugin- and harness-discovered actions can list
+across projects in the current Vault. Discovery determines this origin; a
+directory found as both a configured project and an enabled plugin uses the
+project origin. Setting `origin` in `action.json` does not override discovery.
+
 Action discovery is snapshot-based. Creating/removing an action directory or
 editing `action.json` does not update the in-memory scheduler until harness
 startup or `POST /api/actions/reload`. Reload scans built-in, project, and
@@ -314,8 +320,14 @@ enabled-plugin roots; it adds new actions, refreshes config for existing ones,
 and removes missing actions only when they have no active execution. An active
 execution keeps running, but its state receives the refreshed config.
 
-`context.ts` has a different lifetime: each run imports it with a fresh
-timestamp query (`?t=<now>`), so edits are read when the next run starts and do
-not require the discovery reload. As with moves, an installed desktop's
+`context.ts` has a different lifetime: each run checks whether `context.ts` or a
+file it loaded from the action directory changed (mtime + size), and re-imports
+only then. Edits are read when the next run starts and do not require the
+discovery reload; an unchanged module is reused, because Bun never frees an
+evaluated module and importing one per run leaks memory on every tick. A failed
+import is not retried until a tracked file changes. Failed imports also watch
+local source files and directory additions, so creating a missing dependency or
+fixing a dependency's syntax error recovers on the next run. Helpers imported from outside
+the action directory are never re-evaluated. As with moves, an installed desktop's
 built-ins come from its staged resource snapshot; editing another source
 checkout requires rebuilding/reinstalling that snapshot.

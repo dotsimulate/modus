@@ -19,7 +19,8 @@
  */
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync, statSync, realpathSync } from "fs";
-import { dirname, isAbsolute, join, relative, resolve } from "path";
+import { dirname, join, resolve } from "path";
+import { importAuthoredModule } from "./authored-module-loader";
 import { APP_PATHS } from "./app-paths";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
@@ -161,8 +162,7 @@ export function deactivateAmbientMove(sessionId: string, moveName: string): bool
   // Clean up API registration if present. Drop the persisted row first, or the
   // token would be rehydrated on the next boot for a deactivated move.
   if (removed.apiToken) {
-    dropPersistedMoveRegistration(removed.apiToken);
-    moveApiRegistry.delete(removed.apiToken);
+    detachMove(removed.apiToken);
   }
   // Update DB record
   updateMoveRun(removed.moveRunId, { status: "completed", completedAt: Date.now() });
@@ -1395,32 +1395,18 @@ async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | n
   if (inFlight) return inFlight;
 
   const pending = (async (): Promise<MoveModule | null> => {
-    await ensureMoveDeps(location.dir);
     try {
-      // Move-authored sibling modules are part of the hot-reload unit. Keep
-      // node_modules cached: dependency packages are installed/pinned separately
-      // and evicting them makes an ordinary handler edit unnecessarily expensive.
-      for (const cachePath of Object.keys(require.cache)) {
-        const localPath = relative(location.dir, cachePath);
-        if (!localPath || localPath.startsWith("..") || isAbsolute(localPath)) continue;
-        if (localPath.split(/[\\/]/).includes("node_modules")) continue;
-        delete require.cache[cachePath];
-      }
-
-      // Bust the entry module too so move code changes take effect on re-activation.
-      const resolved = require.resolve(modulePath);
-      delete require.cache[resolved];
-      const mod = await import(modulePath);
-      // Ensure context.ts reloads on subsequent calls for hot-reloads
-      if (mod?.gather || mod?.onSubmit || mod?.onAssistantTurn) {
-        const futureResolved = require.resolve(modulePath);
-        if (futureResolved !== resolved) {
-          delete require.cache[futureResolved];
-          delete require.cache[resolved];
-        }
-      }
+      // Move-authored sibling modules are part of the hot-reload unit; node_modules
+      // stays cached. The loader re-evaluates only when a tracked file changed —
+      // this runs on every chat turn for ambient moves, and evicting per call
+      // retained a new copy of the move's module graph each time.
+      const mod = await importAuthoredModule<MoveModule>(modulePath, {
+        unitDir: location.dir,
+        watchPaths: [join(location.dir, "package.json"), join(location.dir, "node_modules")],
+        beforeImport: () => ensureMoveDeps(location.dir),
+      });
       moveModuleLoadErrors.delete(modulePath);
-      return mod as MoveModule;
+      return mod;
     } catch (err) {
       console.error(`[move-runner] Failed to load context.ts for move "${name}":`, err);
       moveModuleLoadErrors.set(modulePath, sanitizeFailureDetail(err));
@@ -2010,6 +1996,7 @@ export function detachMove(apiToken: string): boolean {
 
   clearMoveAssistantTurnListener(apiToken);
   instanceStore.delete(reg.instanceId);
+  moveApiState.delete(reg.instanceId);
   moveApiRegistry.delete(apiToken);
   console.log(`[move-runner] detached: ${reg.moveName}`);
   return true;
