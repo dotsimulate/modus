@@ -180,20 +180,21 @@ is a property of the provider:
 - **`messageDelivery: "next-turn"`** — there is no injection point, so it waits
   in `session.pendingDispatch` and is delivered when the turn ends.
 
-The field is derived centrally in `registry.ts` from `isSteerableProvider()` in
+The field is derived centrally in `registry.ts` from `supportsSteering()` in
 `providers/provider-names.ts` — the same pattern as `readsNativeSkills` — rather
 than declared per provider, so clients can ask `/api/provider-capabilities`
 which will happen *before* sending. `providers/steering.test.ts` fails if that
 list and the actual
 `steerMessage` implementations drift apart.
 
-Three providers can steer, each through a live input channel that stays open
+These providers can steer, each through a live input channel that stays open
 after the turn starts:
 
 | Provider | Channel |
 |----------|---------|
 | `claude-code` | the Agent SDK's streaming-input iterator |
 | `claude-code-pty` | stdin, kept open by `--input-format stream-json` |
+| `codex` | app-server `turn/steer`, acknowledged against the active native turn id |
 | Any declarative PI provider, including `openai-compat`, `ollama`, and `openrouter` | `AgentSession.sendUserMessage(content, { deliverAs: "steer" })` |
 
 Every other provider runs one prompt per turn with no way in.
@@ -210,6 +211,23 @@ move can be attached to an interjection. The gathers run once, before injection;
 if the provider then declines, the already-gathered text is queued rather than
 re-gathered, because activation has side effects (persistent registration, API
 token minting).
+
+Codex launches `codex app-server --listen stdio://` per turn and resumes the same
+native thread on follow-ups. The stdin channel stays open until completion and
+outstanding steering acknowledgments settle. Interject (or **Alt+Enter**) sends
+to the active turn; ordinary Enter still queues. No stop/restart is performed
+to deliver an interjection. During startup or teardown, an explicit decline
+falls back to the normal queue. A timeout or lost connection before acknowledgment
+is reported as a delivery error rather than automatically risking a duplicate.
+
+The provider interface accepts `boolean | Promise<boolean>` for `steerMessage`;
+the session manager waits for acceptance before persisting/broadcasting the
+interjection. Codex child-thread notifications are filtered out of the parent's
+turn lifecycle. Its native rollout, MCP configuration, profile instructions,
+images, model, effort, sandbox, and speed settings carry across the transport.
+API-key sessions authenticate with process-local ephemeral credential storage;
+subscription sessions reuse the CLI's saved login. Interactive approval UI is
+still unsupported: unexpected approval requests are declined.
 
 ## Profile prompts and project instructions
 

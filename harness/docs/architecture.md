@@ -44,6 +44,7 @@ modus/
       claude-code-pty.ts   # Persistent Claude Code CLI provider
       codex.ts             # OpenAI Codex CLI provider
       codex-cli-sdk.ts     # Codex CLI exec wrapper
+      codex-app-server.ts  # Codex stdio turn transport with acknowledged steering
       cursor.ts            # Cursor Agent CLI provider
       antigravity.ts       # Google Antigravity CLI provider
       gemini-cli.ts        # Hidden legacy paid/API/Vertex provider

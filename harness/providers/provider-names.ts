@@ -81,16 +81,18 @@ export function acceptsInjectedSkillPaths(name: string): boolean {
  *   and stdin stays open, which is the same channel by another route.
  * - PI providers â€” `AgentSession.sendUserMessage(content, { deliverAs: "steer" })`.
  *
+ * Codex uses app-server's acknowledged `turn/steer` request over live stdin.
  * Everything else runs one prompt per turn with no injection point, so a
  * message sent mid-turn there can only be queued.
  */
 export function listSteerableProviders(): string[] {
-  return ["claude-code", "claude-code-pty", ...listPiProviders()];
+  return ["claude-code", "claude-code-pty", "codex", ...listPiProviders()];
 }
 
 export function supportsSteering(name: string): boolean {
   return name === "claude-code"
     || name === "claude-code-pty"
+    || name === "codex"
     || getProviderDefinition(name)?.kind === "pi";
 }
 

@@ -1985,7 +1985,7 @@ export async function steerMessage(
     additionalDirectories: session.additionalDirectories,
   });
 
-  if (session._provider.steerMessage(ctx, content)) {
+  if (await session._provider.steerMessage(ctx, content)) {
     // Persist *and* broadcast. A steered message is delivered inside a turn that
     // is already streaming, so nothing else will announce it — persisting alone
     // leaves the interjection invisible in the transcript until a reload.

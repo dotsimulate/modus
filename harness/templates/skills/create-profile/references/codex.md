@@ -20,8 +20,8 @@ Do not hard-code an example model merely because it appeared in an older documen
 
 ## Permission Model — Critical Difference
 
-**Codex exec mode does not support interactive approvals.** The SDK never emits
-approval-request events. This means:
+**Modus does not surface Codex interactive approvals.** Its app-server transport
+declines approval requests while preserving the existing permission mapping:
 
 - `permissionPolicy: "bypass"` → `sandboxMode: "danger-full-access"` (full access)
 - `permissionPolicy: "ask"` → **falls back to `workspace-write`** with a warning logged.
@@ -64,8 +64,8 @@ Syntax: Starlark `prefix_rule()` calls, one per string in the array.
 
 Decisions: `"allowed"`, `"ask"`, `"forbidden"`.
 
-Note: `decision="ask"` in rules means Codex will pause — but because exec mode cannot
-surface interactive prompts, the harness will auto-reject these. Use `"forbidden"` to
+Note: `decision="ask"` in rules requires interactive approval, which this harness
+path declines. Use `"forbidden"` to
 block commands outright.
 
 ## Web Search

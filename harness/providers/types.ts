@@ -96,11 +96,11 @@ export interface SessionProvider {
 
   /**
    * Inject a message mid-turn at the next tool boundary (steer mode).
-   * Returns true if the message was injected into the running turn.
+   * Resolves true once the provider accepts the message into the running turn.
    * Returns false if not supported — caller falls back to queue.
    * Only implement if the provider can genuinely deliver mid-run.
    */
-  steerMessage?(ctx: TurnContext, content: MessageContent): boolean;
+  steerMessage?(ctx: TurnContext, content: MessageContent): boolean | Promise<boolean>;
 
   /** Update mutable config mid-session (optional — only Claude SDK needs this) */
   updateConfig?(session: ActiveSession, config: Record<string, any>): void;

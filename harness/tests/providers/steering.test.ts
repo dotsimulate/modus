@@ -66,10 +66,10 @@ describe("provider steering capability", () => {
 
   test("providers that cannot steer are named, not merely absent", () => {
     // Guards against a new provider silently defaulting into either bucket.
-    for (const name of ["codex", "cursor", "antigravity", "grok-build", "opencode", "gemini-cli"]) {
+    for (const name of ["cursor", "antigravity", "grok-build", "opencode", "gemini-cli"]) {
       expect(supportsSteering(name)).toBe(false);
     }
-    for (const name of ["claude-code", "claude-code-pty", ...PI_PROVIDERS]) {
+    for (const name of ["claude-code", "claude-code-pty", "codex", ...PI_PROVIDERS]) {
       expect(supportsSteering(name)).toBe(true);
     }
   });

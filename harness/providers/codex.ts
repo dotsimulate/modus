@@ -5,7 +5,7 @@
  * thread resume for multi-turn, event translation to harness canonical format.
  *
  * Key difference from claude-code: Codex spawns a fresh subprocess per turn
- * (no long-lived process, no input channel). Multi-turn achieved via thread ID resume.
+ * with a live app-server input channel. Multi-turn uses native thread ID resume.
  */
 
 import { canResumeCodexThread, Codex, Thread, parseCodexReconnectNotice } from "./codex-cli-sdk";
@@ -38,6 +38,7 @@ type CodexState = {
   threadOptions: ThreadOptions;
   abortController: AbortController;
   rulesFilePath?: string;
+  steeringInputs?: Set<CodexInput>;
   goal?: CodexGoalState;
 };
 
@@ -114,7 +115,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   permissionModel: {
     mode: "runtime-native",
     interactive: false,
-    summary: "Codex exec mode supports sandbox and approval settings, but this harness path cannot surface live per-tool approve or deny prompts.",
+    summary: "Codex supports sandbox settings; this harness path declines interactive approval requests instead of presenting per-tool prompts.",
   },
   sessionMutability: {
     providerSwitchAfterStart: false,
@@ -480,10 +481,9 @@ function cleanupCodexRulesFile(filePath: string | undefined): void {
 /**
  * Maps harness PermissionPolicy to Codex-native controls.
  *
- * Codex exec mode does NOT support interactive approvals. Research confirmed:
- * - Approval requests are never emitted as JSONL events — no interception possible.
- * - exec mode auto-rejects all approval-requiring operations regardless of approvalPolicy flag.
- * - The delegate/callback approval system exists in the Rust library, not in exec mode.
+ * Preserve the non-interactive permission mapping used by the exec transport.
+ * The app-server transport declines approval requests; it does not expose an
+ * interactive approval UI.
  *
  * Practical mapping:
  *   "bypass"  → approvalPolicy "never", sandboxMode "danger-full-access"
@@ -512,7 +512,7 @@ export function mapPermissionPolicy(
     sandboxMode = "workspace-write";
   } else if (policy === "ask") {
     console.warn(
-      "[codex] permissionPolicy \"ask\" cannot be honored — Codex exec mode auto-rejects " +
+      "[codex] permissionPolicy \"ask\" cannot be honored — this harness path declines " +
       "interactive approvals. Falling back to sandboxMode \"workspace-write\" with no approval " +
       "prompts. Use codexRules in the profile for command-level allow/forbidden enforcement.",
     );
@@ -523,7 +523,7 @@ export function mapPermissionPolicy(
     if (policy.requireApproval?.length) {
       console.warn(
         `[codex] permissionPolicy.requireApproval [${policy.requireApproval.join(", ")}] ` +
-        "cannot be honored — Codex exec mode has no per-tool approval hooks. " +
+        "cannot be honored — this harness path has no per-tool approval UI. " +
         "Use codexRules in the profile for command-level allow/forbidden enforcement.",
       );
     }
@@ -684,6 +684,7 @@ export function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject
 function createCodexClient(ctx: TurnContext, apiKey: string | undefined): Codex {
   const { config, env } = buildCodexConfig(ctx);
   return new Codex({
+    transport: "app-server",
     apiKey,
     config,
     env,
@@ -1015,19 +1016,25 @@ export function createCodexProvider(): SessionProvider {
       });
     },
 
+    steerMessage(ctx: TurnContext, content: MessageContent) {
+      const { session } = ctx;
+      const state = getState(session);
+      if (!state?.thread || state.abortController.signal.aborted
+        || (session.status !== "running" && session.status !== "starting")) return false;
+      // Modus goal commands run between turns, not as model instructions.
+      if (parseGoalCommand(contentToString(content))) return false;
+      const input = buildCodexInput(content, ctx);
+      // Codex can read local images after acknowledging the steering request.
+      // Retain them until the owning turn's transport has finished.
+      state.steeringInputs?.add(input);
+      return state.thread.steer(input);
+    },
+
     abort(session: ActiveSession) {
-      // Only abort when a turn may be in flight. The Codex CLI wrapper strips the
-      // child's 'error' listener in its finally block, so aborting the signal
-      // after a turn completes crashes the runtime via an uncaught EventEmitter
-      // 'error' from Node's internal abortChildProcess.
-      //
-      // stopSession() sets status to "interrupting" right BEFORE calling abort(),
-      // so "interrupting" must be allowed too — otherwise the Stop button is a
-      // silent no-op for Codex and a running Codex agent can't be interrupted.
+      // stopSession() sets "interrupting" before calling abort. Keep that state
+      // eligible while avoiding cancellation of an already-finished turn.
       if (session.status !== "running" && session.status !== "starting" && session.status !== "interrupting") return;
       const state = getState(session);
-      // Never re-abort an already-aborted controller — that's the post-teardown
-      // path that triggers the listener-stripped crash.
       if (state && !state.abortController.signal.aborted) state.abortController.abort();
       if (!session.abortController.signal.aborted) session.abortController.abort();
     },
@@ -1067,10 +1074,7 @@ export function createCodexProvider(): SessionProvider {
     async dispose(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;
-      // Only abort when a turn may be in flight. Aborting after the Codex CLI's
-      // child_process has already exited crashes the runtime: the wrapper calls
-      // child.removeAllListeners() in its finally, so the subsequent abort's
-      // internal 'error' emit has no listener and bubbles up uncaught.
+      // The turn transport owns process teardown after cancellation.
       if (session.status === "running" || session.status === "starting") {
         state.abortController.abort();
       }
@@ -1117,6 +1121,8 @@ async function runTurn(
 ) {
   const { session } = ctx;
   const requestedResumeThreadId = isResume ? state.threadId : null;
+  const steeringInputs = new Set<CodexInput>();
+  state.steeringInputs = steeringInputs;
 
   // Start or resume thread
   let thread: Thread;
@@ -1151,10 +1157,16 @@ async function runTurn(
 
   try {
     for await (const event of events) {
-      if (state.abortController.signal.aborted) break;
+      if (state.abortController.signal.aborted) {
+        throw Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+      }
       session.lastEventAt = Date.now();
 
       switch (event.type) {
+        case "provider.reconnecting": {
+          ctx.emitEvent({ type: "system", subtype: "provider_reconnecting", provider: "codex", message: event.message });
+          break;
+        }
         case "thread.started": {
           // Emit init event — use thread_id as session ID for consistency
           if (!initEmitted) {
@@ -1433,10 +1445,7 @@ async function runTurn(
     });
 
     session.status = "idle";
-    // Replace the AbortController now that the turn's child_process has exited.
-    // The Codex CLI wrapper strips the child's 'error' listener in its finally block,
-    // so aborting the old signal later would crash via an uncaught EventEmitter
-    // 'error' from Node's internal abortChildProcess.
+    // The transport has confirmed process shutdown; the next turn gets its own signal.
     session.abortController = new AbortController();
     state.abortController = session.abortController;
 
@@ -1531,6 +1540,7 @@ async function runTurn(
       ctx.emitEvent({ type: "done" });
     }
   } finally {
+    for (const steeringInput of steeringInputs) cleanupCodexInputImages(steeringInput);
     if (!inputHandedOff) cleanupCodexInputImages(input);
   }
 }

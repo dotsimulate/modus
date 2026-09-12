@@ -8,6 +8,7 @@ import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe
 import { providerChildEnv } from "./child-env";
 import { resolveCli } from "./resolve-cli";
 import { logProviderDiagnostic } from "./provider-diagnostics";
+import { CodexAppServerTurn } from "./codex-app-server";
 
 type SpawnFn = typeof spawn;
 
@@ -94,6 +95,7 @@ type CodexConfigObject = {
 };
 
 type CodexOptions = {
+  transport?: "exec" | "app-server";
   apiKey?: string;
   baseUrl?: string;
   codexPathOverride?: string;
@@ -388,6 +390,8 @@ class CodexExec {
 }
 
 export class Thread {
+  private appTurn: CodexAppServerTurn | null = null;
+
   constructor(
     private readonly exec: CodexExec,
     private readonly options: CodexOptions,
@@ -399,7 +403,42 @@ export class Thread {
     return { events: this.runStreamedInternal(input, turnOptions) };
   }
 
+  steer(input: CodexInput): Promise<boolean> {
+    return this.appTurn?.steer(input) ?? Promise.resolve(false);
+  }
+
   private async *runStreamedInternal(input: CodexInput, turnOptions: TurnOptions): AsyncGenerator<ThreadEvent> {
+    if (this.options.transport === "app-server") {
+      const executable = this.options.codexPathOverride ?? resolveCodexExecutable();
+      const commandArgs = ["app-server", "--listen", "stdio://"];
+      for (const override of serializeConfigOverrides(this.options.config ?? {})) {
+        commandArgs.push("--config", override);
+      }
+      if (this.options.apiKey) commandArgs.push("--config", 'cli_auth_credentials_store="ephemeral"');
+      if ((this.threadOptions.enableFeatures?.length || this.threadOptions.disableFeatures?.length) && supportsFeatureFlags(executable)) {
+        for (const feature of this.threadOptions.enableFeatures ?? []) commandArgs.push("--enable", feature);
+        for (const feature of this.threadOptions.disableFeatures ?? []) commandArgs.push("--disable", feature);
+      }
+      const env = this.options.env ? { ...this.options.env } : providerChildEnv();
+      if (!env[INTERNAL_ORIGINATOR_ENV]) env[INTERNAL_ORIGINATOR_ENV] = HARNESS_ORIGINATOR;
+      if (this.options.baseUrl) env.OPENAI_BASE_URL = this.options.baseUrl;
+      const appTurn = new CodexAppServerTurn({
+        executable, args: commandArgs, env, apiKey: this.options.apiKey,
+        spawn: this.options.spawnOverride,
+        onSpawn: this.options.onSpawn,
+        onExit: this.options.onExit,
+      });
+      this.appTurn = appTurn;
+      try {
+        for await (const event of appTurn.run(input, this.threadId, this.threadOptions, turnOptions.signal)) {
+          if (event.type === "thread.started") this.threadId = event.thread_id;
+          yield event;
+        }
+      } finally {
+        if (this.appTurn === appTurn) this.appTurn = null;
+      }
+      return;
+    }
     const { prompt, images } = normalizeInput(input);
     for await (const line of this.exec.run({
       input: prompt,
