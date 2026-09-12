@@ -6579,10 +6579,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/fast-uri@3.1.5",
+      "bom-ref": "pkg:npm/fast-uri@3.1.6",
       "name": "fast-uri",
-      "version": "3.1.5",
-      "purl": "pkg:npm/fast-uri@3.1.5",
+      "version": "3.1.6",
+      "purl": "pkg:npm/fast-uri@3.1.6",
       "licenses": [
         {
           "expression": "BSD-3-Clause"
@@ -7497,10 +7497,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/hono@4.12.34",
+      "bom-ref": "pkg:npm/hono@4.13.5",
       "name": "hono",
-      "version": "4.12.34",
-      "purl": "pkg:npm/hono@4.12.34",
+      "version": "4.13.5",
+      "purl": "pkg:npm/hono@4.13.5",
       "licenses": [
         {
           "expression": "MIT"
@@ -8343,10 +8343,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/js-yaml@4.3.1",
+      "bom-ref": "pkg:npm/js-yaml@4.3.2",
       "name": "js-yaml",
-      "version": "4.3.1",
-      "purl": "pkg:npm/js-yaml@4.3.1",
+      "version": "4.3.2",
+      "purl": "pkg:npm/js-yaml@4.3.2",
       "licenses": [
         {
           "expression": "MIT"
@@ -10701,10 +10701,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/qs@6.15.2",
+      "bom-ref": "pkg:npm/qs@6.16.0",
       "name": "qs",
-      "version": "6.15.2",
-      "purl": "pkg:npm/qs@6.15.2",
+      "version": "6.16.0",
+      "purl": "pkg:npm/qs@6.16.0",
       "licenses": [
         {
           "expression": "BSD-3-Clause"
@@ -11421,10 +11421,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/side-channel@1.1.0",
+      "bom-ref": "pkg:npm/side-channel@1.1.1",
       "name": "side-channel",
-      "version": "1.1.0",
-      "purl": "pkg:npm/side-channel@1.1.0",
+      "version": "1.1.1",
+      "purl": "pkg:npm/side-channel@1.1.1",
       "licenses": [
         {
           "expression": "MIT"
@@ -11439,10 +11439,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/side-channel-list@1.0.0",
+      "bom-ref": "pkg:npm/side-channel-list@1.0.1",
       "name": "side-channel-list",
-      "version": "1.0.0",
-      "purl": "pkg:npm/side-channel-list@1.0.0",
+      "version": "1.0.1",
+      "purl": "pkg:npm/side-channel-list@1.0.1",
       "licenses": [
         {
           "expression": "MIT"

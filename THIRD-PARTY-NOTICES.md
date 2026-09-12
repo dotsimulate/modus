@@ -2321,7 +2321,7 @@ verbatim.
 - Source: https://github.com/dchest/fast-sha256-js
 - License text: **JAV-0154** — Unlicense
 
-### fast-uri 3.1.5
+### fast-uri 3.1.6
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/fastify/fast-uri
@@ -2627,7 +2627,7 @@ verbatim.
 - Source: https://highlightjs.org/
 - License text: **JAV-0177** — BSD-3-Clause
 
-### hono 4.12.34
+### hono 4.13.5
 
 - License: `MIT`
 - Source: https://hono.dev
@@ -2911,7 +2911,7 @@ verbatim.
 - Source: lydell/js-tokens
 - License text: **JAV-0204** — MIT
 
-### js-yaml 4.3.1
+### js-yaml 4.3.2
 
 - License: `MIT`
 - Source: nodeca/js-yaml
@@ -3697,7 +3697,7 @@ verbatim.
 - Source: https://github.com/puppeteer/puppeteer/tree/main/packages/puppeteer-core
 - License text: **JAV-0044** — Apache-2.0 — text not published by this component; attribution derived from its package metadata
 
-### qs 6.15.2
+### qs 6.16.0
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/ljharb/qs
@@ -3937,13 +3937,13 @@ verbatim.
 - Source: https://github.com/ljharb/shell-quote
 - License text: **JAV-0280** — MIT
 
-### side-channel 1.1.0
+### side-channel 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel#readme
 - License text: **JAV-0281** — MIT
 
-### side-channel-list 1.0.0
+### side-channel-list 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-list#readme
@@ -10402,7 +10402,7 @@ SOFTWARE.
 
 ### JAV-0081 — MIT
 
-Applies to 7 components: call-bind-apply-helpers 1.0.2, call-bound 1.0.4, es-define-property 1.0.1, es-errors 1.3.0, es-object-atoms 1.1.1, side-channel-list 1.0.0, side-channel-map 1.0.1.
+Applies to 7 components: call-bind-apply-helpers 1.0.2, call-bound 1.0.4, es-define-property 1.0.1, es-errors 1.3.0, es-object-atoms 1.1.1, side-channel-list 1.0.1, side-channel-map 1.0.1.
 
 ```text
 MIT License
@@ -12933,7 +12933,7 @@ For more information, please refer to <http://unlicense.org>
 
 ### JAV-0155 — BSD-3-Clause
 
-Applies to 1 component: fast-uri 3.1.5.
+Applies to 1 component: fast-uri 3.1.6.
 
 ```text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
@@ -13655,7 +13655,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### JAV-0178 — MIT
 
-Applies to 1 component: hono 4.12.34.
+Applies to 1 component: hono 4.13.5.
 
 ```text
 MIT License
@@ -14635,7 +14635,7 @@ THE SOFTWARE.
 
 ### JAV-0205 — MIT
 
-Applies to 1 component: js-yaml 4.3.1.
+Applies to 1 component: js-yaml 4.3.2.
 
 ```text
 (The MIT License)
@@ -16406,7 +16406,7 @@ support library is itself covered by the above license.
 
 ### JAV-0257 — BSD-3-Clause
 
-Applies to 1 component: qs 6.15.2.
+Applies to 1 component: qs 6.16.0.
 
 ```text
 BSD 3-Clause License
@@ -17107,7 +17107,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### JAV-0281 — MIT
 
-Applies to 2 components: side-channel 1.1.0, side-channel-weakmap 1.0.2.
+Applies to 2 components: side-channel 1.1.1, side-channel-weakmap 1.0.2.
 
 ```text
 MIT License
