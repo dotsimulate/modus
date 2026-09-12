@@ -22,6 +22,12 @@ tauri-plugin-updater = "2"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# The crate wry binds the Linux webview with, so `with_webview` hands back a
+# type from this exact resolution rather than a second, incompatible copy.
+# Used only by src/media_permission.rs; never compiled on Windows or macOS.
+webkit2gtk = { version = "2.0.2", features = ["v2_38"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",

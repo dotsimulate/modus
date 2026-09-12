@@ -3,6 +3,7 @@
 mod backend;
 mod deep_link;
 mod job;
+mod media_permission;
 mod opener;
 mod tailscale;
 mod updates;
@@ -21,6 +22,7 @@ use std::{
 
 use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse, DesktopVaultStatus};
 use deep_link::{DeepLinkTarget, PendingDeepLink};
+use media_permission::MicrophoneArm;
 use serde::Deserialize;
 use tailscale::DesktopTailscaleStatus;
 use tauri::{
@@ -328,6 +330,18 @@ async fn desktop_set_tailscale_enabled(
         .map_err(|error| format!("desktop Tailnet configuration task failed: {error}"))?
 }
 
+/// Record that the user just asked to record.
+///
+/// On Linux the webview does not decide `getUserMedia` itself — it asks this
+/// process, and the answer is yes only in the moments after a mic press. See
+/// [`media_permission`] for the whole boundary and why a press is the
+/// authorization rather than the window being trusted. Harmless on Windows and
+/// macOS, where the platform webview never asks and nothing reads this.
+#[tauri::command]
+fn desktop_arm_microphone(arm: State<'_, Arc<MicrophoneArm>>) {
+    arm.arm();
+}
+
 #[tauri::command]
 fn quit_modus(app: AppHandle) {
     begin_quit(app);
@@ -419,6 +433,7 @@ fn main() {
             desktop_set_tailscale_enabled,
             desktop_check_for_update,
             desktop_install_pending_update,
+            desktop_arm_microphone,
             quit_modus
         ])
         .setup(|app| {
@@ -426,6 +441,14 @@ fn main() {
                 Arc::new(BackendSupervisor::new(app.handle()).map_err(std::io::Error::other)?);
             supervisor.start_monitor(app.handle().clone());
             app.manage(supervisor);
+
+            // Answers the Linux webview's native capture prompt, which is
+            // denied by default and left the composer mic reporting "mic
+            // blocked" on a machine whose microphone worked everywhere else.
+            // A no-op on Windows and macOS.
+            let microphone = Arc::new(MicrophoneArm::default());
+            media_permission::install(app.handle(), Arc::clone(&microphone));
+            app.manage(microphone);
 
             {
                 use tauri_plugin_deep_link::DeepLinkExt;

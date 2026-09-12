@@ -299,7 +299,7 @@ export function failure(label, detail) {
   return error;
 }
 
-export function describeCaptureError(error) {
+export function describeCaptureError(error, env = {}) {
   const name = error?.name ?? "";
   const raw = error instanceof Error ? error.message : String(error ?? "");
   // An error that already carries its own chip label (from failure()) has
@@ -312,7 +312,16 @@ export function describeCaptureError(error) {
   switch (name) {
     case "NotAllowedError":
     case "SecurityError":
-      return { label: "mic blocked", detail: "Microphone permission was denied for this window. Allow it and try again." };
+      // The desktop shell has no permission prompt to point at, so the browser
+      // advice is a dead end there. Two things can produce this inside it: the
+      // press that authorized capture expired before the request arrived, or
+      // the operating system is refusing the app itself.
+      return env.inDesktopShell
+        ? {
+            label: "mic blocked",
+            detail: "The Modus desktop shell refused microphone capture for this window. Press the mic button again — the grant follows a press and expires shortly after — and if it still fails, check the microphone permission the operating system holds for Modus.",
+          }
+        : { label: "mic blocked", detail: "Microphone permission was denied for this window. Allow it and try again." };
     case "NotFoundError":
       return { label: "no mic", detail: "No audio input device is available to this client." };
     case "NotReadableError":
@@ -448,9 +457,51 @@ function captureSupportFromGlobals() {
   });
 }
 
+/**
+ * The desktop shell's command bridge, or null anywhere else.
+ *
+ * The shell sets `withGlobalTauri`, so an extension can reach it without the
+ * app's own bridge module — which a file served from disk cannot import.
+ */
+export function desktopBridge() {
+  if (typeof window === "undefined") return null;
+  if (typeof window.__TAURI_INTERNALS__?.invoke === "function") return window.__TAURI_INTERNALS__;
+  if (typeof window.__TAURI__?.core?.invoke === "function") return window.__TAURI__.core;
+  return null;
+}
+
+/**
+ * Tell the desktop shell that the capture about to happen is one the user
+ * asked for.
+ *
+ * On Linux the webview is WebKitGTK, which does not decide getUserMedia itself:
+ * it asks the shell, and denies anything the shell leaves unanswered. The
+ * shell grants a microphone only in the moments after a mic press, so script
+ * in the webview that starts recording on its own — a model-authored HTML
+ * preview runs in a frame of this same webview — gets the denial a browser
+ * would give it.
+ *
+ * Silent everywhere else. A browser has no bridge, and a shell that predates
+ * the command rejects it; in both cases the capture below fails the ordinary
+ * way, with its own message.
+ */
+async function armDesktopMicrophone() {
+  const bridge = desktopBridge();
+  if (!bridge) return;
+  try {
+    await bridge.invoke("desktop_arm_microphone");
+  } catch {
+    // Older shell, or the command was removed. Let getUserMedia report it.
+  }
+}
+
 async function createRecordingSession(micPreference) {
   const unsupported = captureSupportFromGlobals();
   if (unsupported) throw failure(unsupported.label, unsupported.detail);
+
+  // One arm covers every getUserMedia this call can make: the label probe, the
+  // constrained open, and the bare retry after an unsupported constraint set.
+  await armDesktopMicrophone();
 
   const { device, requested, missing, stream: probeStream } = await resolveMicDevice(micPreference);
   // An explicitly chosen device means the user knows their hardware, so ask for
@@ -1051,7 +1102,7 @@ export default function whisperTranscribeExtension(api) {
     } catch (error) {
       recording = null;
       activeComposer = null;
-      const described = describeCaptureError(error);
+      const described = describeCaptureError(error, { inDesktopShell: !!desktopBridge() });
       reportError(described.label, described.detail);
     }
   }

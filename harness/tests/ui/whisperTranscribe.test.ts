@@ -212,6 +212,23 @@ describe("whisper-transcribe failure reporting", () => {
     expect(describeCaptureError(undefined).detail).toBeTruthy();
   });
 
+  test("a denial inside the desktop shell does not send the user hunting for a prompt", () => {
+    // The shell has no permission UI to "allow it and try again" in, so the
+    // browser wording is a dead end there. Same label either way — the chip
+    // means the same thing — but the detail has to name a fix that exists.
+    const browser = describeCaptureError({ name: "NotAllowedError" });
+    const desktop = describeCaptureError({ name: "NotAllowedError" }, { inDesktopShell: true });
+    expect(desktop.label).toBe("mic blocked");
+    expect(desktop.detail).not.toBe(browser.detail);
+    expect(desktop.detail).toContain("Press the mic button again");
+    expect(describeCaptureError({ name: "SecurityError" }, { inDesktopShell: true }).detail)
+      .toBe(desktop.detail);
+    // Every other failure reads the same in both, so the shell check cannot
+    // quietly rewrite a diagnosis that was already right.
+    expect(describeCaptureError({ name: "NotFoundError" }, { inDesktopShell: true }).detail)
+      .toBe(describeCaptureError({ name: "NotFoundError" }).detail);
+  });
+
   test("a self-labelled error keeps its own label instead of falling back", () => {
     // Without this, every failure() thrown on the capture path was flattened to
     // "mic failed" on its way to the chip and the specific diagnosis was lost.
