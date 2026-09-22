@@ -92,8 +92,12 @@ build flow.
 - Keep changes scoped to the request.
 - Prefer evidence from live code and tests over assumptions or stale planning notes.
 - Verify changes proportionately and report what was not verified.
-- Never commit, push, tag, publish, alter repository settings, or change live services
-  unless the user explicitly asks.
+- For requested implementation, commit integrated and proportionately verified changes
+  locally as part of the task; no separate commit request is needed. Keep commits scoped
+  and reviewable, and preserve unrelated work. If verification blocks a commit, fix the
+  failure or report the blocker rather than silently leaving completed work uncommitted.
+- Never push, tag, publish, alter repository settings, or change live services unless
+  the user explicitly asks.
 - Do not add credentials, tokens, personal profiles, private hostnames, machine-specific
   paths, databases, logs, crash artifacts, installer outputs, or ignored `TODO/` material.
 - Report security vulnerabilities through `SECURITY.md`; avoid public issue details until
