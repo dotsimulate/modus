@@ -96,6 +96,9 @@ build flow.
   locally as part of the task; no separate commit request is needed. Keep commits scoped
   and reviewable, and preserve unrelated work. If verification blocks a commit, fix the
   failure or report the blocker rather than silently leaving completed work uncommitted.
+- Do not add tool-attribution trailers or boilerplate to commits or pull request
+  descriptions, including `Co-Authored-By`, `Generated with`, or `Claude-Session`.
+  Inspect each local commit message after committing.
 - Never push, tag, publish, alter repository settings, or change live services unless
   the user explicitly asks.
 - Do not add credentials, tokens, personal profiles, private hostnames, machine-specific
