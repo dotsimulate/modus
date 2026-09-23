@@ -1887,10 +1887,25 @@ function sseResponse(
 
 // ── Shared SSE streaming helper ──
 // Used by both GET /api/sessions/:id/events and POST /api/sessions/interact
+function sseBrowserToken(c: any): string {
+  if (isAgentBearer(c) || (!AUTH_TOKEN && !getPin())) return "";
+  // The handler may begin after a lock. Retain the presented credential even
+  // when it is already revoked so replay cannot mistake it for agent access.
+  return browserSessionToken(c, true)
+    || bearerToken(c)
+    || new URL(c.req.url).searchParams.get("token")
+    || "";
+}
+
 function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
   return sseResponse(c.req.raw, async (writer, signal) => {
+    const browserToken = sseBrowserToken(c);
+    // Catch-up awaits flushes before the live connection is registered.
+    const canWrite = () => !signal.aborted
+      && (!browserToken || browserSessions.validate(browserToken, Date.now(), false));
     const canonicalId = resolveSessionAlias(sessionId);
     if (canonicalId !== sessionId) {
+      if (!canWrite()) return;
       await writer.write("system", JSON.stringify(sessionRekeyedEvent(sessionId, canonicalId)), "");
       sessionId = canonicalId;
     }
@@ -1900,14 +1915,18 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
     const pastEvents = getEvents(sessionId, afterSeq);
     const _sseT1 = performance.now();
     if (pastEvents.length > 0) {
+      if (!canWrite()) return;
       await writer.write("catchup-start", "{}", "");
       for (const evt of pastEvents) {
+        if (!canWrite()) return;
         let data = evt.data;
         try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
         await writer.write(evt.type, data, String(evt.seq));
       }
+      if (!canWrite()) return;
       await writer.write("catchup-end", "{}", "");
     }
+    if (!canWrite()) return;
     const _sseT2 = performance.now();
     console.log(`[TIMING] SSE catch-up session=${sessionId.slice(0,8)} query=${(_sseT1-_sseT0).toFixed(1)}ms serialize+send=${(_sseT2-_sseT1).toFixed(1)}ms events=${pastEvents.length}`);
 
@@ -1931,6 +1950,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
         active.liveStream.seq > catchupLastSeq
         && (active.liveStream.text || active.liveStream.thinking || active.liveStream.feed)
       ) {
+        if (!canWrite()) return;
         await writer.write("system", JSON.stringify({
           type: "system",
           subtype: "live_snapshot",
@@ -2010,7 +2030,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       unregisterBrowser();
     } else if (!catchupHadDone) {
       // Session is not active — send synthetic done so client doesn't hang
-      await writer.write("done", "{}", "done");
+      if (canWrite()) await writer.write("done", "{}", "done");
     }
   });
 }
@@ -2053,6 +2073,10 @@ type MultiSpec = { id: string; after: number };
 
 function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
   return sseResponse(c.req.raw, async (writer, signal) => {
+    const browserToken = sseBrowserToken(c);
+    // Revocation resolves done, but replay must stop before reaching that await.
+    const canWrite = () => !signal.aborted
+      && (!browserToken || browserSessions.validate(browserToken, Date.now(), false));
     let resolve!: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
     const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
@@ -2064,6 +2088,7 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
     let pendingWrites = 0;
     const MAX_PENDING_WRITES = 256;
     const send = (event: string, obj: unknown): Promise<void> => {
+      if (!canWrite()) return Promise.resolve();
       if (pendingWrites >= MAX_PENDING_WRITES) {
         console.warn(`[sse-multi] closing slow client with ${pendingWrites} queued writes`);
         resolve();
@@ -2071,7 +2096,7 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
       }
       pendingWrites++;
       writeChain = writeChain
-        .then(() => writer.write(event, JSON.stringify(obj), ""))
+        .then(() => canWrite() ? writer.write(event, JSON.stringify(obj), "") : undefined)
         .catch(() => { resolve(); })
         .finally(() => { pendingWrites--; });
       return writeChain;
@@ -2081,7 +2106,7 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
     const unsubscribers: Array<() => void> = [];
 
     for (const spec of specs) {
-      if (signal.aborted) break;
+      if (!canWrite()) break;
       const sessionId = spec.id;
       // Subscribed under an id a provider has since renamed: say so first, so
       // the client re-keys instead of watching a transcript that stopped.
@@ -2096,12 +2121,15 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
       if (pastEvents.length > 0) {
         await send("catchup-start", { sid: sessionId });
         for (const evt of pastEvents) {
+          if (!canWrite()) break;
           let data: any = null;
           try { data = { ...JSON.parse(evt.data), _ts: evt.created_at }; } catch { /* skip malformed */ }
           if (data) await send("ev", { sid: sessionId, seq: evt.seq, ev: data });
         }
+        if (!canWrite()) break;
         await send("catchup-end", { sid: sessionId });
       }
+      if (!canWrite()) break;
       const catchupLastSeq = pastEvents.length > 0 ? pastEvents[pastEvents.length - 1]!.seq : afterSeq;
 
       const active = getActiveSession(sessionId);
