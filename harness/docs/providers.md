@@ -67,7 +67,7 @@ assistant turn in flight is dropped during history reconstruction
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
-| `opencode` | opencode | OpenCode CLI subprocess | Full MCP, event-derived tools, `bunx opencode-ai` fallback |
+| `opencode` | opencode | OpenCode CLI subprocess | Event-derived tools, `bunx opencode-ai` fallback; Modus MCP injection is not implemented |
 | `openai-compat` | pi-agent | Generic OpenAI-compatible endpoint (LiteLLM defaults) | PI agent loop, MCP via mcp-bridge, steer; `litellm` remains an accepted legacy alias |
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
 | `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge, steer |
@@ -465,7 +465,7 @@ Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name
 - `USER_PROFILE` — active user profile name
 
-Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Antigravity uses its validated Modus plugin and turn-scoped MCP fan-in bridge, Grok Build receives the merged servers in ACP `session/new`/`session/load`, and PI providers use `mcp-bridge.ts`.
+Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Antigravity uses its validated Modus plugin and turn-scoped MCP fan-in bridge, Grok Build receives the merged servers in ACP `session/new`/`session/load`, and PI providers use `mcp-bridge.ts`. OpenCode can use its own native MCP configuration, but this Modus adapter does not inject Modus MCP servers into it.
 
 The built-in `modus` entry carries a random in-memory credential minted before
 the provider spawns. It authorizes only that entry's exact

@@ -13,8 +13,8 @@ export const OPENCODE_CAPABILITIES: ProviderCapabilities = {
   builtInTools: OPENCODE_TOOL_GROUPS.flatMap((group) => group.tools),
   builtInToolGroups: OPENCODE_TOOL_GROUPS.map((group) => ({ label: group.label, tools: [...group.tools] })),
   builtInToolMode: "event-derived",
-  supportsMcp: true,
-  mcpSupport: "full",
+  supportsMcp: false,
+  mcpSupport: "none",
   profilePrompt: {
     supportedModes: ["append", "custom"],
     delivery: { append: "system", custom: "system" },
