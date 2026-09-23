@@ -29,6 +29,21 @@ writeFileSync(join(moveDir, "value.ts"), 'export const currentValue = "first";\n
 afterAll(() => rmSync(projectRoot, { recursive: true, force: true }));
 
 describe("move module hot reload", () => {
+  test("an attached API uses an edited sibling module on its next call", async () => {
+    const attached = await attachMove({ moveName: "reload-fixture", inputs: {}, cwd: projectRoot });
+    if ("error" in attached) throw new Error(attached.error);
+    try {
+      expect(await handleMoveApiSubmit(attached.apiToken, { op: "probe" }))
+        .toMatchObject({ ok: true, value: "first" });
+      writeFileSync(join(moveDir, "value.ts"), 'export const currentValue = "updated while attached";\n');
+      expect(await handleMoveApiSubmit(attached.apiToken, { op: "probe" }))
+        .toMatchObject({ ok: true, value: "updated while attached" });
+    } finally {
+      detachMove(attached.apiToken);
+      writeFileSync(join(moveDir, "value.ts"), 'export const currentValue = "first";\n');
+    }
+  });
+
   test("re-attaching reloads move-local sibling imports and exposes widget emit", async () => {
     const firstAttach = await attachMove({ moveName: "reload-fixture", inputs: {}, cwd: projectRoot });
     if ("error" in firstAttach) throw new Error(firstAttach.error);

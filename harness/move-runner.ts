@@ -600,6 +600,16 @@ export async function handleMoveApiSubmit(
     };
   }
 
+  // Keep an attached move's API in step with its authored source. The loader
+  // returns cached exports while the move and its local imports are unchanged.
+  const currentModule = await loadMoveModule(reg.moveName, reg.cwd);
+  if (!currentModule?.handlers) {
+    return { ok: false, error: getMoveLoadError(reg.moveName, reg.cwd)
+      ?? `Move "${reg.moveName}" no longer exports API handlers` };
+  }
+  reg.handlers = currentModule.handlers;
+  reg.inferOp = currentModule.inferOp;
+
   // llama.cpp autoparser wraps payload under data.op as an object instead of data.op being a string.
   // Pattern 1: {op: {op: "name", ...params}} — inner op preserved, unwrap directly
   // Pattern 2: {op: {field: val, ...}} — op name lost, infer from registered handlers
