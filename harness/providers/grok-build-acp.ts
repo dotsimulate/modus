@@ -10,6 +10,7 @@ export type GrokAcpClientOptions = {
   args: string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  sensitiveValues?: readonly (string | undefined)[];
   requestTimeoutMs?: number;
 };
 
@@ -29,9 +30,23 @@ export class GrokAcpClient {
   private notificationHandler?: (method: string, params: any) => void | Promise<void>;
   private requestHandler?: (id: JsonRpcId, method: string, params: any) => void | Promise<void>;
   private closeHandler?: (error: Error | null) => void;
+  private sensitiveValues = new Set<string>();
 
   constructor(options: GrokAcpClientOptions) {
     this.options = options;
+    this.addSensitiveValues(options.sensitiveValues ?? []);
+  }
+
+  addSensitiveValues(values: readonly (string | undefined)[]): void {
+    for (const value of values) if (value) this.sensitiveValues.add(value);
+  }
+
+  private redact(value: string): string {
+    let safe = redactProviderDiagnostic(value);
+    for (const secret of [...this.sensitiveValues].sort((a, b) => b.length - a.length)) {
+      safe = safe.replaceAll(secret, "[REDACTED]");
+    }
+    return safe;
   }
 
   get pid(): number | undefined {
@@ -144,7 +159,7 @@ export class GrokAcpClient {
   }
 
   private appendDiagnostic(value: string): void {
-    const safe = redactProviderDiagnostic(value);
+    const safe = this.redact(value);
     this.stderrBuffer = (this.stderrBuffer + `\n${safe}`).slice(-16_384);
   }
 
@@ -173,7 +188,7 @@ export class GrokAcpClient {
       this.pending.delete(message.id);
       clearTimeout(pending.timer);
       if (message.error) {
-        pending.reject(new Error(redactProviderDiagnostic(message.error.message ?? JSON.stringify(message.error))));
+        pending.reject(new Error(this.redact(message.error.message ?? JSON.stringify(message.error))));
       }
       else pending.resolve(message.result);
       return;
@@ -188,7 +203,7 @@ export class GrokAcpClient {
           this.respondError(
             message.id,
             -32603,
-            redactProviderDiagnostic(error instanceof Error ? error.message : String(error)),
+            this.redact(error instanceof Error ? error.message : String(error)),
           );
         } catch { /* process already closed */ }
       };

@@ -1,6 +1,6 @@
 import { resolve as resolveTestSourceDir } from "node:path";
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -19,6 +19,103 @@ async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<vo
 }
 
 describe("Grok Build ACP provider", () => {
+  test("keeps configured credentials off argv and closes a child after session failure", async () => {
+    const { createGrokBuildProvider } = await import("../../providers/grok-build");
+    const fixture = join(testRoot, "credential-boundary-child.ts");
+    const capture = join(testRoot, "credential-boundary.json");
+    writeFileSync(fixture, `
+import { createInterface } from "node:readline";
+import { writeFileSync } from "node:fs";
+const lines = createInterface({ input: process.stdin });
+let authMethod;
+lines.on("line", (line) => {
+  const request = JSON.parse(line);
+  if (request.method === "initialize") {
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: {
+      authMethods: [{ id: "cached_token" }, { id: "xai.api_key" }],
+      _meta: { defaultAuthMethodId: "cached_token" },
+    } }) + "\\n");
+  } else if (request.method === "authenticate") {
+    authMethod = request.params.methodId;
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: {} }) + "\\n");
+  } else if (request.method === "session/new") {
+    writeFileSync(process.env.MODUS_GROK_CAPTURE!, JSON.stringify({
+      argv: process.argv.slice(2),
+      apiKey: process.env.XAI_API_KEY,
+      authMethod,
+      inheritedToken: process.env.HARNESS_TOKEN,
+      inheritedPin: process.env.HARNESS_PIN,
+      inheritedSecretsFile: process.env.HARNESS_SECRETS_FILE,
+      request,
+    }));
+    const header = request.params.mcpServers.find((server) => server.name === "remote").headers[0].value;
+    const stdio = request.params.mcpServers.find((server) => server.name === "local").env[0].value;
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id,
+      error: { code: -32000, message: "synthetic session failure " + process.env.XAI_API_KEY + " " + header + " " + stdio } }) + "\\n");
+  }
+});
+`);
+    const apiKey = "fake-xai-key-credential-boundary";
+    const httpKey = "fake-http-key-credential-boundary";
+    const stdioKey = "pw";
+    const previousToken = process.env.HARNESS_TOKEN;
+    const previousPin = process.env.HARNESS_PIN;
+    process.env.HARNESS_TOKEN = "fake-supervisor-token-credential-boundary";
+    process.env.HARNESS_PIN = "fake-pin-credential-boundary";
+    const provider = createGrokBuildProvider({ command: { executable: process.execPath, prefixArgs: [fixture] } });
+    const events: any[] = [];
+    const session: any = {
+      sessionId: "modus-grok-credential-boundary", status: "starting", error: null,
+      providerSessionId: null, abortController: new AbortController(),
+      initialContent: "test", cwd: testRoot, additionalDirectories: [],
+      osPids: new Set(), pendingPermissions: new Map(), sessionApprovals: new Set(),
+      _providerState: null, _configOverrides: {}, pendingDispatch: [],
+      turnStartedAt: Date.now(),
+    };
+    const ctx: any = {
+      session,
+      opts: { cwd: testRoot, mcpServers: {
+        remote: { type: "http", url: "http://127.0.0.1:1/mcp", headers: { "X-Api-Key": httpKey } },
+        local: { command: process.execPath, args: ["never-run.ts"], env: { LOCAL_KEY: stdioKey } },
+      } },
+      profile: { env: { XAI_API_KEY: apiKey, MODUS_GROK_CAPTURE: capture } },
+      emitEvent(event: any) { events.push(event); },
+      broadcastEvent(event: any) { events.push(event); },
+      setProviderSessionId() {},
+    };
+    try {
+      provider.startTurn(ctx);
+      await waitFor(() => events.some((event) => event.type === "done"));
+      await waitFor(() => session.osPids.size === 0);
+      const seen = JSON.parse(readFileSync(capture, "utf8"));
+      expect(seen.apiKey).toBe(apiKey);
+      expect(seen.authMethod).toBe("xai.api_key");
+      expect(seen.inheritedToken).toBeUndefined();
+      expect(seen.inheritedPin).toBeUndefined();
+      expect(seen.inheritedSecretsFile).toBeUndefined();
+      expect(seen.request.params.mcpServers).toContainEqual({
+        type: "http", name: "remote", url: "http://127.0.0.1:1/mcp",
+        headers: [{ name: "X-Api-Key", value: httpKey }],
+      });
+      expect(seen.request.params.mcpServers).toContainEqual({
+        type: "stdio", name: "local", command: process.execPath,
+        args: ["never-run.ts"], env: [{ name: "LOCAL_KEY", value: stdioKey }],
+      });
+      for (const canary of [apiKey, httpKey, stdioKey]) {
+        expect(JSON.stringify(seen.argv)).not.toContain(canary);
+        expect(JSON.stringify(events)).not.toContain(canary);
+      }
+      expect(session.status).toBe("error");
+      expect(session.error).toBe("synthetic session failure [REDACTED] [REDACTED] [REDACTED]");
+    } finally {
+      await provider.dispose?.(session);
+      if (previousToken === undefined) delete process.env.HARNESS_TOKEN;
+      else process.env.HARNESS_TOKEN = previousToken;
+      if (previousPin === undefined) delete process.env.HARNESS_PIN;
+      else process.env.HARNESS_PIN = previousPin;
+    }
+  });
+
   test("selects profile-supplied XAI auth over a cached login", async () => {
     const { grokBuildEnvironment, selectGrokBuildAuthMethod } = await import("../../providers/grok-build-runtime");
     const initialized = {

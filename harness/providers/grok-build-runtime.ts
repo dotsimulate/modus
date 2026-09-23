@@ -46,11 +46,13 @@ const INITIALIZE_PARAMS = {
 
 export async function probeGrokBuildModels(command = resolveGrokBuildCommand()): Promise<GrokModelInfo[]> {
   if (!command) return [];
+  const env = grokBuildEnvironment();
   const client = new GrokAcpClient({
     executable: command.executable,
     args: [...command.prefixArgs, "--no-auto-update", "agent", "stdio"],
     cwd: process.cwd(),
-    env: grokBuildEnvironment(),
+    env,
+    sensitiveValues: [env.XAI_API_KEY],
     requestTimeoutMs: 15_000,
   });
   try {
@@ -76,6 +78,7 @@ export async function probeGrokBuildAuth(command = resolveGrokBuildCommand()): P
     args: [...command.prefixArgs, "--no-auto-update", "agent", "stdio"],
     cwd: process.cwd(),
     env,
+    sensitiveValues: [env.XAI_API_KEY],
     requestTimeoutMs: 15_000,
   });
   try {

@@ -471,6 +471,7 @@ async function connect(ctx: TurnContext, state: GrokState, resume: boolean): Pro
     args: [...state.command.prefixArgs, ...launchArgs(ctx, state)],
     cwd,
     env: effectiveEnv,
+    sensitiveValues: [effectiveEnv.XAI_API_KEY],
   });
   state.client = client;
   state.restartBeforeNextTurn = false;
@@ -516,10 +517,14 @@ async function connect(ctx: TurnContext, state: GrokState, resume: boolean): Pro
 
   const controls = controlsFrom(ctx);
   const model = state.model ?? ctx.opts.model ?? ctx.profile?.model;
+  const resolvedServers = mcpServers(ctx);
+  client.addSensitiveValues(resolvedServers.flatMap((server) => [
+    ...(server.headers ?? []), ...(server.env ?? []),
+  ].map((entry: { value: string }) => entry.value)));
   const sessionParams = {
     cwd,
     additionalDirectories: ctx.session.additionalDirectories,
-    mcpServers: mcpServers(ctx),
+    mcpServers: resolvedServers,
     _meta: {
       ...(model ? { modelId: model } : {}),
       ...(controls.mode === "always-approve" ? { yoloMode: true } : {}),
