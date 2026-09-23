@@ -17,7 +17,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { Component } from "../scripts/generate-notices";
 import {
   DEFAULT_TARGET,
@@ -31,6 +33,7 @@ import {
   cargoTargetApplies,
   electLicenses,
   extractSection,
+  installedNpmDirectory,
   normalizeEol,
   partitionRedistributed,
   pinnedBunVersion,
@@ -59,6 +62,37 @@ function installedNpmComponents(): Component[] {
 const GRAPH_WALK_TIMEOUT_MS = 60_000;
 
 describe("third-party notices", () => {
+  test("lock keys select matching nested or hoisted installs, including aliases", () => {
+    const packages = {
+      "@example/parent": ["@example/parent@1.0.0"],
+      "@example/parent/@other/child": ["@other/child@2.0.0"],
+      "@example/parent/@other/child/alias": ["published-name@3.0.0"],
+      "@example/parent/@hoisted/tool": ["@hoisted/tool@4.0.0"],
+    };
+    const modules = mkdtempSync(join(tmpdir(), "modus-notices-"));
+    const add = (directory: string, name: string, version: string) => {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, "package.json"), JSON.stringify({ name, version }));
+    };
+    try {
+      const parent = join(modules, "@example", "parent");
+      const child = join(parent, "node_modules", "@other", "child");
+      const alias = join(child, "node_modules", "alias");
+      const hoisted = join(modules, "@hoisted", "tool");
+      add(parent, "@example/parent", "1.0.0");
+      add(child, "@other/child", "2.0.0");
+      add(join(modules, "@other", "child"), "@other/child", "9.0.0");
+      add(alias, "published-name", "3.0.0");
+      add(hoisted, "@hoisted/tool", "4.0.0");
+      expect(installedNpmDirectory(packages, "@example/parent", modules)).toBe(parent);
+      expect(installedNpmDirectory(packages, "@example/parent/@other/child", modules)).toBe(child);
+      expect(installedNpmDirectory(packages, "@example/parent/@other/child/alias", modules)).toBe(alias);
+      expect(installedNpmDirectory(packages, "@example/parent/@hoisted/tool", modules)).toBe(hoisted);
+    } finally {
+      rmSync(modules, { recursive: true, force: true });
+    }
+  });
+
   test("the notices and SBOM are committed", () => {
     expect(existsSync(NOTICES_PATH)).toBe(true);
     expect(existsSync(SBOM_PATH)).toBe(true);

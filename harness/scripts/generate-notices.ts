@@ -386,6 +386,36 @@ function resolveKey(packages: BunLock["packages"], from: string, name: string): 
   return packages[name] ? name : null;
 }
 
+/** Find the installed copy matching a lock entry, including nested and hoisted copies. */
+export function installedNpmDirectory(packages: BunLock["packages"], key: string, modulesDir: string): string | null {
+  const spec = packages[key]?.[0] as string | undefined;
+  if (!spec) throw new Error(`No lock entry for ${key}`);
+  const name = spec.slice(0, spec.lastIndexOf("@"));
+  const version = spec.slice(spec.lastIndexOf("@") + 1);
+  const parents: string[] = [];
+  for (let split = key.lastIndexOf("/"); split > 0; split = key.lastIndexOf("/", split - 1)) {
+    const parent = key.slice(0, split);
+    if (packages[parent]) parents.push(parent);
+  }
+  // The key suffix is the installed name, which can differ from the published
+  // package name for an alias. A scoped top-level name has no package parent.
+  const installedName = parents.length > 0 ? key.slice(parents[0]!.length + 1) : key;
+  const matches = (directory: string): boolean => {
+    const manifestPath = join(directory, "package.json");
+    if (!existsSync(manifestPath)) return false;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as { name?: string; version?: string };
+    return manifest.name === name && manifest.version === version;
+  };
+  for (const parent of parents) {
+    const parentDirectory = installedNpmDirectory(packages, parent, modulesDir);
+    if (!parentDirectory) continue;
+    const nested = join(parentDirectory, "node_modules", ...installedName.split("/"));
+    if (matches(nested)) return nested;
+  }
+  const hoisted = join(modulesDir, ...installedName.split("/"));
+  return matches(hoisted) ? hoisted : null;
+}
+
 export function collectNpmComponents(target: BuildTarget = DEFAULT_TARGET): Component[] {
   const components = new Map<string, Component>();
 
@@ -412,15 +442,15 @@ export function collectNpmComponents(target: BuildTarget = DEFAULT_TARGET): Comp
 
       const name = spec.slice(0, spec.lastIndexOf("@"));
       const version = spec.slice(spec.lastIndexOf("@") + 1);
-      const directory = join(modulesDir, ...name.split("/"));
-      if (!existsSync(directory)) {
+      const directory = installedNpmDirectory(lock.packages, key, modulesDir);
+      if (!directory) {
         // An optional dependency Bun chose not to install cannot be bundled, so
         // it ships nothing. A required one missing means the tree is not
         // installed, and generating from it would understate the notice.
         if (optional) continue;
         throw new Error(
-          `${name}@${version} is a required dependency of ${workspace.lock} but is not installed at `
-            + `${directory}. Run \`bun install --frozen-lockfile\` for that workspace first.`,
+          `${name}@${version} is a required dependency of ${workspace.lock} but has no matching installation in `
+            + `${workspace.modules}. Run \`bun install --frozen-lockfile\` for that workspace first.`,
         );
       }
       visited.add(key);
@@ -443,12 +473,20 @@ export function collectNpmComponents(target: BuildTarget = DEFAULT_TARGET): Comp
       const identifier = `${name}@${version}`;
       if (components.has(identifier)) continue;
       const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf-8")) as {
+        name?: string;
+        version?: string;
         license?: string | { type?: string };
         licenses?: { type?: string }[];
         homepage?: string;
         author?: string | { name?: string };
         repository?: string | { url?: string };
       };
+      if (manifest.name !== name || manifest.version !== version) {
+        throw new Error(
+          `${workspace.lock} pins ${identifier} at ${key}, but ${directory} contains `
+            + `${manifest.name ?? "an unnamed package"}@${manifest.version ?? "an unknown version"}`,
+        );
+      }
       const upstream = typeof manifest.license === "string"
         ? manifest.license
         : manifest.license?.type

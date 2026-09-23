@@ -1041,13 +1041,13 @@
       "purl": "pkg:npm/%40isaacs/cliui@8.0.2",
       "licenses": [
         {
-          "expression": "BlueOak-1.0.0"
+          "expression": "ISC"
         }
       ],
       "externalReferences": [
         {
           "type": "website",
-          "url": "ssh://git@github.com:isaacs/cliui"
+          "url": "yargs/cliui"
         }
       ]
     },
@@ -3651,7 +3651,7 @@
       "purl": "pkg:npm/d3-array@2.12.1",
       "licenses": [
         {
-          "expression": "ISC"
+          "expression": "BSD-3-Clause"
         }
       ],
       "externalReferences": [
@@ -3975,7 +3975,7 @@
       "purl": "pkg:npm/d3-path@1.0.9",
       "licenses": [
         {
-          "expression": "ISC"
+          "expression": "BSD-3-Clause"
         }
       ],
       "externalReferences": [
@@ -4137,7 +4137,7 @@
       "purl": "pkg:npm/d3-shape@1.3.7",
       "licenses": [
         {
-          "expression": "ISC"
+          "expression": "BSD-3-Clause"
         }
       ],
       "externalReferences": [
@@ -5043,7 +5043,7 @@
       "externalReferences": [
         {
           "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gaxios"
+          "url": "https://github.com/googleapis/google-cloud-node-core/tree/main/packages/gaxios"
         }
       ]
     },
@@ -5079,7 +5079,7 @@
       "externalReferences": [
         {
           "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gcp-metadata"
+          "url": "https://github.com/googleapis/google-cloud-node-core/tree/main/packages/gcp-metadata"
         }
       ]
     },
@@ -5145,13 +5145,13 @@
       "purl": "pkg:npm/glob@10.5.0",
       "licenses": [
         {
-          "expression": "BlueOak-1.0.0"
+          "expression": "ISC"
         }
       ],
       "externalReferences": [
         {
           "type": "website",
-          "url": "git@github.com:isaacs/node-glob"
+          "url": "https://github.com/isaacs/node-glob"
         }
       ]
     },
@@ -6243,13 +6243,13 @@
       "purl": "pkg:npm/lru-cache@10.4.3",
       "licenses": [
         {
-          "expression": "BlueOak-1.0.0"
+          "expression": "ISC"
         }
       ],
       "externalReferences": [
         {
           "type": "website",
-          "url": "ssh://git@github.com/isaacs/node-lru-cache"
+          "url": "https://github.com/isaacs/node-lru-cache"
         }
       ]
     },
@@ -7269,13 +7269,13 @@
       "purl": "pkg:npm/minimatch@9.0.9",
       "licenses": [
         {
-          "expression": "BlueOak-1.0.0"
+          "expression": "ISC"
         }
       ],
       "externalReferences": [
         {
           "type": "website",
-          "url": "git@github.com:isaacs/minimatch"
+          "url": "https://github.com/isaacs/minimatch"
         }
       ]
     },

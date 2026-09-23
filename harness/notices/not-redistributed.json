@@ -5,10 +5,6 @@
     "reason": "Contains only claude.exe (322 MB), the Claude Code binary. The claude-code provider passes pathToClaudeCodeExecutable: CLAUDE_PATH (providers/claude-code.ts), which resolves the user's own Claude Code install from PATH, so this copy is never referenced, staged, or run.",
     "evidence": "The staged package is ~30 MiB and contains no file matching *claude*; its only native artifacts are photon_rs_bg.wasm, resvgjs.win32-x64-msvc-*.node, and rust-pty/target/release/rust_pty.dll."
   },
-  "@lydell/node-pty-win32-x64@1.1.0": {
-    "reason": "Native ConPTY addons (conpty.node, conpty_console_list.node) for @lydell/node-pty. Staging copies bun-pty's rust_pty.dll for the terminal; these are not copied.",
-    "evidence": "No conpty.node in the staged tree."
-  },
   "@mariozechner/clipboard-win32-x64-msvc@0.3.9": {
     "reason": "Native clipboard addon (clipboard.win32-x64-msvc.node) reached through the pi packages. Staging does not copy it.",
     "evidence": "No clipboard.win32-x64-msvc.node in the staged tree."
