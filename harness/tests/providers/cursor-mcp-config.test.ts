@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCursorMcpConfigStore } from "../../providers/cursor-mcp-config";
@@ -46,6 +46,36 @@ describe("cursor project MCP config journal", () => {
 
     expect(store.restore(journalPath)).toBe("restored");
     expect(readFileSync(mcpPath, "utf-8")).toBe(original);
+  });
+
+  test.skipIf(process.platform === "win32")("restricts an existing readable file before installing credentials, then restores its mode", () => {
+    mkdirSync(join(project, ".cursor"), { recursive: true });
+    writeFileSync(mcpPath, "original", "utf-8");
+    chmodSync(mcpPath, 0o644);
+
+    const store = createCursorMcpConfigStore(journalDir);
+    const journalPath = store.install(mcpPath, INSTALLED);
+    expect(statSync(mcpPath).mode & 0o777).toBe(0o600);
+    expect(readFileSync(mcpPath, "utf-8")).toContain(CANARY);
+
+    expect(store.restore(journalPath)).toBe("restored");
+    expect(readFileSync(mcpPath, "utf-8")).toBe("original");
+    expect(statSync(mcpPath).mode & 0o777).toBe(0o644);
+  });
+
+  test.skipIf(process.platform !== "win32")("restores a pre-existing read-only file after installing and removing the credential", () => {
+    mkdirSync(join(project, ".cursor"), { recursive: true });
+    writeFileSync(mcpPath, "original", "utf-8");
+    chmodSync(mcpPath, 0o444);
+
+    const store = createCursorMcpConfigStore(journalDir);
+    const journalPath = store.install(mcpPath, INSTALLED);
+    expect(readFileSync(mcpPath, "utf-8")).toContain(CANARY);
+    expect(statSync(mcpPath).mode & 0o200).toBe(0o200);
+
+    expect(store.restore(journalPath)).toBe("restored");
+    expect(readFileSync(mcpPath, "utf-8")).toBe("original");
+    expect(statSync(mcpPath).mode & 0o200).toBe(0);
   });
 
   test("a crashed backend's file is recovered by the next start", () => {

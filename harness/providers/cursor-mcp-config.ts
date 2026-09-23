@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -34,6 +36,8 @@ export type CursorMcpJournal = {
   mcpPath: string;
   /** Original bytes, or null when Modus created the file. */
   backup: string | null;
+  /** Permission bits of the original file, restored with its bytes. */
+  backupMode?: number;
   /** Hash of exactly what Modus wrote, so concurrent user edits are detectable. */
   installedSha256: string;
   ownerPid: number;
@@ -68,6 +72,7 @@ function readJournal(path: string): CursorMcpJournal | null {
     if (parsed?.version !== JOURNAL_VERSION) return null;
     if (typeof parsed.mcpPath !== "string" || typeof parsed.installedSha256 !== "string") return null;
     if (parsed.backup !== null && typeof parsed.backup !== "string") return null;
+    if (parsed.backupMode !== undefined && (!Number.isInteger(parsed.backupMode) || parsed.backupMode < 0 || parsed.backupMode > 0o777)) return null;
     return parsed as CursorMcpJournal;
   } catch {
     return null;
@@ -82,10 +87,12 @@ export function createCursorMcpConfigStore(journalDir: string): CursorMcpConfigS
   function install(mcpPath: string, content: string): string {
     mkdirSync(journalDir, { recursive: true });
     const backup = existsSync(mcpPath) ? readFileSync(mcpPath, "utf-8") : null;
+    const backupMode = backup !== null ? statSync(mcpPath).mode & 0o777 : undefined;
     const journal: CursorMcpJournal = {
       version: JOURNAL_VERSION,
       mcpPath,
       backup,
+      backupMode,
       installedSha256: sha256(content),
       ownerPid: process.pid,
       createdAt: new Date().toISOString(),
@@ -99,8 +106,10 @@ export function createCursorMcpConfigStore(journalDir: string): CursorMcpConfigS
     renameSync(temp, journalPath);
 
     mkdirSync(dirname(mcpPath), { recursive: true });
-    // 0600 keeps the resolved credentials out of reach of other local users for
-    // as long as the file has to exist. It is a no-op on Windows ACLs.
+    // The mode option only applies when creating a file. Restrict an existing
+    // project file before replacing its bytes with resolved credentials.
+    if (backup !== null) chmodSync(mcpPath, 0o600);
+    // 0600 is a no-op on Windows ACLs.
     writeFileSync(mcpPath, content, { encoding: "utf-8", mode: 0o600 });
     return journalPath;
   }
@@ -121,6 +130,7 @@ export function createCursorMcpConfigStore(journalDir: string): CursorMcpConfigS
       outcome = "preserved-user-edit";
     } else if (journal.backup !== null) {
       writeFileSync(journal.mcpPath, journal.backup, "utf-8");
+      if (journal.backupMode !== undefined) chmodSync(journal.mcpPath, journal.backupMode);
       outcome = "restored";
     } else {
       rmSync(journal.mcpPath, { force: true });
