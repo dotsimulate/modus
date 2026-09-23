@@ -1657,7 +1657,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
     // Windows: queryObj.close() does NOT reliably kill the cmd.exe -> node -> MCP
     // tree — it survives on MCP keepalives and can spin/leak as a ghost until it
-    // exhausts system virtual memory (see TODO/idle-drain-exit-ghost-leak-2026-07-02.md).
+    // exhausts system virtual memory.
     // Every other teardown path reaps via taskkill; the clean-idle path was the one
     // gap. Reap it explicitly. Targeted kill (not killAllSpawnedAsync) so a concurrent
     // cold-start's fresh PID is never taskkilled. Safe: drainActive is already false

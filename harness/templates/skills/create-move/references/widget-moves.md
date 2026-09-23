@@ -210,7 +210,7 @@ For real-time updates, the harness emits `widget-change` events that the UI list
 ## CSS and styling
 
 Move widgets are dynamically loaded — they render inside the right panel's tab system.
-Follow the compact panel CSS guide (`TODO/2026-03-19-compact-panel-css-guide.md`):
+For compact panel styling:
 
 - Use `var(--*)` color tokens from `colors.css` — no hardcoded hex
 - Use `calc(Npx * var(--font-scale, 1))` for all font sizes
