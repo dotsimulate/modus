@@ -31,6 +31,7 @@ import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
 import { isSessionMcpCredential, validateSessionMcpCredential } from "./session-mcp-credential";
 import { FILE_TICKET_TTL_MS, mintFileTicket, validateFileTicket } from "./file-ticket";
 import { moveAssetETag, moveAssetHeaders, moveAssetNotModified } from "./move-asset-cache";
+import { serveRangedFile } from "./http-range";
 import { formatClientTimingLog, parseClientTimingPayload } from "./client-timing";
 import { BACKEND_IDENTITY } from "./backend-identity";
 import { configuredRootsForCwd } from "./preview-roots";
@@ -2465,35 +2466,9 @@ app.get("/api/sessions/:id/artifacts/:artifactId", async (c) => {
   if (!artifact) return c.json({ error: "artifact not found" }, 404);
   const file = Bun.file(artifact.path);
   if (!(await file.exists())) return c.json({ error: "artifact file not found" }, 404);
-  const size = file.size;
-  const rangeHeader = c.req.header("Range");
-
-  if (rangeHeader) {
-    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-    if (match) {
-      const start = Number(match[1]);
-      const end = match[2] ? Number(match[2]) : size - 1;
-      const chunk = file.slice(start, end + 1);
-      return new Response(chunk, {
-        status: 206,
-        headers: {
-          "Content-Type": artifact.mime,
-          "Content-Length": String(end - start + 1),
-          "Content-Range": `bytes ${start}-${end}/${size}`,
-          "Accept-Ranges": "bytes",
-          "Cache-Control": "no-store",
-        },
-      });
-    }
-  }
-
-  return new Response(file, {
-    headers: {
-      "Content-Type": artifact.mime,
-      "Content-Length": String(size),
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "no-store",
-    },
+  return serveRangedFile(file, c.req.header("Range"), {
+    "Content-Type": artifact.mime,
+    "Cache-Control": "no-store",
   });
 });
 
@@ -2933,41 +2908,14 @@ app.get("/api/preview/file/:id", async (c) => {
   const file = Bun.file(target);
   if (!(await file.exists())) return c.json({ error: "not found" }, 404);
   const info = previewInfoForPath(target, false);
-  const size = file.size;
-  const rangeHeader = c.req.header("Range");
   const baseHeaders = {
     "Content-Type": info.mime,
-    "Accept-Ranges": "bytes",
     "Cache-Control": "private, max-age=60",
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self'",
   };
 
-  if (rangeHeader) {
-    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-    if (match) {
-      const start = Math.max(0, Number(match[1]));
-      const end = Math.min(match[2] ? Number(match[2]) : size - 1, size - 1);
-      if (start <= end) {
-        const chunk = file.slice(start, end + 1);
-        return new Response(chunk, {
-          status: 206,
-          headers: {
-            ...baseHeaders,
-            "Content-Length": String(end - start + 1),
-            "Content-Range": `bytes ${start}-${end}/${size}`,
-          },
-        });
-      }
-    }
-  }
-
-  return new Response(file, {
-    headers: {
-      ...baseHeaders,
-      "Content-Length": String(size),
-    },
-  });
+  return serveRangedFile(file, c.req.header("Range"), baseHeaders);
 });
 
 app.get("/api/artifact-shelf", async (c) => {
@@ -3048,35 +2996,9 @@ app.get("/api/file-serve", async (c) => {
     ".m4a": "audio/mp4", ".aac": "audio/aac",
   };
   const mime = mimeMap[ext] ?? "application/octet-stream";
-  const size = file.size;
-  const rangeHeader = c.req.header("Range");
-
-  if (rangeHeader) {
-    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-    if (match) {
-      const start = Number(match[1]);
-      const end = match[2] ? Number(match[2]) : size - 1;
-      const chunk = file.slice(start, end + 1);
-      return new Response(chunk, {
-        status: 206,
-        headers: {
-          "Content-Type": mime,
-          "Content-Length": String(end - start + 1),
-          "Content-Range": `bytes ${start}-${end}/${size}`,
-          "Accept-Ranges": "bytes",
-          "Cache-Control": "max-age=60",
-        },
-      });
-    }
-  }
-
-  return new Response(file, {
-    headers: {
-      "Content-Type": mime,
-      "Content-Length": String(size),
-      "Accept-Ranges": "bytes",
-      "Cache-Control": "max-age=60",
-    },
+  return serveRangedFile(file, c.req.header("Range"), {
+    "Content-Type": mime,
+    "Cache-Control": "max-age=60",
   });
 });
 
