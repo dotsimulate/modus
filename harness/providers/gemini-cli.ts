@@ -36,6 +36,7 @@ import { getGlobalConfig, type McpServerConfig, type PermissionPolicy, type Prof
 import { resolveSecret } from "../secrets";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import type { SessionProvider, TurnContext } from "./types";
+import { providerChildEnv, strippedProviderEnvNames } from "./child-env";
 import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
 import { buildGeminiRequest } from "./gemini-cli-input";
 import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
@@ -330,6 +331,18 @@ async function createGeminiRuntime(
     toolStates: opts.toolStates,
   });
 
+  // The SDK launches shell children from Config.env, but MCP stdio children
+  // sanitize process.env directly. Apply the same Modus credential policy to
+  // both paths without changing explicitly configured MCP server env values.
+  const inheritedEnv = { ...process.env };
+  const blockedEnvironmentVariables = [...strippedProviderEnvNames(inheritedEnv)];
+  // The escape hatch opts out of Modus filtering even though this SDK forces
+  // name-based redaction for MCP stdio. SDK value-pattern redaction still wins.
+  // Keep its default policy for other names.
+  const allowedEnvironmentVariables = blockedEnvironmentVariables.length === 0
+    ? [...strippedProviderEnvNames({})]
+    : undefined;
+
   const config = state.configFactory({
     sessionId: session.sessionId,
     targetDir: session.cwd ?? process.cwd(),
@@ -342,6 +355,9 @@ async function createGeminiRuntime(
     maxSessionTurns: opts.maxTurns ?? profileDef?.maxTurns,
     trustedFolder: opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true,
     mcpServers: buildGeminiMcpServers(ctx, profileDef),
+    env: providerChildEnv(inheritedEnv),
+    blockedEnvironmentVariables,
+    allowedEnvironmentVariables,
     ...toolConfig,
   });
 
