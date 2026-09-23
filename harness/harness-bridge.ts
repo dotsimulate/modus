@@ -21,6 +21,7 @@
  * between `server.js` and a dynamically-imported shim.
  */
 
+import * as appPaths from "./app-paths";
 import * as docsRegistry from "./docs-registry";
 import * as modusMcp from "./modus-mcp";
 import * as db from "./db";
@@ -57,6 +58,7 @@ function registry(): Map<string, unknown> {
 export function initHarnessBridge(): void {
   const reg = registry();
   const namespaces: Record<(typeof BRIDGED_HARNESS_MODULES)[number], unknown> = {
+    "app-paths": appPaths,
     "docs-registry": docsRegistry,
     "modus-mcp": modusMcp,
     "db": db,

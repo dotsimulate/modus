@@ -10,6 +10,7 @@
  * no entry here — only runtime value imports do.
  */
 export const BRIDGED_HARNESS_MODULES = [
+  "app-paths",
   "docs-registry",
   "modus-mcp",
   "db",
