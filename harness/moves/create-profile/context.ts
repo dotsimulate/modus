@@ -43,8 +43,8 @@ function validateProfile(data: Record<string, unknown>): string | null {
   if (typeof data.description !== "string" || !data.description.trim()) {
     return "description is required";
   }
-  if (data.effort !== undefined && !["off", "low", "medium", "high", "max"].includes(String(data.effort))) {
-    return 'effort must be one of "off" | "low" | "medium" | "high" | "max"';
+  if (data.effort !== undefined && !["off", "low", "medium", "high", "xhigh", "max"].includes(String(data.effort))) {
+    return 'effort must be one of "off" | "low" | "medium" | "high" | "xhigh" | "max"';
   }
   if (data.promptMode !== undefined && !["custom", "append"].includes(String(data.promptMode))) {
     return 'promptMode must be "custom" or "append"';
@@ -92,7 +92,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "  promptMode?: \"custom\" | \"append\"; // append = add to provider default prompt",
     "  provider?: string;             // \"anthropic\" | \"claude-code\" | \"codex\" | \"cursor\" | \"antigravity\" | ...",
     "  model?: string;",
-    "  effort?: \"off\" | \"low\" | \"medium\" | \"high\" | \"max\";",
+    "  effort?: \"off\" | \"low\" | \"medium\" | \"high\" | \"xhigh\" | \"max\";",
     "  maxTurns?: number;",
     "  tools?: string[];              // whitelist",
     "  disallowedTools?: string[];    // blacklist",
