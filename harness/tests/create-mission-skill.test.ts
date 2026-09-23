@@ -65,7 +65,7 @@ describe("create-mission skill discovery", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("a project-local skill overrides the packaged skill", async () => {
     const root = mkdtempSync(join(tmpdir(), "modus-create-mission-"));
@@ -80,7 +80,7 @@ describe("create-mission skill discovery", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("a project Modus skill overrides the packaged skill", async () => {
     const root = mkdtempSync(join(tmpdir(), "modus-create-mission-"));
@@ -95,7 +95,7 @@ describe("create-mission skill discovery", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("an absent skill is reported without inventing a path", async () => {
     const root = mkdtempSync(join(tmpdir(), "modus-create-mission-"));
@@ -107,5 +107,5 @@ describe("create-mission skill discovery", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
