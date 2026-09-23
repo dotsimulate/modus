@@ -2056,7 +2056,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     const mod = await loadMoveModule(moveName, cwd);
     if (config.api?.ops && mod?.handlers) {
       instanceId = generateInstanceId();
-      apiToken = registerMoveApi(moveName, instanceId, sourceSessionId, cwd, mod.handlers, false, userProfile, mod.inferOp);
+      apiToken = registerMoveApi(moveName, instanceId, sourceSessionId, cwd, mod.handlers, config.api.state?.persist ?? false, userProfile, mod.inferOp);
     }
 
     // Register in ambient registry
