@@ -297,13 +297,14 @@ export function FileCard({
     // Open the tab synchronously, before awaiting the ticket. A `window.open`
     // after an await has lost the user gesture and is blocked as a popup.
     const opened = window.open("", "_blank");
+    if (opened) opened.opener = null;
     const url = await ticketedRawFileUrl(filePath);
     if (!url) {
       opened?.close();
       return;
     }
     if (opened) opened.location.href = url;
-    else window.open(url, "_blank");
+    else window.open(url, "_blank", "noopener,noreferrer");
   };
 
   const handleShare = async (e: React.MouseEvent) => {

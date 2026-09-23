@@ -4450,7 +4450,16 @@ app.get("/api/file/raw", async (c) => {
 
   const ext = extname(abs).toLowerCase();
   const mime = MIME_MAP[ext] ?? "text/plain";
-  return new Response(file, { headers: { "Content-Type": mime } });
+  return new Response(file, { headers: {
+    "Content-Type": mime,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    // A ticketed URL can be opened as a top-level document on the app origin.
+    // Keep local HTML/SVG visible, but deny scripts and give the document an
+    // opaque origin so it cannot read browser-session storage or its opener.
+    "Content-Security-Policy": "sandbox; script-src 'none'; object-src 'none'; base-uri 'none'",
+    "Referrer-Policy": "no-referrer",
+  } });
 });
 
 // ── Resource Observability ──
