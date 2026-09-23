@@ -4,9 +4,10 @@ import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import {
   BUILT_IN_PROVIDER_DEFINITIONS,
-  HIDDEN_LEGACY_PROVIDER_NAMES,
+  REMOVED_PROVIDER_NAMES,
   ProviderDefinitionSchema,
   STANDALONE_PROVIDER_NAMES,
+  isBuiltInProviderName,
   resolveProviderAlias,
 } from "../../providers/provider-definition";
 import {
@@ -96,18 +97,14 @@ describe("provider aliases", () => {
   });
 });
 
-describe("hidden providers", () => {
-  // Both hidden names carry a deliberate reason, and the failure mode of losing
-  // one is silent: the provider simply reappears in every picker. Antigravity in
-  // particular is hidden on a terms/enforcement judgement that no test elsewhere
-  // encodes, so it is pinned by name rather than by count.
-  test("antigravity and gemini-cli are reachable but never offered in a picker", () => {
-    expect(HIDDEN_LEGACY_PROVIDER_NAMES).toContain("antigravity");
-    expect(HIDDEN_LEGACY_PROVIDER_NAMES).toContain("gemini-cli");
-    for (const name of HIDDEN_LEGACY_PROVIDER_NAMES) {
+describe("removed standalone providers", () => {
+  test("old names are rejected but reserved against declarative reuse", () => {
+    expect(REMOVED_PROVIDER_NAMES).toEqual(["gemini-cli", "antigravity"]);
+    for (const name of REMOVED_PROVIDER_NAMES) {
       expect(STANDALONE_PROVIDER_NAMES).not.toContain(name as never);
-      expect(isKnownProvider(name)).toBe(true);
+      expect(isKnownProvider(name)).toBe(false);
       expect(listProviders()).not.toContain(name);
+      expect(isBuiltInProviderName(name)).toBe(true);
     }
   });
 });

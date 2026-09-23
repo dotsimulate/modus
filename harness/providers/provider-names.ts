@@ -12,14 +12,10 @@ import {
   listProviderDefinitions,
 } from "./provider-definitions";
 import {
-  HIDDEN_LEGACY_PROVIDER_NAMES,
   STANDALONE_PROVIDER_NAMES,
 } from "./provider-definition";
 
 export const STANDALONE_PROVIDERS = STANDALONE_PROVIDER_NAMES;
-
-/** Reachable by name but hidden from the picker; see registry.getProvider. */
-export const HIDDEN_LEGACY_PROVIDERS = HIDDEN_LEGACY_PROVIDER_NAMES;
 
 export function listPiProviders(): string[] {
   return listProviderDefinitions()
@@ -29,7 +25,6 @@ export function listPiProviders(): string[] {
 
 export function isKnownProvider(name: string): boolean {
   return STANDALONE_PROVIDERS.includes(name as (typeof STANDALONE_PROVIDERS)[number])
-    || HIDDEN_LEGACY_PROVIDERS.includes(name as (typeof HIDDEN_LEGACY_PROVIDERS)[number])
     || !!getProviderDefinition(name);
 }
 

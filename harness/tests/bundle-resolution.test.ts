@@ -24,8 +24,6 @@ const ENTRYPOINTS = [
   "index.ts",
   "cli.ts",
   "svg-render-worker.ts",
-  join("providers", "antigravity-hook.ts"),
-  join("providers", "antigravity-mcp-bridge.ts"),
 ];
 
 describe("packaged bundle resolves", () => {
@@ -43,6 +41,21 @@ describe("packaged bundle resolves", () => {
       const messages = result.logs.map((log) => log.message).join("\n");
       expect(messages).not.toContain("Could not resolve");
       expect(result.success).toBe(true);
+      if (entry === "index.ts" && result.success) {
+        const serverBundle = await result.outputs[0]!.text();
+        for (const removedRuntime of [
+          "createAntigravityProvider",
+          "createGeminiCliProvider",
+          "@google/gemini-cli-core",
+          "antigravity-mcp-bridge",
+          "resolveAntigravityExecutable",
+          "fetchGeminiUsageSnapshot",
+          "runAntigravityCommand",
+          "AGY_CLI_DISABLE_AUTO_UPDATE",
+        ]) {
+          expect(serverBundle).not.toContain(removedRuntime);
+        }
+      }
     }, 120_000);
   }
 });

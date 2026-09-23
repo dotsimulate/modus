@@ -92,7 +92,7 @@ skill files at startup, so Modus hands it the attached `SKILL.md` paths directly
 and PI loads them the way it loads its own. Nothing is copied. Your own skills
 are passed first, so on a name collision yours wins.
 
-**Every other provider** — codex, cursor, antigravity, grok-build and the rest
+**Every other provider** — codex, cursor, grok-build and the rest
 read no skills at all. For those, a session with attached skills gets two extra
 tools on the Modus MCP endpoint:
 
@@ -168,7 +168,7 @@ source you do not control.
 |---|---|---|
 | claude-code, claude-code-pty | yes (`.claude/skills/`) | no — uses the skill tools |
 | Any declarative PI provider | yes (`.pi/skills/`) | yes, natively |
-| codex, cursor, antigravity, grok-build, gemini-cli | no | no — uses the skill tools |
+| codex, cursor, grok-build | no | no — uses the skill tools |
 | opencode | no | no — Modus does not inject its skill tools |
 
 The tool path depends on the provider mounting the built-in `modus` MCP server,

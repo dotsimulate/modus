@@ -16,7 +16,6 @@ export const PROVIDER_CLI_NAMES: Readonly<Record<string, string>> = {
   "claude-code-pty": "claude",
   "codex": "codex",
   "cursor": "cursor-agent",
-  "antigravity": "agy",
   "grok-build": "grok",
   "opencode": "opencode",
 };

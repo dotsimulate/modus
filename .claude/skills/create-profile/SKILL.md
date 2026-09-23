@@ -164,15 +164,15 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 | `codex` | Runtime-discovered Codex models | OpenAI Codex CLI; sandbox modes and Starlark rules | [references/codex.md](references/codex.md) |
 | `opencode` | Runtime-discovered OpenCode models | OpenCode CLI or `bunx` fallback | See `harness/docs/providers.md` |
 | `grok-build` | Runtime-discovered Grok Build models | `grok` CLI; SuperGrok/X Premium+ login or `XAI_API_KEY` | See `harness/docs/providers.md` |
-| `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp | — |
+| `openai-compat` | Any OpenAI-compatible endpoint | Local models, LiteLLM, vLLM, llama.cpp | See `harness/docs/providers.md` |
 | `ollama` | Ollama models | Local Ollama server | — |
 | `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |
 
-Two Google adapters are hidden and must not be offered as a normal new-profile choice:
-`gemini-cli` (legacy migration code) and `antigravity` (Google's terms prohibit
-third-party access to the Service, and enforcement suspends the user's whole Google
-account). Both still work when someone asks for them by name. For `cursor` and `codex`, read the linked reference before
-writing profile JSON; their permissions, tools, and MCP behavior differ materially.
+The standalone `gemini-cli` and `antigravity` adapters are unavailable in the
+distributed app. Migrate old profiles to a listed provider. `litellm` remains
+an accepted alias of `openai-compat`. For `cursor` and `codex`, read the linked
+reference before writing profile JSON; their permissions, tools, and MCP
+behavior differ materially.
 
 ## Output Format
 

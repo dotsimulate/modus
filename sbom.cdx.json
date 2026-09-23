@@ -45,24 +45,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40a2a-js/sdk@0.3.11",
-      "name": "@a2a-js/sdk",
-      "version": "0.3.11",
-      "purl": "pkg:npm/%40a2a-js/sdk@0.3.11",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/a2aproject/a2a-js"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40antfu/install-pkg@1.1.0",
       "name": "@antfu/install-pkg",
       "version": "1.1.0",
@@ -603,42 +585,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40babel/code-frame@7.29.0",
-      "name": "@babel/code-frame",
-      "version": "7.29.0",
-      "purl": "pkg:npm/%40babel/code-frame@7.29.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://babel.dev/docs/en/next/babel-code-frame"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40babel/helper-validator-identifier@7.28.5",
-      "name": "@babel/helper-validator-identifier",
-      "version": "7.28.5",
-      "purl": "pkg:npm/%40babel/helper-validator-identifier@7.28.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/babel/babel"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40babel/runtime@7.28.6",
       "name": "@babel/runtime",
       "version": "7.28.6",
@@ -670,24 +616,6 @@
         {
           "type": "website",
           "url": "https://github.com/braintree/sanitize-url#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40bufbuild/protobuf@2.11.0",
-      "name": "@bufbuild/protobuf",
-      "version": "2.11.0",
-      "purl": "pkg:npm/%40bufbuild/protobuf@2.11.0",
-      "licenses": [
-        {
-          "expression": "(Apache-2.0 AND BSD-3-Clause)"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/bufbuild/protobuf-es"
         }
       ]
     },
@@ -1035,258 +963,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40github/keytar@7.10.6",
-      "name": "@github/keytar",
-      "version": "7.10.6",
-      "purl": "pkg:npm/%40github/keytar@7.10.6",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/github/node-keytar"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/common@8.0.1",
-      "name": "@google-cloud/common",
-      "version": "8.0.1",
-      "purl": "pkg:npm/%40google-cloud/common@8.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/common"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/logging@12.0.1",
-      "name": "@google-cloud/logging",
-      "version": "12.0.1",
-      "purl": "pkg:npm/%40google-cloud/logging@12.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/handwritten/logging"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/logging-api@0.3.0",
-      "name": "@google-cloud/logging-api",
-      "version": "0.3.0",
-      "purl": "pkg:npm/%40google-cloud/logging-api@0.3.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/packages/google-logging"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/opentelemetry-cloud-monitoring-exporter@0.22.0",
-      "name": "@google-cloud/opentelemetry-cloud-monitoring-exporter",
-      "version": "0.22.0",
-      "purl": "pkg:npm/%40google-cloud/opentelemetry-cloud-monitoring-exporter@0.22.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "GoogleCloudPlatform/opentelemetry-operations-js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/opentelemetry-cloud-trace-exporter@3.1.0",
-      "name": "@google-cloud/opentelemetry-cloud-trace-exporter",
-      "version": "3.1.0",
-      "purl": "pkg:npm/%40google-cloud/opentelemetry-cloud-trace-exporter@3.1.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "GoogleCloudPlatform/opentelemetry-operations-js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/opentelemetry-resource-util@3.1.0",
-      "name": "@google-cloud/opentelemetry-resource-util",
-      "version": "3.1.0",
-      "purl": "pkg:npm/%40google-cloud/opentelemetry-resource-util@3.1.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "GoogleCloudPlatform/opentelemetry-operations-js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/paginator@7.0.1",
-      "name": "@google-cloud/paginator",
-      "version": "7.0.1",
-      "purl": "pkg:npm/%40google-cloud/paginator@7.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/paginator"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/precise-date@4.0.0",
-      "name": "@google-cloud/precise-date",
-      "version": "4.0.0",
-      "purl": "pkg:npm/%40google-cloud/precise-date@4.0.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "googleapis/nodejs-precise-date"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/projectify@6.0.1",
-      "name": "@google-cloud/projectify",
-      "version": "6.0.1",
-      "purl": "pkg:npm/%40google-cloud/projectify@6.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/projectify"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/promisify@4.0.0",
-      "name": "@google-cloud/promisify",
-      "version": "4.0.0",
-      "purl": "pkg:npm/%40google-cloud/promisify@4.0.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "googleapis/nodejs-promisify"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google-cloud/promisify@6.0.1",
-      "name": "@google-cloud/promisify",
-      "version": "6.0.1",
-      "purl": "pkg:npm/%40google-cloud/promisify@6.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "googleapis/nodejs-promisify"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google/gemini-cli-core@0.56.0",
-      "name": "@google/gemini-cli-core",
-      "version": "0.56.0",
-      "purl": "pkg:npm/%40google/gemini-cli-core@0.56.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/google-gemini/gemini-cli"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40google/genai@1.30.0",
-      "name": "@google/genai",
-      "version": "1.30.0",
-      "purl": "pkg:npm/%40google/genai@1.30.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/js-genai#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40google/genai@1.52.0",
       "name": "@google/genai",
       "version": "1.52.0",
@@ -1305,42 +981,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40grpc/grpc-js@1.14.4",
-      "name": "@grpc/grpc-js",
-      "version": "1.14.4",
-      "purl": "pkg:npm/%40grpc/grpc-js@1.14.4",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://grpc.io/"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40grpc/proto-loader@0.8.0",
-      "name": "@grpc/proto-loader",
-      "version": "0.8.0",
-      "purl": "pkg:npm/%40grpc/proto-loader@0.8.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://grpc.io/"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40hono/node-server@1.19.15",
       "name": "@hono/node-server",
       "version": "1.19.15",
@@ -1354,24 +994,6 @@
         {
           "type": "website",
           "url": "https://github.com/honojs/node-server"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40iarna/toml@2.2.5",
-      "name": "@iarna/toml",
-      "version": "2.2.5",
-      "purl": "pkg:npm/%40iarna/toml@2.2.5",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/iarna/iarna-toml#readme"
         }
       ]
     },
@@ -1426,42 +1048,6 @@
         {
           "type": "website",
           "url": "ssh://git@github.com:isaacs/cliui"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40isaacs/cliui@9.0.0",
-      "name": "@isaacs/cliui",
-      "version": "9.0.0",
-      "purl": "pkg:npm/%40isaacs/cliui@9.0.0",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "ssh://git@github.com:isaacs/cliui"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40js-sdsl/ordered-map@4.4.2",
-      "name": "@js-sdsl/ordered-map",
-      "version": "4.4.2",
-      "purl": "pkg:npm/%40js-sdsl/ordered-map@4.4.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://js-sdsl.org"
         }
       ]
     },
@@ -1665,24 +1251,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40lydell/node-pty@1.1.0",
-      "name": "@lydell/node-pty",
-      "version": "1.1.0",
-      "purl": "pkg:npm/%40lydell/node-pty@1.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/lydell/node-pty"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40marijn/find-cluster-break@1.0.3",
       "name": "@marijn/find-cluster-break",
       "version": "1.0.3",
@@ -1768,564 +1336,6 @@
         {
           "type": "website",
           "url": "https://modelcontextprotocol.io"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/api@1.9.0",
-      "name": "@opentelemetry/api",
-      "version": "1.9.0",
-      "purl": "pkg:npm/%40opentelemetry/api@1.9.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/api"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/api-logs@0.218.0",
-      "name": "@opentelemetry/api-logs",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/api-logs@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/api-logs"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/configuration@0.218.0",
-      "name": "@opentelemetry/configuration",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/configuration@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/configuration"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/context-async-hooks@2.7.1",
-      "name": "@opentelemetry/context-async-hooks",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/context-async-hooks@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-context-async-hooks"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/core@2.9.0",
-      "name": "@opentelemetry/core",
-      "version": "2.9.0",
-      "purl": "pkg:npm/%40opentelemetry/core@2.9.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-core"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-logs-otlp-grpc@0.218.0",
-      "name": "@opentelemetry/exporter-logs-otlp-grpc",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-logs-otlp-grpc@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-logs-otlp-grpc"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-logs-otlp-http@0.218.0",
-      "name": "@opentelemetry/exporter-logs-otlp-http",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-logs-otlp-http@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-logs-otlp-http"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-logs-otlp-proto@0.218.0",
-      "name": "@opentelemetry/exporter-logs-otlp-proto",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-logs-otlp-proto@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-logs-otlp-proto"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-metrics-otlp-grpc@0.218.0",
-      "name": "@opentelemetry/exporter-metrics-otlp-grpc",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-metrics-otlp-grpc@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-grpc"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-metrics-otlp-http@0.218.0",
-      "name": "@opentelemetry/exporter-metrics-otlp-http",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-metrics-otlp-http@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-http"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-metrics-otlp-proto@0.218.0",
-      "name": "@opentelemetry/exporter-metrics-otlp-proto",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-metrics-otlp-proto@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-proto"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-prometheus@0.218.0",
-      "name": "@opentelemetry/exporter-prometheus",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-prometheus@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-prometheus"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-trace-otlp-grpc@0.218.0",
-      "name": "@opentelemetry/exporter-trace-otlp-grpc",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-trace-otlp-grpc@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-trace-otlp-grpc"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-trace-otlp-http@0.218.0",
-      "name": "@opentelemetry/exporter-trace-otlp-http",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-trace-otlp-http@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-trace-otlp-http"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-trace-otlp-proto@0.218.0",
-      "name": "@opentelemetry/exporter-trace-otlp-proto",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/exporter-trace-otlp-proto@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-trace-otlp-proto"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/exporter-zipkin@2.7.1",
-      "name": "@opentelemetry/exporter-zipkin",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/exporter-zipkin@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-exporter-zipkin"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/instrumentation@0.218.0",
-      "name": "@opentelemetry/instrumentation",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/instrumentation@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-instrumentation"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/instrumentation-http@0.218.0",
-      "name": "@opentelemetry/instrumentation-http",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/instrumentation-http@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-instrumentation-http"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/otlp-exporter-base@0.218.0",
-      "name": "@opentelemetry/otlp-exporter-base",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/otlp-exporter-base@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/otlp-exporter-base"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/otlp-grpc-exporter-base@0.218.0",
-      "name": "@opentelemetry/otlp-grpc-exporter-base",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/otlp-grpc-exporter-base@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/otlp-grpc-exporter-base"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/otlp-transformer@0.218.0",
-      "name": "@opentelemetry/otlp-transformer",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/otlp-transformer@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/otlp-transformer"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/propagator-b3@2.7.1",
-      "name": "@opentelemetry/propagator-b3",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/propagator-b3@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-propagator-b3"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/propagator-jaeger@2.9.0",
-      "name": "@opentelemetry/propagator-jaeger",
-      "version": "2.9.0",
-      "purl": "pkg:npm/%40opentelemetry/propagator-jaeger@2.9.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-propagator-jaeger"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/resources@2.7.1",
-      "name": "@opentelemetry/resources",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/resources@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-resources"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/sdk-logs@0.218.0",
-      "name": "@opentelemetry/sdk-logs",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/sdk-logs@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/sdk-logs"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/sdk-metrics@2.7.1",
-      "name": "@opentelemetry/sdk-metrics",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/sdk-metrics@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/sdk-metrics"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/sdk-node@0.218.0",
-      "name": "@opentelemetry/sdk-node",
-      "version": "0.218.0",
-      "purl": "pkg:npm/%40opentelemetry/sdk-node@0.218.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-sdk-node"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/sdk-trace-base@2.7.1",
-      "name": "@opentelemetry/sdk-trace-base",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/sdk-trace-base@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-base"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/sdk-trace-node@2.7.1",
-      "name": "@opentelemetry/sdk-trace-node",
-      "version": "2.7.1",
-      "purl": "pkg:npm/%40opentelemetry/sdk-trace-node@2.7.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-node"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/semantic-conventions@1.39.0",
-      "name": "@opentelemetry/semantic-conventions",
-      "version": "1.39.0",
-      "purl": "pkg:npm/%40opentelemetry/semantic-conventions@1.39.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/semantic-conventions"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40opentelemetry/semantic-conventions@1.40.0",
-      "name": "@opentelemetry/semantic-conventions",
-      "version": "1.40.0",
-      "purl": "pkg:npm/%40opentelemetry/semantic-conventions@1.40.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/open-telemetry/opentelemetry-js/tree/main/semantic-conventions"
         }
       ]
     },
@@ -2511,24 +1521,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40puppeteer/browsers@3.2.1",
-      "name": "@puppeteer/browsers",
-      "version": "3.2.1",
-      "purl": "pkg:npm/%40puppeteer/browsers@3.2.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/puppeteer/puppeteer/tree/main/packages/browsers"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40resvg/resvg-js@2.6.2",
       "name": "@resvg/resvg-js",
       "version": "2.6.2",
@@ -2560,42 +1552,6 @@
         {
           "type": "website",
           "url": "git@github.com:yisibl/resvg-js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40sec-ant/readable-stream@0.4.1",
-      "name": "@sec-ant/readable-stream",
-      "version": "0.4.1",
-      "purl": "pkg:npm/%40sec-ant/readable-stream@0.4.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/Sec-ant/readable-stream"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40selderee/plugin-htmlparser2@0.11.0",
-      "name": "@selderee/plugin-htmlparser2",
-      "version": "0.11.0",
-      "purl": "pkg:npm/%40selderee/plugin-htmlparser2@0.11.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mxxii/selderee"
         }
       ]
     },
@@ -2650,24 +1606,6 @@
         {
           "type": "website",
           "url": "https://github.com/steveukx/git-js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40sindresorhus/merge-streams@4.0.0",
-      "name": "@sindresorhus/merge-streams",
-      "version": "4.0.0",
-      "purl": "pkg:npm/%40sindresorhus/merge-streams@4.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/merge-streams"
         }
       ]
     },
@@ -3537,24 +2475,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40types/html-to-text@9.0.4",
-      "name": "@types/html-to-text",
-      "version": "9.0.4",
-      "purl": "pkg:npm/%40types/html-to-text@9.0.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/html-to-text"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40types/mdast@4.0.4",
       "name": "@types/mdast",
       "version": "4.0.4",
@@ -3604,24 +2524,6 @@
         {
           "type": "website",
           "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40types/normalize-package-data@2.4.4",
-      "name": "@types/normalize-package-data",
-      "version": "2.4.4",
-      "purl": "pkg:npm/%40types/normalize-package-data@2.4.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/normalize-package-data"
         }
       ]
     },
@@ -3861,24 +2763,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40xterm/headless@5.5.0",
-      "name": "@xterm/headless",
-      "version": "5.5.0",
-      "purl": "pkg:npm/%40xterm/headless@5.5.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/xtermjs/xterm.js"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/%40xterm/xterm@6.0.0",
       "name": "@xterm/xterm",
       "version": "6.0.0",
@@ -4036,42 +2920,6 @@
         {
           "type": "website",
           "url": "chalk/ansi-styles"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/argparse@2.0.1",
-      "name": "argparse",
-      "version": "2.0.1",
-      "purl": "pkg:npm/argparse@2.0.1",
-      "licenses": [
-        {
-          "expression": "Python-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "nodeca/argparse"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/arrify@2.0.1",
-      "name": "arrify",
-      "version": "2.0.1",
-      "purl": "pkg:npm/arrify@2.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/arrify"
         }
       ]
     },
@@ -4275,24 +3123,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/bundle-name@4.1.0",
-      "name": "bundle-name",
-      "version": "4.1.0",
-      "purl": "pkg:npm/bundle-name@4.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/bundle-name"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/bytes@3.1.2",
       "name": "bytes",
       "version": "3.1.2",
@@ -4306,24 +3136,6 @@
         {
           "type": "website",
           "url": "visionmedia/bytes.js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/call-bind@1.0.9",
-      "name": "call-bind",
-      "version": "1.0.9",
-      "purl": "pkg:npm/call-bind@1.0.9",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/call-bind#readme"
         }
       ]
     },
@@ -4473,96 +3285,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/chokidar@5.0.0",
-      "name": "chokidar",
-      "version": "5.0.0",
-      "purl": "pkg:npm/chokidar@5.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/paulmillr/chokidar"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/chromium-bidi@17.0.2",
-      "name": "chromium-bidi",
-      "version": "17.0.2",
-      "purl": "pkg:npm/chromium-bidi@17.0.2",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/GoogleChromeLabs/chromium-bidi"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/cjs-module-lexer@2.2.0",
-      "name": "cjs-module-lexer",
-      "version": "2.2.0",
-      "purl": "pkg:npm/cjs-module-lexer@2.2.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/nodejs/cjs-module-lexer#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/cliui@8.0.1",
-      "name": "cliui",
-      "version": "8.0.1",
-      "purl": "pkg:npm/cliui@8.0.1",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "yargs/cliui"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/cliui@9.0.1",
-      "name": "cliui",
-      "version": "9.0.1",
-      "purl": "pkg:npm/cliui@9.0.1",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "yargs/cliui"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/color-convert@2.0.1",
       "name": "color-convert",
       "version": "2.0.1",
@@ -4612,24 +3334,6 @@
         {
           "type": "website",
           "url": "wooorm/comma-separated-tokens"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/command-exists@1.2.9",
-      "name": "command-exists",
-      "version": "1.2.9",
-      "purl": "pkg:npm/command-exists@1.2.9",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mathisonian/command-exists"
         }
       ]
     },
@@ -5643,96 +4347,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/deepmerge@4.3.1",
-      "name": "deepmerge",
-      "version": "4.3.1",
-      "purl": "pkg:npm/deepmerge@4.3.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/TehShrike/deepmerge"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/default-browser@5.5.0",
-      "name": "default-browser",
-      "version": "5.5.0",
-      "purl": "pkg:npm/default-browser@5.5.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/default-browser"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/default-browser-id@5.0.1",
-      "name": "default-browser-id",
-      "version": "5.0.1",
-      "purl": "pkg:npm/default-browser-id@5.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/default-browser-id"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/define-data-property@1.1.4",
-      "name": "define-data-property",
-      "version": "1.1.4",
-      "purl": "pkg:npm/define-data-property@1.1.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/define-data-property#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/define-lazy-prop@3.0.0",
-      "name": "define-lazy-prop",
-      "version": "3.0.0",
-      "purl": "pkg:npm/define-lazy-prop@3.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/define-lazy-prop"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/delaunator@5.1.0",
       "name": "delaunator",
       "version": "5.1.0",
@@ -5805,42 +4419,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/devtools-protocol@0.0.1666840",
-      "name": "devtools-protocol",
-      "version": "0.0.1666840",
-      "purl": "pkg:npm/devtools-protocol@0.0.1666840",
-      "licenses": [
-        {
-          "expression": "BSD-3-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ChromeDevTools/devtools-protocol"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/diff@8.0.3",
-      "name": "diff",
-      "version": "8.0.3",
-      "purl": "pkg:npm/diff@8.0.3",
-      "licenses": [
-        {
-          "expression": "BSD-3-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/kpdecker/jsdiff"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/diff@8.0.4",
       "name": "diff",
       "version": "8.0.4",
@@ -5854,60 +4432,6 @@
         {
           "type": "website",
           "url": "https://github.com/kpdecker/jsdiff"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/dom-serializer@2.0.0",
-      "name": "dom-serializer",
-      "version": "2.0.0",
-      "purl": "pkg:npm/dom-serializer@2.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/cheeriojs/dom-serializer"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/domelementtype@2.3.0",
-      "name": "domelementtype",
-      "version": "2.3.0",
-      "purl": "pkg:npm/domelementtype@2.3.0",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/domelementtype"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/domhandler@5.0.3",
-      "name": "domhandler",
-      "version": "5.0.3",
-      "purl": "pkg:npm/domhandler@5.0.3",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/domhandler"
         }
       ]
     },
@@ -5931,96 +4455,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/domutils@3.2.2",
-      "name": "domutils",
-      "version": "3.2.2",
-      "purl": "pkg:npm/domutils@3.2.2",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/domutils"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/dot-prop@6.0.1",
-      "name": "dot-prop",
-      "version": "6.0.1",
-      "purl": "pkg:npm/dot-prop@6.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/dot-prop"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/dotenv@16.6.1",
-      "name": "dotenv",
-      "version": "16.6.1",
-      "purl": "pkg:npm/dotenv@16.6.1",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/motdotla/dotenv#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/dotenv@17.2.4",
-      "name": "dotenv",
-      "version": "17.2.4",
-      "purl": "pkg:npm/dotenv@17.2.4",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/motdotla/dotenv#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/dotenv-expand@12.0.3",
-      "name": "dotenv-expand",
-      "version": "12.0.3",
-      "purl": "pkg:npm/dotenv-expand@12.0.3",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/motdotla/dotenv-expand"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/dunder-proto@1.0.1",
       "name": "dunder-proto",
       "version": "1.0.1",
@@ -6034,24 +4468,6 @@
         {
           "type": "website",
           "url": "https://github.com/es-shims/dunder-proto#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/duplexify@4.1.3",
-      "name": "duplexify",
-      "version": "4.1.3",
-      "purl": "pkg:npm/duplexify@4.1.3",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mafintosh/duplexify"
         }
       ]
     },
@@ -6111,24 +4527,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/emoji-regex@10.6.0",
-      "name": "emoji-regex",
-      "version": "10.6.0",
-      "purl": "pkg:npm/emoji-regex@10.6.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://mths.be/emoji-regex"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/emoji-regex@8.0.0",
       "name": "emoji-regex",
       "version": "8.0.0",
@@ -6178,42 +4576,6 @@
         {
           "type": "website",
           "url": "pillarjs/encodeurl"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/end-of-stream@1.4.5",
-      "name": "end-of-stream",
-      "version": "1.4.5",
-      "purl": "pkg:npm/end-of-stream@1.4.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mafintosh/end-of-stream"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/entities@4.5.0",
-      "name": "entities",
-      "version": "4.5.0",
-      "purl": "pkg:npm/entities@4.5.0",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/entities"
         }
       ]
     },
@@ -6273,24 +4635,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/es-module-lexer@2.3.2",
-      "name": "es-module-lexer",
-      "version": "2.3.2",
-      "purl": "pkg:npm/es-module-lexer@2.3.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/guybedford/es-module-lexer#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/es-object-atoms@1.1.1",
       "name": "es-object-atoms",
       "version": "1.1.1",
@@ -6322,24 +4666,6 @@
         {
           "type": "website",
           "url": "https://es-toolkit.dev"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/escalade@3.2.0",
-      "name": "escalade",
-      "version": "3.2.0",
-      "purl": "pkg:npm/escalade@3.2.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "lukeed/escalade"
         }
       ]
     },
@@ -6453,24 +4779,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/execa@9.6.1",
-      "name": "execa",
-      "version": "9.6.1",
-      "purl": "pkg:npm/execa@9.6.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/execa"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/express@5.2.1",
       "name": "express",
       "version": "5.2.1",
@@ -6543,24 +4851,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/fast-levenshtein@2.0.6",
-      "name": "fast-levenshtein",
-      "version": "2.0.6",
-      "purl": "pkg:npm/fast-levenshtein@2.0.6",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/hiddentao/fast-levenshtein"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/fast-sha256@1.3.0",
       "name": "fast-sha256",
       "version": "1.3.0",
@@ -6615,24 +4905,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/fdir@6.4.6",
-      "name": "fdir",
-      "version": "6.4.6",
-      "purl": "pkg:npm/fdir@6.4.6",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/thecodrr/fdir#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/fetch-blob@3.2.0",
       "name": "fetch-blob",
       "version": "3.2.0",
@@ -6651,24 +4923,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/figures@6.1.0",
-      "name": "figures",
-      "version": "6.1.0",
-      "purl": "pkg:npm/figures@6.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/figures"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/finalhandler@2.1.1",
       "name": "finalhandler",
       "version": "2.1.1",
@@ -6682,24 +4936,6 @@
         {
           "type": "website",
           "url": "pillarjs/finalhandler"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/find-up-simple@1.0.1",
-      "name": "find-up-simple",
-      "version": "1.0.1",
-      "purl": "pkg:npm/find-up-simple@1.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/find-up-simple"
         }
       ]
     },
@@ -6759,24 +4995,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/forwarded-parse@2.1.2",
-      "name": "forwarded-parse",
-      "version": "2.1.2",
-      "purl": "pkg:npm/forwarded-parse@2.1.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/lpinca/forwarded-parse"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/fresh@2.0.0",
       "name": "fresh",
       "version": "2.0.0",
@@ -6808,24 +5026,6 @@
         {
           "type": "website",
           "url": "https://github.com/Raynos/function-bind"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/fzf@0.5.2",
-      "name": "fzf",
-      "version": "0.5.2",
-      "purl": "pkg:npm/fzf@0.5.2",
-      "licenses": [
-        {
-          "expression": "BSD-3-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://fzf.netlify.app"
         }
       ]
     },
@@ -6885,42 +5085,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/gcp-metadata@9.0.3",
-      "name": "gcp-metadata",
-      "version": "9.0.3",
-      "purl": "pkg:npm/gcp-metadata@9.0.3",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gcp-metadata"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/get-caller-file@2.0.5",
-      "name": "get-caller-file",
-      "version": "2.0.5",
-      "purl": "pkg:npm/get-caller-file@2.0.5",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/stefanpenner/get-caller-file#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/get-east-asian-width@1.6.0",
       "name": "get-east-asian-width",
       "version": "1.6.0",
@@ -6975,46 +5139,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/get-stream@9.0.1",
-      "name": "get-stream",
-      "version": "9.0.1",
-      "purl": "pkg:npm/get-stream@9.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/get-stream"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/glob@10.5.0",
       "name": "glob",
       "version": "10.5.0",
       "purl": "pkg:npm/glob@10.5.0",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "git@github.com:isaacs/node-glob"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/glob@12.0.0",
-      "name": "glob",
-      "version": "12.0.0",
-      "purl": "pkg:npm/glob@12.0.0",
       "licenses": [
         {
           "expression": "BlueOak-1.0.0"
@@ -7047,24 +5175,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/google-auth-library@10.5.0",
-      "name": "google-auth-library",
-      "version": "10.5.0",
-      "purl": "pkg:npm/google-auth-library@10.5.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/google-auth-library@10.9.0",
       "name": "google-auth-library",
       "version": "10.9.0",
@@ -7083,42 +5193,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/google-auth-library@11.0.2",
-      "name": "google-auth-library",
-      "version": "11.0.2",
-      "purl": "pkg:npm/google-auth-library@11.0.2",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/google-gax@6.0.2",
-      "name": "google-gax",
-      "version": "6.0.2",
-      "purl": "pkg:npm/google-gax@6.0.2",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gax"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/google-logging-utils@1.1.3",
       "name": "google-logging-utils",
       "version": "1.1.3",
@@ -7132,60 +5206,6 @@
         {
           "type": "website",
           "url": "https://github.com/googleapis/google-cloud-node-core/tree/main/dev-packages/logging-utils"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/google-logging-utils@2.0.1",
-      "name": "google-logging-utils",
-      "version": "2.0.1",
-      "purl": "pkg:npm/google-logging-utils@2.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node-core/tree/main/dev-packages/logging-utils"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/googleapis@173.0.0",
-      "name": "googleapis",
-      "version": "173.0.0",
-      "purl": "pkg:npm/googleapis@173.0.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "googleapis/google-api-nodejs-client"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/googleapis-common@8.0.3",
-      "name": "googleapis-common",
-      "version": "8.0.3",
-      "purl": "pkg:npm/googleapis-common@8.0.3",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/nodejs-googleapis-common"
         }
       ]
     },
@@ -7227,24 +5247,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/gtoken@8.0.0",
-      "name": "gtoken",
-      "version": "8.0.0",
-      "purl": "pkg:npm/gtoken@8.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "google/node-gtoken"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/hachure-fill@0.5.2",
       "name": "hachure-fill",
       "version": "0.5.2",
@@ -7258,24 +5260,6 @@
         {
           "type": "website",
           "url": "https://github.com/pshihn/hachure-fill#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/has-property-descriptors@1.0.2",
-      "name": "has-property-descriptors",
-      "version": "1.0.2",
-      "purl": "pkg:npm/has-property-descriptors@1.0.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/inspect-js/has-property-descriptors#readme"
         }
       ]
     },
@@ -7515,24 +5499,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/hosted-git-info@7.0.2",
-      "name": "hosted-git-info",
-      "version": "7.0.2",
-      "purl": "pkg:npm/hosted-git-info@7.0.2",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/npm/hosted-git-info"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/hosted-git-info@9.0.3",
       "name": "hosted-git-info",
       "version": "9.0.3",
@@ -7546,42 +5512,6 @@
         {
           "type": "website",
           "url": "https://github.com/npm/hosted-git-info"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/html-entities@2.6.0",
-      "name": "html-entities",
-      "version": "2.6.0",
-      "purl": "pkg:npm/html-entities@2.6.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mdevils/html-entities"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/html-to-text@9.0.5",
-      "name": "html-to-text",
-      "version": "9.0.5",
-      "purl": "pkg:npm/html-to-text@9.0.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/html-to-text/node-html-to-text"
         }
       ]
     },
@@ -7618,24 +5548,6 @@
         {
           "type": "website",
           "url": "wooorm/html-void-elements"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/htmlparser2@8.0.2",
-      "name": "htmlparser2",
-      "version": "8.0.2",
-      "purl": "pkg:npm/htmlparser2@8.0.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/fb55/htmlparser2"
         }
       ]
     },
@@ -7695,24 +5607,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/human-signals@8.0.1",
-      "name": "human-signals",
-      "version": "8.0.1",
-      "purl": "pkg:npm/human-signals@8.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://www.github.com/ehmicky/human-signals"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/iconv-lite@0.6.3",
       "name": "iconv-lite",
       "version": "0.6.3",
@@ -7749,24 +5643,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/ignore@7.0.0",
-      "name": "ignore",
-      "version": "7.0.0",
-      "purl": "pkg:npm/ignore@7.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "git@github.com:kaelzhang/node-ignore"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/ignore@7.0.5",
       "name": "ignore",
       "version": "7.0.5",
@@ -7785,24 +5661,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/import-in-the-middle@3.3.3",
-      "name": "import-in-the-middle",
-      "version": "3.3.3",
-      "purl": "pkg:npm/import-in-the-middle@3.3.3",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/nodejs/import-in-the-middle#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/import-meta-resolve@4.2.0",
       "name": "import-meta-resolve",
       "version": "4.2.0",
@@ -7816,24 +5674,6 @@
         {
           "type": "website",
           "url": "wooorm/import-meta-resolve"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/index-to-position@1.2.0",
-      "name": "index-to-position",
-      "version": "1.2.0",
-      "purl": "pkg:npm/index-to-position@1.2.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/index-to-position"
         }
       ]
     },
@@ -8001,24 +5841,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/is-docker@3.0.0",
-      "name": "is-docker",
-      "version": "3.0.0",
-      "purl": "pkg:npm/is-docker@3.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-docker"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/is-fullwidth-code-point@3.0.0",
       "name": "is-fullwidth-code-point",
       "version": "3.0.0",
@@ -8050,42 +5872,6 @@
         {
           "type": "website",
           "url": "wooorm/is-hexadecimal"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/is-inside-container@1.0.0",
-      "name": "is-inside-container",
-      "version": "1.0.0",
-      "purl": "pkg:npm/is-inside-container@1.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-inside-container"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/is-obj@2.0.0",
-      "name": "is-obj",
-      "version": "2.0.0",
-      "purl": "pkg:npm/is-obj@2.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-obj"
         }
       ]
     },
@@ -8127,96 +5913,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/is-stream@4.0.1",
-      "name": "is-stream",
-      "version": "4.0.1",
-      "purl": "pkg:npm/is-stream@4.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-stream"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/is-unicode-supported@2.1.0",
-      "name": "is-unicode-supported",
-      "version": "2.1.0",
-      "purl": "pkg:npm/is-unicode-supported@2.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-unicode-supported"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/is-wsl@3.1.1",
-      "name": "is-wsl",
-      "version": "3.1.1",
-      "purl": "pkg:npm/is-wsl@3.1.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-wsl"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/isarray@2.0.5",
-      "name": "isarray",
-      "version": "2.0.5",
-      "purl": "pkg:npm/isarray@2.0.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/juliangruber/isarray"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/isbinaryfile@5.0.7",
-      "name": "isbinaryfile",
-      "version": "5.0.7",
-      "purl": "pkg:npm/isbinaryfile@5.0.7",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/gjtorikian/isBinaryFile"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/isexe@2.0.0",
       "name": "isexe",
       "version": "2.0.0",
@@ -8239,24 +5935,6 @@
       "name": "jackspeak",
       "version": "3.4.3",
       "purl": "pkg:npm/jackspeak@3.4.3",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/jackspeak"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/jackspeak@4.2.3",
-      "name": "jackspeak",
-      "version": "4.2.3",
-      "purl": "pkg:npm/jackspeak@4.2.3",
       "licenses": [
         {
           "expression": "BlueOak-1.0.0"
@@ -8320,42 +5998,6 @@
         {
           "type": "website",
           "url": "https://github.com/dankogai/js-base64"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/js-tokens@4.0.0",
-      "name": "js-tokens",
-      "version": "4.0.0",
-      "purl": "pkg:npm/js-tokens@4.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "lydell/js-tokens"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/js-yaml@4.3.2",
-      "name": "js-yaml",
-      "version": "4.3.2",
-      "purl": "pkg:npm/js-yaml@4.3.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "nodeca/js-yaml"
         }
       ]
     },
@@ -8428,42 +6070,6 @@
         {
           "type": "website",
           "url": "https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/json-stable-stringify@1.3.0",
-      "name": "json-stable-stringify",
-      "version": "1.3.0",
-      "purl": "pkg:npm/json-stable-stringify@1.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/json-stable-stringify"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/jsonify@0.0.1",
-      "name": "jsonify",
-      "version": "0.0.1",
-      "purl": "pkg:npm/jsonify@0.0.1",
-      "licenses": [
-        {
-          "expression": "LicenseRef-PublicDomain"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/jsonify"
         }
       ]
     },
@@ -8577,24 +6183,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/leac@0.6.0",
-      "name": "leac",
-      "version": "0.6.0",
-      "purl": "pkg:npm/leac@0.6.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mxxii/leac"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/lodash-es@4.18.1",
       "name": "lodash-es",
       "version": "4.18.1",
@@ -8608,24 +6196,6 @@
         {
           "type": "website",
           "url": "https://lodash.com/custom-builds"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/lodash.camelcase@4.3.0",
-      "name": "lodash.camelcase",
-      "version": "4.3.0",
-      "purl": "pkg:npm/lodash.camelcase@4.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://lodash.com/"
         }
       ]
     },
@@ -8734,24 +6304,6 @@
         {
           "type": "website",
           "url": "wooorm/markdown-table"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/marked@15.0.12",
-      "name": "marked",
-      "version": "15.0.12",
-      "purl": "pkg:npm/marked@15.0.12",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://marked.js.org"
         }
       ]
     },
@@ -9639,24 +7191,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/mime@4.0.7",
-      "name": "mime",
-      "version": "4.0.7",
-      "purl": "pkg:npm/mime@4.0.7",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/broofa/mime"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/mime-db@1.54.0",
       "name": "mime-db",
       "version": "1.54.0",
@@ -9765,78 +7299,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/mitt@3.0.1",
-      "name": "mitt",
-      "version": "3.0.1",
-      "purl": "pkg:npm/mitt@3.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/developit/mitt"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/mnemonist@0.40.3",
-      "name": "mnemonist",
-      "version": "0.40.3",
-      "purl": "pkg:npm/mnemonist@0.40.3",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/yomguithereal/mnemonist#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/modern-tar@0.8.4",
-      "name": "modern-tar",
-      "version": "0.8.4",
-      "purl": "pkg:npm/modern-tar@0.8.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ayuhito/modern-tar"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/module-details-from-path@1.0.4",
-      "name": "module-details-from-path",
-      "version": "1.0.4",
-      "purl": "pkg:npm/module-details-from-path@1.0.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/watson/module-details-from-path#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/ms@2.1.3",
       "name": "ms",
       "version": "2.1.3",
@@ -9868,24 +7330,6 @@
         {
           "type": "website",
           "url": "jshttp/negotiator"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/node-addon-api@8.6.0",
-      "name": "node-addon-api",
-      "version": "8.6.0",
-      "purl": "pkg:npm/node-addon-api@8.6.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/nodejs/node-addon-api"
         }
       ]
     },
@@ -9927,60 +7371,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/node-gyp-build@4.8.4",
-      "name": "node-gyp-build",
-      "version": "4.8.4",
-      "purl": "pkg:npm/node-gyp-build@4.8.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/prebuild/node-gyp-build"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/normalize-package-data@6.0.2",
-      "name": "normalize-package-data",
-      "version": "6.0.2",
-      "purl": "pkg:npm/normalize-package-data@6.0.2",
-      "licenses": [
-        {
-          "expression": "BSD-2-Clause"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/npm/normalize-package-data"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/npm-run-path@6.0.0",
-      "name": "npm-run-path",
-      "version": "6.0.0",
-      "purl": "pkg:npm/npm-run-path@6.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/npm-run-path"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/object-assign@4.1.1",
       "name": "object-assign",
       "version": "4.1.1",
@@ -9999,24 +7389,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/object-hash@3.0.0",
-      "name": "object-hash",
-      "version": "3.0.0",
-      "purl": "pkg:npm/object-hash@3.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/puleos/object-hash"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/object-inspect@1.13.4",
       "name": "object-inspect",
       "version": "1.13.4",
@@ -10030,42 +7402,6 @@
         {
           "type": "website",
           "url": "https://github.com/inspect-js/object-inspect"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/object-keys@1.1.1",
-      "name": "object-keys",
-      "version": "1.1.1",
-      "purl": "pkg:npm/object-keys@1.1.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/object-keys"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/obliterator@2.0.5",
-      "name": "obliterator",
-      "version": "2.0.5",
-      "purl": "pkg:npm/obliterator@2.0.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/yomguithereal/obliterator#readme"
         }
       ]
     },
@@ -10102,24 +7438,6 @@
         {
           "type": "website",
           "url": "https://github.com/isaacs/once"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/open@10.1.2",
-      "name": "open",
-      "version": "10.1.2",
-      "purl": "pkg:npm/open@10.1.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/open"
         }
       ]
     },
@@ -10215,42 +7533,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/parse-json@8.3.0",
-      "name": "parse-json",
-      "version": "8.3.0",
-      "purl": "pkg:npm/parse-json@8.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/parse-json"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/parse-ms@4.0.0",
-      "name": "parse-ms",
-      "version": "4.0.0",
-      "purl": "pkg:npm/parse-ms@4.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/parse-ms"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/parse5@7.3.0",
       "name": "parse5",
       "version": "7.3.0",
@@ -10264,24 +7546,6 @@
         {
           "type": "website",
           "url": "https://parse5.js.org"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/parseley@0.12.1",
-      "name": "parseley",
-      "version": "0.12.1",
-      "purl": "pkg:npm/parseley@0.12.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mxxii/parseley"
         }
       ]
     },
@@ -10359,24 +7623,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/path-key@4.0.0",
-      "name": "path-key",
-      "version": "4.0.0",
-      "purl": "pkg:npm/path-key@4.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/path-key"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/path-scurry@1.11.1",
       "name": "path-scurry",
       "version": "1.11.1",
@@ -10426,60 +7672,6 @@
         {
           "type": "website",
           "url": "https://github.com/pillarjs/path-to-regexp"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/peberminta@0.9.0",
-      "name": "peberminta",
-      "version": "0.9.0",
-      "purl": "pkg:npm/peberminta@0.9.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mxxii/peberminta"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/picocolors@1.1.1",
-      "name": "picocolors",
-      "version": "1.1.1",
-      "purl": "pkg:npm/picocolors@1.1.1",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "alexeyraspopov/picocolors"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/picomatch@4.0.5",
-      "name": "picomatch",
-      "version": "4.0.5",
-      "purl": "pkg:npm/picomatch@4.0.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/micromatch/picomatch"
         }
       ]
     },
@@ -10539,24 +7731,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/pretty-ms@9.3.0",
-      "name": "pretty-ms",
-      "version": "9.3.0",
-      "purl": "pkg:npm/pretty-ms@9.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/pretty-ms"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/proper-lockfile@4.1.2",
       "name": "proper-lockfile",
       "version": "4.1.2",
@@ -10593,24 +7767,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/proto3-json-serializer@4.0.2",
-      "name": "proto3-json-serializer",
-      "version": "4.0.2",
-      "purl": "pkg:npm/proto3-json-serializer@4.0.2",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/proto3-json-serializer-nodejs"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/protobufjs@7.6.5",
       "name": "protobufjs",
       "version": "7.6.5",
@@ -10642,60 +7798,6 @@
         {
           "type": "website",
           "url": "jshttp/proxy-addr"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/pump@3.0.4",
-      "name": "pump",
-      "version": "3.0.4",
-      "purl": "pkg:npm/pump@3.0.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mafintosh/pump"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/pumpify@2.0.1",
-      "name": "pumpify",
-      "version": "2.0.1",
-      "purl": "pkg:npm/pumpify@2.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mafintosh/pumpify"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/puppeteer-core@25.8.0",
-      "name": "puppeteer-core",
-      "version": "25.8.0",
-      "purl": "pkg:npm/puppeteer-core@25.8.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/puppeteer/puppeteer/tree/main/packages/puppeteer-core"
         }
       ]
     },
@@ -10809,78 +7911,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/read-package-up@11.0.0",
-      "name": "read-package-up",
-      "version": "11.0.0",
-      "purl": "pkg:npm/read-package-up@11.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/read-package-up"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/read-pkg@9.0.1",
-      "name": "read-pkg",
-      "version": "9.0.1",
-      "purl": "pkg:npm/read-pkg@9.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/read-pkg"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/readable-stream@3.6.2",
-      "name": "readable-stream",
-      "version": "3.6.2",
-      "purl": "pkg:npm/readable-stream@3.6.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/nodejs/readable-stream"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/readdirp@5.1.1",
-      "name": "readdirp",
-      "version": "5.1.1",
-      "purl": "pkg:npm/readdirp@5.1.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/paulmillr/readdirp"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/rehype-raw@7.0.0",
       "name": "rehype-raw",
       "version": "7.0.0",
@@ -10989,24 +8019,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/require-directory@2.1.1",
-      "name": "require-directory",
-      "version": "2.1.1",
-      "purl": "pkg:npm/require-directory@2.1.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/troygoode/node-require-directory/"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/require-from-string@2.0.2",
       "name": "require-from-string",
       "version": "2.0.2",
@@ -11020,24 +8032,6 @@
         {
           "type": "website",
           "url": "floatdrop/require-from-string"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/require-in-the-middle@8.0.1",
-      "name": "require-in-the-middle",
-      "version": "8.0.1",
-      "purl": "pkg:npm/require-in-the-middle@8.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/nodejs/require-in-the-middle#readme"
         }
       ]
     },
@@ -11074,24 +8068,6 @@
         {
           "type": "website",
           "url": "https://github.com/tim-kos/node-retry"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/retry-request@9.0.1",
-      "name": "retry-request",
-      "version": "9.0.1",
-      "purl": "pkg:npm/retry-request@9.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/retry-request"
         }
       ]
     },
@@ -11169,24 +8145,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/run-applescript@7.1.0",
-      "name": "run-applescript",
-      "version": "7.1.0",
-      "purl": "pkg:npm/run-applescript@7.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/run-applescript"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/rw@1.3.3",
       "name": "rw",
       "version": "1.3.3",
@@ -11259,42 +8217,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/selderee@0.11.0",
-      "name": "selderee",
-      "version": "0.11.0",
-      "purl": "pkg:npm/selderee@0.11.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mxxii/selderee"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/semver@7.7.4",
-      "name": "semver",
-      "version": "7.7.4",
-      "purl": "pkg:npm/semver@7.7.4",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/npm/node-semver"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/send@1.2.1",
       "name": "send",
       "version": "1.2.1",
@@ -11326,24 +8248,6 @@
         {
           "type": "website",
           "url": "expressjs/serve-static"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/set-function-length@1.2.2",
-      "name": "set-function-length",
-      "version": "1.2.2",
-      "purl": "pkg:npm/set-function-length@1.2.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/set-function-length#readme"
         }
       ]
     },
@@ -11398,24 +8302,6 @@
         {
           "type": "website",
           "url": "sindresorhus/shebang-regex"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/shell-quote@1.10.0",
-      "name": "shell-quote",
-      "version": "1.10.0",
-      "purl": "pkg:npm/shell-quote@1.10.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/ljharb/shell-quote"
         }
       ]
     },
@@ -11565,78 +8451,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/spdx-correct@3.2.0",
-      "name": "spdx-correct",
-      "version": "3.2.0",
-      "purl": "pkg:npm/spdx-correct@3.2.0",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "jslicense/spdx-correct.js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/spdx-exceptions@2.5.0",
-      "name": "spdx-exceptions",
-      "version": "2.5.0",
-      "purl": "pkg:npm/spdx-exceptions@2.5.0",
-      "licenses": [
-        {
-          "expression": "CC-BY-3.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "kemitchell/spdx-exceptions.json"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/spdx-expression-parse@3.0.1",
-      "name": "spdx-expression-parse",
-      "version": "3.0.1",
-      "purl": "pkg:npm/spdx-expression-parse@3.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "jslicense/spdx-expression-parse.js"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/spdx-license-ids@3.0.23",
-      "name": "spdx-license-ids",
-      "version": "3.0.23",
-      "purl": "pkg:npm/spdx-license-ids@3.0.23",
-      "licenses": [
-        {
-          "expression": "CC0-1.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "jslicense/spdx-license-ids"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/standardwebhooks@1.0.0",
       "name": "standardwebhooks",
       "version": "1.0.0",
@@ -11673,42 +8487,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/stream-events@1.0.5",
-      "name": "stream-events",
-      "version": "1.0.5",
-      "purl": "pkg:npm/stream-events@1.0.5",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/stephenplusplus/stream-events"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/stream-shift@1.0.3",
-      "name": "stream-shift",
-      "version": "1.0.3",
-      "purl": "pkg:npm/stream-shift@1.0.3",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/mafintosh/stream-shift"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/strictdom@1.0.1",
       "name": "strictdom",
       "version": "1.0.1",
@@ -11722,24 +8500,6 @@
         {
           "type": "website",
           "url": "https://github.com/wilsonpage/strictdom"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/string_decoder@1.3.0",
-      "name": "string_decoder",
-      "version": "1.3.0",
-      "purl": "pkg:npm/string_decoder@1.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/nodejs/string_decoder"
         }
       ]
     },
@@ -11767,42 +8527,6 @@
       "name": "string-width",
       "version": "5.1.2",
       "purl": "pkg:npm/string-width@5.1.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/string-width"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/string-width@7.2.0",
-      "name": "string-width",
-      "version": "7.2.0",
-      "purl": "pkg:npm/string-width@7.2.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/string-width"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/string-width@8.2.2",
-      "name": "string-width",
-      "version": "8.2.2",
-      "purl": "pkg:npm/string-width@8.2.2",
       "licenses": [
         {
           "expression": "MIT"
@@ -11853,24 +8577,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/strip-ansi@7.1.0",
-      "name": "strip-ansi",
-      "version": "7.1.0",
-      "purl": "pkg:npm/strip-ansi@7.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/strip-ansi"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/strip-ansi@7.2.0",
       "name": "strip-ansi",
       "version": "7.2.0",
@@ -11884,60 +8590,6 @@
         {
           "type": "website",
           "url": "chalk/strip-ansi"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/strip-final-newline@4.0.0",
-      "name": "strip-final-newline",
-      "version": "4.0.0",
-      "purl": "pkg:npm/strip-final-newline@4.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/strip-final-newline"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/strip-json-comments@3.1.1",
-      "name": "strip-json-comments",
-      "version": "3.1.1",
-      "purl": "pkg:npm/strip-json-comments@3.1.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/strip-json-comments"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/stubs@3.0.0",
-      "name": "stubs",
-      "version": "3.0.0",
-      "purl": "pkg:npm/stubs@3.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/stephenplusplus/stubs"
         }
       ]
     },
@@ -12015,42 +8667,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/systeminformation@5.33.1",
-      "name": "systeminformation",
-      "version": "5.33.1",
-      "purl": "pkg:npm/systeminformation@5.33.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://systeminformation.io"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/teeny-request@11.0.1",
-      "name": "teeny-request",
-      "version": "11.0.1",
-      "purl": "pkg:npm/teeny-request@11.0.1",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/googleapis/google-cloud-node/tree/main/core/packages/teeny-request"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/tinyexec@1.2.4",
       "name": "tinyexec",
       "version": "1.2.4",
@@ -12082,24 +8698,6 @@
         {
           "type": "website",
           "url": "component/toidentifier"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/tree-sitter-bash@0.25.0",
-      "name": "tree-sitter-bash",
-      "version": "0.25.0",
-      "purl": "pkg:npm/tree-sitter-bash@0.25.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/tree-sitter/tree-sitter-bash"
         }
       ]
     },
@@ -12195,24 +8793,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/type-fest@4.41.0",
-      "name": "type-fest",
-      "version": "4.41.0",
-      "purl": "pkg:npm/type-fest@4.41.0",
-      "licenses": [
-        {
-          "expression": "(MIT OR CC0-1.0)"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/type-fest"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/type-is@2.0.1",
       "name": "type-is",
       "version": "2.0.1",
@@ -12267,24 +8847,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/typed-query-selector@2.12.2",
-      "name": "typed-query-selector",
-      "version": "2.12.2",
-      "purl": "pkg:npm/typed-query-selector@2.12.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "g-plane/typed-query-selector"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/undici@7.29.0",
       "name": "undici",
       "version": "7.29.0",
@@ -12316,42 +8878,6 @@
         {
           "type": "website",
           "url": "https://undici.nodejs.org"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/unicorn-magic@0.1.0",
-      "name": "unicorn-magic",
-      "version": "0.1.0",
-      "purl": "pkg:npm/unicorn-magic@0.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/unicorn-magic"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/unicorn-magic@0.3.0",
-      "name": "unicorn-magic",
-      "version": "0.3.0",
-      "purl": "pkg:npm/unicorn-magic@0.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/unicorn-magic"
         }
       ]
     },
@@ -12483,42 +9009,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/url-template@2.0.8",
-      "name": "url-template",
-      "version": "2.0.8",
-      "purl": "pkg:npm/url-template@2.0.8",
-      "licenses": [
-        {
-          "expression": "BSD"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/bramstein/url-template"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/util-deprecate@1.0.2",
-      "name": "util-deprecate",
-      "version": "1.0.2",
-      "purl": "pkg:npm/util-deprecate@1.0.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/TooTallNate/util-deprecate"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/uuid@11.1.1",
       "name": "uuid",
       "version": "11.1.1",
@@ -12532,42 +9022,6 @@
         {
           "type": "website",
           "url": "https://github.com/uuidjs/uuid"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/uuid@13.0.1",
-      "name": "uuid",
-      "version": "13.0.1",
-      "purl": "pkg:npm/uuid@13.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/uuidjs/uuid"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/validate-npm-package-license@3.0.4",
-      "name": "validate-npm-package-license",
-      "version": "3.0.4",
-      "purl": "pkg:npm/validate-npm-package-license@3.0.4",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "kemitchell/validate-npm-package-license.js"
         }
       ]
     },
@@ -12699,42 +9153,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/web-tree-sitter@0.25.10",
-      "name": "web-tree-sitter",
-      "version": "0.25.10",
-      "purl": "pkg:npm/web-tree-sitter@0.25.10",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/tree-sitter/tree-sitter"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/webdriver-bidi-protocol@0.4.2",
-      "name": "webdriver-bidi-protocol",
-      "version": "0.4.2",
-      "purl": "pkg:npm/webdriver-bidi-protocol@0.4.2",
-      "licenses": [
-        {
-          "expression": "Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/GoogleChromeLabs/webdriver-bidi-protocol"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/which@2.0.2",
       "name": "which",
       "version": "2.0.2",
@@ -12789,24 +9207,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/wrap-ansi@9.0.2",
-      "name": "wrap-ansi",
-      "version": "9.0.2",
-      "purl": "pkg:npm/wrap-ansi@9.0.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/wrap-ansi"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/wrappy@1.0.2",
       "name": "wrappy",
       "version": "1.0.2",
@@ -12843,24 +9243,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/y18n@5.0.8",
-      "name": "y18n",
-      "version": "5.0.8",
-      "purl": "pkg:npm/y18n@5.0.8",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/yargs/y18n"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/yaml@2.9.0",
       "name": "yaml",
       "version": "2.9.0",
@@ -12874,114 +9256,6 @@
         {
           "type": "website",
           "url": "https://eemeli.org/yaml/"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/yargs@17.7.2",
-      "name": "yargs",
-      "version": "17.7.2",
-      "purl": "pkg:npm/yargs@17.7.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://yargs.js.org/"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/yargs@18.1.0",
-      "name": "yargs",
-      "version": "18.1.0",
-      "purl": "pkg:npm/yargs@18.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://yargs.js.org/"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/yargs-parser@21.1.1",
-      "name": "yargs-parser",
-      "version": "21.1.1",
-      "purl": "pkg:npm/yargs-parser@21.1.1",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/yargs/yargs-parser"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/yargs-parser@22.0.0",
-      "name": "yargs-parser",
-      "version": "22.0.0",
-      "purl": "pkg:npm/yargs-parser@22.0.0",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/yargs/yargs-parser"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/yoctocolors@2.1.2",
-      "name": "yoctocolors",
-      "version": "2.1.2",
-      "purl": "pkg:npm/yoctocolors@2.1.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/yoctocolors"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/zod@3.25.76",
-      "name": "zod",
-      "version": "3.25.76",
-      "purl": "pkg:npm/zod@3.25.76",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://zod.dev"
         }
       ]
     },

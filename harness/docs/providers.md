@@ -72,20 +72,16 @@ assistant turn in flight is dropped during history reconstruction
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
 | `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge, steer |
 
-## Hidden providers
+## Retired standalone Google adapters
 
-`HIDDEN_LEGACY_PROVIDER_NAMES` (`providers/provider-definition.ts`) names providers
-that stay out of `listProviders()`, and therefore out of `GET /api/providers`, the
-pickers, `listProviderCapabilities()`, and the health sweep. They remain fully
-`isKnownProvider()`, so a profile naming one validates and runs.
-
-| Name | Family | Implementation | Why it is hidden |
-|------|--------|---------------|-------------------|
-| `antigravity` | antigravity | Google Antigravity CLI (`agy`) | Google's terms prohibit using third-party software to access the Service, and enforcement has suspended paid accounts across Antigravity, Gemini CLI, and Code Assist at once. Modus spawns only the user's own signed-in binary and never touches its credentials, but the exposure falls on the user's Google account, so it is opt-in by name. |
-| `gemini-cli` | gemini-cli | Gemini CLI | The free OAuth tier ended and Modus refuses to reuse those credentials; `getProvider` throws unless a paid API, Vertex AI, or compute-ADC deployment is configured explicitly. |
-
-Neither is deprecated: `antigravity` keeps native UUID resume, JSON Hook tool
-events/approvals, and the full MCP transport bridge described below.
+The standalone `gemini-cli` and `antigravity` adapters are excluded from the
+distributed app. They are not provider choices, and an old profile naming one
+must be changed before starting a new session. Modus does not read or reuse
+either CLI's OAuth credentials. Google's [Antigravity terms](https://antigravity.google/terms)
+restrict third-party access to that service; Gemini CLI's individual-account
+service ended, while API-key and enterprise paths remain separately available.
+For paid Google API access, use a declarative provider definition with your own
+API key or Vertex AI configuration instead of either standalone adapter.
 
 ## Declarative PI providers
 
@@ -110,11 +106,11 @@ because provider/profile validity must not change with the active project.
 Supported fields are:
 
 - `name` (required kebab-case), `label`, and `kind: "pi"`;
-- `api`, one of pi-ai's ten shipped protocols: `openai-completions`,
+- `api`, one of nine allowed PI protocols: `openai-completions`,
   `mistral-conversations`, `openai-responses`,
   `azure-openai-responses`, `openai-codex-responses`,
   `anthropic-messages`, `bedrock-converse-stream`,
-  `google-generative-ai`, `google-gemini-cli`, or `google-vertex`;
+  `google-generative-ai` or `google-vertex`;
 - `baseUrl` and optional `apiKeyName`. The latter is a Modus secret name;
   literal `apiKey` values are rejected;
 - optional `apiKeyRequired` (default `true`). Naming a secret normally declares
@@ -253,8 +249,6 @@ Two capability objects describe the real boundary:
 | Grok Build | `--rules` | `--system-prompt-override` | `AGENTS.md` always on |
 | OpenCode | config `instructions` | custom primary-agent `prompt` | project config/instructions toggle |
 | Declarative PI providers | `appendSystemPrompt` | `systemPrompt` | context-files toggle |
-| Gemini CLI (hidden) | unavailable | unavailable | Gemini project memory toggle |
-| Antigravity (hidden) | unavailable | unavailable | project instructions always on |
 
 The backend rejects a non-empty prompt when the selected mode is unsupported.
 It never approximates a system prompt by prepending headers or tags to the user
@@ -300,36 +294,6 @@ installed under `.modus/skills/` would load, not just the attached ones. Native
 roots are passed first, and PI keeps the first path on a name collision, so a
 user's own skill always wins. Sessions on PI therefore do **not** get the Modus
 skill tools; every other provider does. See `skills`.
-
-The embedded `gemini-cli` adapter is hidden legacy migration code. It is accepted
-only when a paid Gemini API key, explicit Vertex AI configuration, Cloud Shell,
-or compute ADC is present. It never consumes `~/.gemini/oauth_creds.json`.
-
-### Antigravity support boundary
-
-This provider is hidden from the pickers (see Hidden providers above) and runs
-only when a profile names it explicitly.
-
-Modus runs documented `agy --print` turns and resumes them with
-`--conversation <uuid>`. A Modus-owned plugin, installed through `agy plugin`,
-uses the documented `PreInvocation`, `PreToolUse`, `PostToolUse`, and `Stop`
-JSON Hooks to capture the native UUID, observe tool lifecycle, and gate tools in
-the Modus approval UI. A turn-scoped MCP fan-in server exposes profile/global
-stdio, SSE, and Streamable HTTP servers without overwriting the user's own
-Antigravity configuration.
-
-`providerControls.antigravity.mode` maps to `agy --mode` (`accept-edits` or
-`plan`), `sandbox` maps to `agy --sandbox`, and `printTimeout` maps to
-`--print-timeout`. Profile instructions are injected as documented
-`PreInvocation` ephemeral messages rather than being disguised as user text.
-
-Antigravity's current headless interface does not expose structured model-event
-streaming, thought/token/quota metrics, non-interactive image attachment,
-structured `ask_question` responses, arbitrary-message fork, or programmatic
-rewind. It also has no `effort`, `maxTurns`, or disable-project-context flag;
-Modus reports those mismatches instead of simulating them. The TUI's `/fork`
-and `/rewind` commands remain interactive Antigravity features, not provider
-APIs.
 
 ### Grok Build support boundary
 
@@ -400,7 +364,6 @@ When the agent calls the `ExitPlanMode` tool, the provider automatically resets 
 | `claude-code`, `claude-code-pty` | `claude` CLI |
 | `codex` | `codex` CLI plus `CODEX_API_KEY` / `OPENAI_API_KEY` or `~/.codex/auth.json` |
 | `cursor` | `cursor-agent` CLI (or configured resolver path) |
-| `antigravity` | `agy` CLI plus an authenticated `agy models` probe |
 | `grok-build` | `grok` CLI plus a headless ACP authentication probe (`grok login` or `XAI_API_KEY`) |
 | `opencode` | `opencode` CLI, or `bunx` for `opencode-ai` fallback |
 | Any declarative PI provider | resolved `<baseUrl>/models`, or its explicit `health.url`; definition headers and named Modus secret are included |
@@ -465,7 +428,7 @@ Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name
 - `USER_PROFILE` — active user profile name
 
-Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Antigravity uses its validated Modus plugin and turn-scoped MCP fan-in bridge, Grok Build receives the merged servers in ACP `session/new`/`session/load`, and PI providers use `mcp-bridge.ts`. OpenCode can use its own native MCP configuration, but this Modus adapter does not inject Modus MCP servers into it.
+Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Grok Build receives the merged servers in ACP `session/new`/`session/load`, and PI providers use `mcp-bridge.ts`. OpenCode can use its own native MCP configuration, but this Modus adapter does not inject Modus MCP servers into it.
 
 The built-in `modus` entry carries a random in-memory credential minted before
 the provider spawns. It authorizes only that entry's exact
@@ -513,10 +476,6 @@ Credential-bearing files are written to process-private storage:
   so a crashed backend's file is restored on the next start instead of being
   stranded in a frequently git-tracked directory. A file the user edited while
   the session ran is never clobbered.
-- **Antigravity** hook/IPC directories use `sensitive-temp.ts` (0700 directory,
-  0600 files, per-turn), not a predictable shared temp path. Directories left by
-  a dead process are pruned at startup; directories owned by a live process are
-  left alone.
 
 ### Provider diagnostics
 
@@ -527,8 +486,7 @@ Actionable provider warnings and errors remain enabled without this flag.
 
 **Source**: `providers/claude-code.ts` (MCP merge), `providers/cursor.ts`
 (MCP via .cursor/mcp.json), `providers/codex.ts` (MCP via config object),
-`providers/antigravity.ts`, `providers/antigravity-plugin.ts`,
-`providers/antigravity-mcp-bridge.ts`, `providers/opencode.ts`,
+`providers/opencode.ts`,
 `providers/grok-build.ts`, `providers/grok-build-acp.ts`,
 `providers/mcp-bridge.ts` (MCP lifecycle for PI agents),
 `providers/registry.ts` (provider lookup).

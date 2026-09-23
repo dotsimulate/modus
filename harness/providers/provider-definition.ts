@@ -18,7 +18,6 @@ export const KNOWN_PI_APIS = [
   "anthropic-messages",
   "bedrock-converse-stream",
   "google-generative-ai",
-  "google-gemini-cli",
   "google-vertex",
 ] as const;
 
@@ -31,19 +30,16 @@ export const STANDALONE_PROVIDER_NAMES = [
   "opencode",
 ] as const;
 
-/**
- * Reachable by name, kept out of the pickers.
- *
- * `gemini-cli` is here because its free OAuth tier is gone and Modus refuses to
- * reuse those credentials. `antigravity` is here for a different reason: Google's
- * terms forbid "using third party software, tools, or services to access the
- * Service", and enforcement has suspended paid accounts across Antigravity,
- * Gemini CLI, and Code Assist at once. Modus only spawns the user's own signed-in
- * `agy` binary and never touches its credentials, so the provider still works for
- * anyone who configures it deliberately — but the risk lands on their Google
- * account, so it is not offered as a peer of the others.
- */
-export const HIDDEN_LEGACY_PROVIDER_NAMES = ["gemini-cli", "antigravity"] as const;
+/** Reserved so a declarative definition cannot silently reuse an old profile name. */
+export const REMOVED_PROVIDER_NAMES = ["gemini-cli", "antigravity"] as const;
+
+export function removedProviderMigrationError(name: string): Error | undefined {
+  if (!REMOVED_PROVIDER_NAMES.includes(name as (typeof REMOVED_PROVIDER_NAMES)[number])) return undefined;
+  return new Error(
+    `Provider "${name}" was removed from Modus. Update this profile to use a supported provider. `
+    + "For paid Google API access, configure a declarative PI provider with the google-generative-ai or google-vertex protocol and a named API secret.",
+  );
+}
 
 const CostSchema = z.object({
   input: z.number().nonnegative(),
@@ -234,5 +230,5 @@ export function isBuiltInProviderName(name: string): boolean {
   const canonical = resolveProviderAlias(name);
   return BUILT_IN_PROVIDER_DEFINITIONS.some((definition) => definition.name === canonical)
     || STANDALONE_PROVIDER_NAMES.includes(canonical as (typeof STANDALONE_PROVIDER_NAMES)[number])
-    || HIDDEN_LEGACY_PROVIDER_NAMES.includes(canonical as (typeof HIDDEN_LEGACY_PROVIDER_NAMES)[number]);
+    || REMOVED_PROVIDER_NAMES.includes(canonical as (typeof REMOVED_PROVIDER_NAMES)[number]);
 }

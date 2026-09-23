@@ -136,43 +136,37 @@ The desktop package does not ship `node_modules`. These dependencies are inlined
 into the bundled `server.js`, `cli.js`, workers, and `ui/dist`, so their code is distributed
 verbatim.
 
-722 components, under 321 distinct license texts.
-
-### @a2a-js/sdk 0.3.11
-
-- License: `Apache-2.0`
-- Source: https://github.com/a2aproject/a2a-js
-- License text: **JAV-0001** — Apache-2.0
+515 components, under 240 distinct license texts.
 
 ### @antfu/install-pkg 1.1.0
 
 - License: `MIT`
 - Source: https://github.com/antfu/install-pkg#readme
-- License text: **JAV-0002** — MIT
+- License text: **JAV-0001** — MIT
 
 ### @anthropic-ai/claude-agent-sdk 0.3.239
 
 - License: `LicenseRef-Anthropic-Commercial`
 - Source: https://github.com/anthropics/claude-agent-sdk-typescript
-- License text: **JAV-0003** — LicenseRef-Anthropic-Commercial
+- License text: **JAV-0002** — LicenseRef-Anthropic-Commercial
 
 ### @anthropic-ai/sdk 0.100.1
 
 - License: `MIT`
 - Source: github:anthropics/anthropic-sdk-typescript
-- License text: **JAV-0004** — MIT
+- License text: **JAV-0003** — MIT
 
 ### @anthropic-ai/sdk 0.91.1
 
 - License: `MIT`
 - Source: github:anthropics/anthropic-sdk-typescript
-- License text: **JAV-0004** — MIT
+- License text: **JAV-0003** — MIT
 
 ### @aws-crypto/sha256-browser 5.2.0
 
 - License: `Apache-2.0`
 - Source: https://github.com/aws/aws-sdk-js-crypto-helpers/tree/master/packages/sha256-browser
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### @aws-crypto/sha256-js 5.2.0
 
@@ -184,7 +178,7 @@ verbatim.
 
 - License: `Apache-2.0`
 - Source: https://github.com/aws/aws-sdk-js-crypto-helpers/tree/master/packages/supports-web-crypto
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### @aws-crypto/util 5.2.0
 
@@ -324,18 +318,6 @@ verbatim.
 - Source: https://github.com/awslabs/aws-lambda-invoke-store
 - License text: **JAV-0014** — Apache-2.0
 
-### @babel/code-frame 7.29.0
-
-- License: `MIT`
-- Source: https://babel.dev/docs/en/next/babel-code-frame
-- License text: **JAV-0015** — MIT
-
-### @babel/helper-validator-identifier 7.28.5
-
-- License: `MIT`
-- Source: https://github.com/babel/babel
-- License text: **JAV-0015** — MIT
-
 ### @babel/runtime 7.28.6
 
 - License: `MIT`
@@ -348,673 +330,335 @@ verbatim.
 - Source: https://github.com/braintree/sanitize-url#readme
 - License text: **JAV-0016** — MIT
 
-### @bufbuild/protobuf 2.11.0
-
-- License: `(Apache-2.0 AND BSD-3-Clause)`
-- Redistributed under: `Apache-2.0 AND BSD-3-Clause`
-- Source: https://github.com/bufbuild/protobuf-es
-- License text: **JAV-0017** — Apache-2.0 — text not published by this component; attribution derived from its package metadata
-- License text: **JAV-0018** — BSD-3-Clause — text not published by this component; attribution derived from its package metadata
-
 ### @chenglou/pretext 0.0.5
 
 - License: `MIT`
 - Source: https://github.com/chenglou/pretext
-- License text: **JAV-0019** — MIT
+- License text: **JAV-0017** — MIT
 
 ### @chevrotain/types 11.1.2
 
 - License: `Apache-2.0`
 - Source: https://chevrotain.io/documentation/
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### @codemirror/autocomplete 6.20.3
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/autocomplete
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/commands 6.11.0
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/commands
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lang-css 6.3.1
 
 - License: `MIT`
 - Source: https://github.com/codemirror/lang-css
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lang-html 6.4.12
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/lang-html
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lang-javascript 6.2.5
 
 - License: `MIT`
 - Source: https://github.com/codemirror/lang-javascript
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lang-json 6.0.2
 
 - License: `MIT`
 - Source: https://github.com/codemirror/lang-json
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lang-markdown 6.5.2
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/lang-markdown
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lang-python 6.2.1
 
 - License: `MIT`
 - Source: https://github.com/codemirror/lang-python
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/language 6.12.4
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/language
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/lint 6.9.7
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/lint
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/search 6.7.1
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/search
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/state 6.7.1
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/state
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @codemirror/view 6.43.9
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/codemirror/view
-- License text: **JAV-0020** — MIT
+- License text: **JAV-0018** — MIT
 
 ### @earendil-works/pi-agent-core 0.79.0
 
 - License: `MIT`
 - Source: https://github.com/earendil-works/pi
-- License text: **JAV-0021** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0019** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @earendil-works/pi-ai 0.79.0
 
 - License: `MIT`
 - Source: https://github.com/earendil-works/pi
-- License text: **JAV-0021** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0019** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @earendil-works/pi-coding-agent 0.79.0
 
 - License: `MIT`
 - Source: https://github.com/earendil-works/pi
-- License text: **JAV-0021** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0019** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @earendil-works/pi-tui 0.79.10
 
 - License: `MIT`
 - Source: https://github.com/earendil-works/pi
-- License text: **JAV-0021** — MIT — text not published by this component; attribution derived from its package metadata
-
-### @github/keytar 7.10.6
-
-- License: `MIT`
-- Source: https://github.com/github/node-keytar
-- License text: **JAV-0022** — MIT
-
-### @google-cloud/common 8.0.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/common
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/logging 12.0.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/handwritten/logging
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/logging-api 0.3.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/packages/google-logging
-- License text: **JAV-0023** — Apache-2.0 — text not published by this component; attribution derived from its package metadata
-
-### @google-cloud/opentelemetry-cloud-monitoring-exporter 0.22.0
-
-- License: `Apache-2.0`
-- Source: GoogleCloudPlatform/opentelemetry-operations-js
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/opentelemetry-cloud-trace-exporter 3.1.0
-
-- License: `Apache-2.0`
-- Source: GoogleCloudPlatform/opentelemetry-operations-js
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/opentelemetry-resource-util 3.1.0
-
-- License: `Apache-2.0`
-- Source: GoogleCloudPlatform/opentelemetry-operations-js
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/paginator 7.0.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/paginator
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/precise-date 4.0.0
-
-- License: `Apache-2.0`
-- Source: googleapis/nodejs-precise-date
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/projectify 6.0.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/projectify
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/promisify 4.0.0
-
-- License: `Apache-2.0`
-- Source: googleapis/nodejs-promisify
-- License text: **JAV-0001** — Apache-2.0
-
-### @google-cloud/promisify 6.0.1
-
-- License: `Apache-2.0`
-- Source: googleapis/nodejs-promisify
-- License text: **JAV-0001** — Apache-2.0
-
-### @google/gemini-cli-core 0.56.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/google-gemini/gemini-cli
-- License text: **JAV-0001** — Apache-2.0
-
-### @google/genai 1.30.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/js-genai#readme
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0019** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @google/genai 1.52.0
 
 - License: `Apache-2.0`
 - Source: https://github.com/googleapis/js-genai#readme
-- License text: **JAV-0001** — Apache-2.0
-
-### @grpc/grpc-js 1.14.4
-
-- License: `Apache-2.0`
-- Source: https://grpc.io/
-- License text: **JAV-0024** — Apache-2.0
-
-### @grpc/proto-loader 0.8.0
-
-- License: `Apache-2.0`
-- Source: https://grpc.io/
-- License text: **JAV-0024** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### @hono/node-server 1.19.15
 
 - License: `MIT`
 - Source: https://github.com/honojs/node-server
-- License text: **JAV-0025** — MIT
-
-### @iarna/toml 2.2.5
-
-- License: `ISC`
-- Source: https://github.com/iarna/iarna-toml#readme
-- License text: **JAV-0026** — ISC
+- License text: **JAV-0020** — MIT
 
 ### @iconify/types 2.0.0
 
 - License: `MIT`
 - Source: https://github.com/iconify/iconify
-- License text: **JAV-0027** — MIT
+- License text: **JAV-0021** — MIT
 
 ### @iconify/utils 3.1.4
 
 - License: `MIT`
 - Source: https://iconify.design/docs/libraries/utils/
-- License text: **JAV-0028** — MIT
+- License text: **JAV-0022** — MIT
 
 ### @isaacs/cliui 8.0.2
 
 - License: `BlueOak-1.0.0`
 - Source: ssh://git@github.com:isaacs/cliui
-- License text: **JAV-0029** — BlueOak-1.0.0
-
-### @isaacs/cliui 9.0.0
-
-- License: `BlueOak-1.0.0`
-- Source: ssh://git@github.com:isaacs/cliui
-- License text: **JAV-0029** — BlueOak-1.0.0
-
-### @js-sdsl/ordered-map 4.4.2
-
-- License: `MIT`
-- Source: https://js-sdsl.org
-- License text: **JAV-0030** — MIT
+- License text: **JAV-0023** — BlueOak-1.0.0
 
 ### @kwsites/file-exists 1.1.1
 
 - License: `MIT`
 - Source: git@github.com:kwsites/file-exists
-- License text: **JAV-0031** — MIT
+- License text: **JAV-0024** — MIT
 
 ### @kwsites/promise-deferred 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/kwsites/promise-deferred
-- License text: **JAV-0032** — MIT
+- License text: **JAV-0025** — MIT
 
 ### @lezer/common 1.5.2
 
 - License: `MIT`
 - Source: https://github.com/lezer-parser/common
-- License text: **JAV-0033** — MIT
+- License text: **JAV-0026** — MIT
 
 ### @lezer/css 1.3.4
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/lezer/css
-- License text: **JAV-0033** — MIT
+- License text: **JAV-0026** — MIT
 
 ### @lezer/highlight 1.2.3
 
 - License: `MIT`
 - Source: https://github.com/lezer-parser/highlight
-- License text: **JAV-0033** — MIT
+- License text: **JAV-0026** — MIT
 
 ### @lezer/html 1.3.13
 
 - License: `MIT`
 - Source: https://github.com/lezer-parser/html
-- License text: **JAV-0033** — MIT
+- License text: **JAV-0026** — MIT
 
 ### @lezer/javascript 1.5.4
 
 - License: `MIT`
 - Source: https://github.com/lezer-parser/javascript
-- License text: **JAV-0033** — MIT
+- License text: **JAV-0026** — MIT
 
 ### @lezer/json 1.0.3
 
 - License: `MIT`
 - Source: https://github.com/lezer-parser/json
-- License text: **JAV-0034** — MIT
+- License text: **JAV-0027** — MIT
 
 ### @lezer/lr 1.4.10
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/lezer/lr
-- License text: **JAV-0033** — MIT
+- License text: **JAV-0026** — MIT
 
 ### @lezer/markdown 1.7.2
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/lezer/markdown
-- License text: **JAV-0035** — MIT
+- License text: **JAV-0028** — MIT
 
 ### @lezer/python 1.1.19
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/lezer/python
-- License text: **JAV-0035** — MIT
-
-### @lydell/node-pty 1.1.0
-
-- License: `MIT`
-- Source: https://github.com/lydell/node-pty
-- License text: **JAV-0036** — MIT
+- License text: **JAV-0028** — MIT
 
 ### @marijn/find-cluster-break 1.0.3
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/marijn/find-cluster-break
-- License text: **JAV-0037** — MIT
+- License text: **JAV-0029** — MIT
 
 ### @mariozechner/clipboard 0.3.9
 
 - License: `MIT`
 - Source: https://github.com/badlogic/clipboard
-- License text: **JAV-0038** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0030** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @mermaid-js/parser 1.2.1
 
 - License: `MIT`
 - Source: https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme
-- License text: **JAV-0039** — MIT
+- License text: **JAV-0031** — MIT
 
 ### @mistralai/mistralai 2.2.1
 
 - License: `Apache-2.0`
 - Source: https://github.com/mistralai/client-ts
-- License text: **JAV-0040** — Apache-2.0
+- License text: **JAV-0032** — Apache-2.0
 
 ### @modelcontextprotocol/sdk 1.30.0
 
 - License: `MIT`
 - Source: https://modelcontextprotocol.io
-- License text: **JAV-0041** — MIT
-
-### @opentelemetry/api 1.9.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/api
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/api-logs 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/api-logs
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/configuration 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/configuration
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/context-async-hooks 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-context-async-hooks
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/core 2.9.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-core
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-logs-otlp-grpc 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-logs-otlp-grpc
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-logs-otlp-http 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-logs-otlp-http
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-logs-otlp-proto 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-logs-otlp-proto
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-metrics-otlp-grpc 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-grpc
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-metrics-otlp-http 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-http
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-metrics-otlp-proto 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-metrics-otlp-proto
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-prometheus 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-exporter-prometheus
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-trace-otlp-grpc 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-trace-otlp-grpc
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-trace-otlp-http 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-trace-otlp-http
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-trace-otlp-proto 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/exporter-trace-otlp-proto
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/exporter-zipkin 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-exporter-zipkin
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/instrumentation 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-instrumentation
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/instrumentation-http 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-instrumentation-http
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/otlp-exporter-base 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/otlp-exporter-base
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/otlp-grpc-exporter-base 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/otlp-grpc-exporter-base
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/otlp-transformer 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/otlp-transformer
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/propagator-b3 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-propagator-b3
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/propagator-jaeger 2.9.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-propagator-jaeger
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/resources 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-resources
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/sdk-logs 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/sdk-logs
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/sdk-metrics 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/sdk-metrics
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/sdk-node 0.218.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/experimental/packages/opentelemetry-sdk-node
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/sdk-trace-base 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-base
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/sdk-trace-node 2.7.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-sdk-trace-node
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/semantic-conventions 1.39.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/semantic-conventions
-- License text: **JAV-0042** — Apache-2.0
-
-### @opentelemetry/semantic-conventions 1.40.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/open-telemetry/opentelemetry-js/tree/main/semantic-conventions
-- License text: **JAV-0042** — Apache-2.0
+- License text: **JAV-0033** — MIT
 
 ### @pkgjs/parseargs 0.11.0
 
 - License: `MIT`
 - Source: https://github.com/pkgjs/parseargs#readme
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0034** — MIT
 
 ### @protobufjs/aspromise 1.1.2
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/base64 1.1.2
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/codegen 2.0.5
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/eventemitter 1.1.1
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/fetch 1.1.1
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/float 1.0.2
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/path 1.1.2
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/pool 1.1.0
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @protobufjs/utf8 1.1.1
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dcodeIO/protobuf.js
-- License text: **JAV-0043** — BSD-3-Clause
-
-### @puppeteer/browsers 3.2.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/puppeteer/puppeteer/tree/main/packages/browsers
-- License text: **JAV-0044** — Apache-2.0 — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0035** — BSD-3-Clause
 
 ### @resvg/resvg-js 2.6.2
 
 - License: `MPL-2.0`
 - Source: git@github.com:yisibl/resvg-js
-- License text: **JAV-0045** — MPL-2.0
+- License text: **JAV-0036** — MPL-2.0
 
 ### @resvg/resvg-js-win32-x64-msvc 2.6.2
 
 - License: `MPL-2.0`
 - Source: git@github.com:yisibl/resvg-js
-- License text: **JAV-0046** — MPL-2.0 — text not published by this component; attribution derived from its package metadata
-
-### @sec-ant/readable-stream 0.4.1
-
-- License: `MIT`
-- Source: https://github.com/Sec-ant/readable-stream
-- License text: **JAV-0047** — MIT
-
-### @selderee/plugin-htmlparser2 0.11.0
-
-- License: `MIT`
-- Source: https://github.com/mxxii/selderee
-- License text: **JAV-0048** — MIT
+- License text: **JAV-0037** — MPL-2.0 — text not published by this component; attribution derived from its package metadata
 
 ### @silvia-odwyer/photon-node 0.3.4
 
 - License: `Apache-2.0`
 - Source: https://silvia-odwyer.github.io/photon/
-- License text: **JAV-0049** — Apache-2.0
+- License text: **JAV-0038** — Apache-2.0
 
 ### @simple-git/args-pathspec 1.0.3
 
 - License: `MIT`
 - Source: https://github.com/steveukx/git-js
-- License text: **JAV-0050** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0039** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @simple-git/argv-parser 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/steveukx/git-js
-- License text: **JAV-0051** — MIT — text not published by this component; attribution derived from its package metadata
-
-### @sindresorhus/merge-streams 4.0.0
-
-- License: `MIT`
-- Source: sindresorhus/merge-streams
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0040** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### @smithy/core 3.33.3
 
@@ -1086,3406 +730,2565 @@ verbatim.
 
 - License: `MIT`
 - Source: https://github.com/StableLib/stablelib/tree/master/packages/base64
-- License text: **JAV-0053** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3 7.4.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-array 3.2.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-array
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-axis 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-axis
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-brush 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-brush
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-chord 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-chord
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-color 3.1.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-color
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-contour 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-contour
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-delaunay 6.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-delaunay
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-dispatch 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-dispatch
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-drag 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-drag
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-dsv 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-dsv
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-ease 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-ease
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-fetch 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-fetch
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-force 3.0.10
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-force
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-format 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-format
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-geo 3.1.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-geo
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-hierarchy 3.1.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-hierarchy
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-interpolate 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-interpolate
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-path 3.1.1
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-path
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-polygon 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-polygon
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-quadtree 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-quadtree
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-random 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-random
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-scale 4.0.9
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-scale-chromatic 3.1.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale-chromatic
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-selection 3.0.11
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-shape 3.1.8
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-shape
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-time 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-time-format 4.0.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time-format
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-timer 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-timer
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-transition 3.0.9
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-transition
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/d3-zoom 3.0.8
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/debug 4.1.13
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/debug
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/estree 1.0.9
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/estree-jsx 1.0.5
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree-jsx
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/geojson 7946.0.16
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/geojson
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/hast 3.0.5
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/hast
-- License text: **JAV-0054** — MIT
-
-### @types/html-to-text 9.0.4
-
-- License: `MIT`
-- Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/html-to-text
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/mdast 4.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/mdast
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/ms 2.1.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ms
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/node 25.3.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node
-- License text: **JAV-0054** — MIT
-
-### @types/normalize-package-data 2.4.4
-
-- License: `MIT`
-- Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/normalize-package-data
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/react 19.2.18
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/retry 0.12.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0043** — MIT
 
 ### @types/trusted-types 2.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/unist 2.0.11
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/unist 3.0.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @ungap/structured-clone 1.3.3
 
 - License: `ISC`
 - Source: https://github.com/ungap/structured-clone#readme
-- License text: **JAV-0056** — ISC
+- License text: **JAV-0044** — ISC
 
 ### @upsetjs/venn.js 2.0.0
 
 - License: `MIT`
 - Source: https://github.com/upsetjs/venn.js
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0045** — MIT
 
 ### @xterm/addon-clipboard 0.2.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-clipboard
-- License text: **JAV-0058** — MIT
+- License text: **JAV-0046** — MIT
 
 ### @xterm/addon-fit 0.11.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-fit
-- License text: **JAV-0059** — MIT
+- License text: **JAV-0047** — MIT
 
 ### @xterm/addon-search 0.16.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-search
-- License text: **JAV-0060** — MIT
+- License text: **JAV-0048** — MIT
 
 ### @xterm/addon-unicode11 0.9.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-unicode11
-- License text: **JAV-0059** — MIT
+- License text: **JAV-0047** — MIT
 
 ### @xterm/addon-web-links 0.12.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-web-links
-- License text: **JAV-0060** — MIT
+- License text: **JAV-0048** — MIT
 
 ### @xterm/addon-webgl 0.19.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-webgl
-- License text: **JAV-0061** — MIT
-
-### @xterm/headless 5.5.0
-
-- License: `MIT`
-- Source: https://github.com/xtermjs/xterm.js
-- License text: **JAV-0062** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0049** — MIT
 
 ### @xterm/xterm 6.0.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js
-- License text: **JAV-0063** — MIT
+- License text: **JAV-0050** — MIT
 
 ### accepts 2.0.0
 
 - License: `MIT`
 - Source: jshttp/accepts
-- License text: **JAV-0064** — MIT
+- License text: **JAV-0051** — MIT
 
 ### agent-base 7.1.4
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/proxy-agents
-- License text: **JAV-0065** — MIT
+- License text: **JAV-0052** — MIT
 
 ### ajv 8.18.0
 
 - License: `MIT`
 - Source: https://ajv.js.org
-- License text: **JAV-0066** — MIT
+- License text: **JAV-0053** — MIT
 
 ### ajv-formats 3.0.1
 
 - License: `MIT`
 - Source: https://github.com/ajv-validator/ajv-formats#readme
-- License text: **JAV-0067** — MIT
+- License text: **JAV-0054** — MIT
 
 ### ansi-regex 5.0.1
 
 - License: `MIT`
 - Source: chalk/ansi-regex
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### ansi-regex 6.2.2
 
 - License: `MIT`
 - Source: chalk/ansi-regex
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### ansi-styles 4.3.0
 
 - License: `MIT`
 - Source: chalk/ansi-styles
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### ansi-styles 6.2.3
 
 - License: `MIT`
 - Source: chalk/ansi-styles
-- License text: **JAV-0068** — MIT
-
-### argparse 2.0.1
-
-- License: `Python-2.0`
-- Source: nodeca/argparse
-- License text: **JAV-0069** — Python-2.0
-
-### arrify 2.0.1
-
-- License: `MIT`
-- Source: sindresorhus/arrify
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### bail 2.0.2
 
 - License: `MIT`
 - Source: wooorm/bail
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### balanced-match 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/balanced-match
-- License text: **JAV-0071** — MIT
+- License text: **JAV-0058** — MIT
 
 ### balanced-match 4.0.4
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/balanced-match
-- License text: **JAV-0071** — MIT
+- License text: **JAV-0058** — MIT
 
 ### base64-js 1.5.1
 
 - License: `MIT`
 - Source: https://github.com/beatgammit/base64-js
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0059** — MIT
 
 ### bignumber.js 9.3.1
 
 - License: `MIT`
 - Source: https://github.com/MikeMcl/bignumber.js
-- License text: **JAV-0073** — MIT
+- License text: **JAV-0060** — MIT
 
 ### body-parser 2.3.0
 
 - License: `MIT`
 - Source: expressjs/body-parser
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0061** — MIT
 
 ### bowser 2.14.1
 
 - License: `MIT`
 - Source: https://github.com/bowser-js/bowser
-- License text: **JAV-0075** — MIT
+- License text: **JAV-0062** — MIT
 
 ### brace-expansion 2.1.4
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/brace-expansion
-- License text: **JAV-0076** — MIT
+- License text: **JAV-0063** — MIT
 
 ### brace-expansion 5.0.9
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/brace-expansion
-- License text: **JAV-0076** — MIT
+- License text: **JAV-0063** — MIT
 
 ### buffer-equal-constant-time 1.0.1
 
 - License: `BSD-3-Clause`
 - Source: git@github.com:goinstant/buffer-equal-constant-time
-- License text: **JAV-0077** — BSD-3-Clause
+- License text: **JAV-0064** — BSD-3-Clause
 
 ### bun-pty 0.4.8
 
 - License: `MIT`
 - Source: https://github.com/sursaone/bun-pty#readme
-- License text: **JAV-0078** — MIT
-
-### bundle-name 4.1.0
-
-- License: `MIT`
-- Source: sindresorhus/bundle-name
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0065** — MIT
 
 ### bytes 3.1.2
 
 - License: `MIT`
 - Source: visionmedia/bytes.js
-- License text: **JAV-0079** — MIT
-
-### call-bind 1.0.9
-
-- License: `MIT`
-- Source: https://github.com/ljharb/call-bind#readme
-- License text: **JAV-0080** — MIT
+- License text: **JAV-0066** — MIT
 
 ### call-bind-apply-helpers 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/ljharb/call-bind-apply-helpers#readme
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0067** — MIT
 
 ### call-bound 1.0.4
 
 - License: `MIT`
 - Source: https://github.com/ljharb/call-bound#readme
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0067** — MIT
 
 ### ccount 2.0.1
 
 - License: `MIT`
 - Source: wooorm/ccount
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### chalk 5.6.2
 
 - License: `MIT`
 - Source: chalk/chalk
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### character-entities 2.0.2
 
 - License: `MIT`
 - Source: wooorm/character-entities
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### character-entities-html4 2.1.0
 
 - License: `MIT`
 - Source: wooorm/character-entities-html4
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### character-entities-legacy 3.0.0
 
 - License: `MIT`
 - Source: wooorm/character-entities-legacy
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### character-reference-invalid 2.0.1
 
 - License: `MIT`
 - Source: wooorm/character-reference-invalid
-- License text: **JAV-0070** — MIT
-
-### chokidar 5.0.0
-
-- License: `MIT`
-- Source: https://github.com/paulmillr/chokidar
-- License text: **JAV-0082** — MIT
-
-### chromium-bidi 17.0.2
-
-- License: `Apache-2.0`
-- Source: https://github.com/GoogleChromeLabs/chromium-bidi
-- License text: **JAV-0042** — Apache-2.0
-
-### cjs-module-lexer 2.2.0
-
-- License: `MIT`
-- Source: https://github.com/nodejs/cjs-module-lexer#readme
-- License text: **JAV-0083** — MIT
-
-### cliui 8.0.1
-
-- License: `ISC`
-- Source: yargs/cliui
-- License text: **JAV-0084** — ISC
-
-### cliui 9.0.1
-
-- License: `ISC`
-- Source: yargs/cliui
-- License text: **JAV-0084** — ISC
+- License text: **JAV-0057** — MIT
 
 ### color-convert 2.0.1
 
 - License: `MIT`
 - Source: Qix-/color-convert
-- License text: **JAV-0085** — MIT
+- License text: **JAV-0068** — MIT
 
 ### color-name 1.1.4
 
 - License: `MIT`
 - Source: https://github.com/colorjs/color-name
-- License text: **JAV-0086** — MIT
+- License text: **JAV-0069** — MIT
 
 ### comma-separated-tokens 2.0.3
 
 - License: `MIT`
 - Source: wooorm/comma-separated-tokens
-- License text: **JAV-0087** — MIT
-
-### command-exists 1.2.9
-
-- License: `MIT`
-- Source: https://github.com/mathisonian/command-exists
-- License text: **JAV-0088** — MIT
+- License text: **JAV-0070** — MIT
 
 ### commander 7.2.0
 
 - License: `MIT`
 - Source: https://github.com/tj/commander.js
-- License text: **JAV-0089** — MIT
+- License text: **JAV-0071** — MIT
 
 ### commander 8.3.0
 
 - License: `MIT`
 - Source: https://github.com/tj/commander.js
-- License text: **JAV-0089** — MIT
+- License text: **JAV-0071** — MIT
 
 ### content-disposition 1.0.1
 
 - License: `MIT`
 - Source: jshttp/content-disposition
-- License text: **JAV-0090** — MIT
+- License text: **JAV-0072** — MIT
 
 ### content-type 1.0.5
 
 - License: `MIT`
 - Source: jshttp/content-type
-- License text: **JAV-0091** — MIT
+- License text: **JAV-0073** — MIT
 
 ### content-type 2.1.0
 
 - License: `MIT`
 - Source: jshttp/content-type
-- License text: **JAV-0091** — MIT
+- License text: **JAV-0073** — MIT
 
 ### cookie 0.7.2
 
 - License: `MIT`
 - Source: jshttp/cookie
-- License text: **JAV-0092** — MIT
+- License text: **JAV-0074** — MIT
 
 ### cookie-signature 1.2.2
 
 - License: `MIT`
 - Source: https://github.com/visionmedia/node-cookie-signature
-- License text: **JAV-0093** — MIT
+- License text: **JAV-0075** — MIT
 
 ### cors 2.8.6
 
 - License: `MIT`
 - Source: expressjs/cors
-- License text: **JAV-0094** — MIT
+- License text: **JAV-0076** — MIT
 
 ### cose-base 1.0.3
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/cose-base#readme
-- License text: **JAV-0095** — MIT
+- License text: **JAV-0077** — MIT
 
 ### cose-base 2.2.0
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/cose-base#readme
-- License text: **JAV-0095** — MIT
+- License text: **JAV-0077** — MIT
 
 ### crelt 1.0.7
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/marijn/crelt
-- License text: **JAV-0096** — MIT
+- License text: **JAV-0078** — MIT
 
 ### cross-spawn 7.0.6
 
 - License: `MIT`
 - Source: https://github.com/moxystudio/node-cross-spawn
-- License text: **JAV-0097** — MIT
+- License text: **JAV-0079** — MIT
 
 ### csstype 3.2.3
 
 - License: `MIT`
 - Source: https://github.com/frenic/csstype
-- License text: **JAV-0098** — MIT
+- License text: **JAV-0080** — MIT
 
 ### cytoscape 3.34.0
 
 - License: `MIT`
 - Source: http://js.cytoscape.org
-- License text: **JAV-0099** — MIT (LICENSE)
-- License text: **JAV-0100** — MIT (license-update.mjs)
+- License text: **JAV-0081** — MIT (LICENSE)
+- License text: **JAV-0082** — MIT (license-update.mjs)
 
 ### cytoscape-cose-bilkent 4.1.0
 
 - License: `MIT`
 - Source: https://github.com/cytoscape/cytoscape.js-cose-bilkent
-- License text: **JAV-0101** — MIT
+- License text: **JAV-0083** — MIT
 
 ### cytoscape-fcose 2.2.0
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/cytoscape.js-fcose
-- License text: **JAV-0102** — MIT
+- License text: **JAV-0084** — MIT
 
 ### d3 7.9.0
 
 - License: `ISC`
 - Source: https://d3js.org
-- License text: **JAV-0103** — ISC
+- License text: **JAV-0085** — ISC
 
 ### d3-array 2.12.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-array/
-- License text: **JAV-0103** — ISC
+- License text: **JAV-0085** — ISC
 
 ### d3-array 3.2.4
 
 - License: `ISC`
 - Source: https://d3js.org/d3-array/
-- License text: **JAV-0103** — ISC
+- License text: **JAV-0085** — ISC
 
 ### d3-axis 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-axis/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-brush 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-brush/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-chord 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-chord/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-color 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-color/
-- License text: **JAV-0105** — ISC
+- License text: **JAV-0087** — ISC
 
 ### d3-contour 4.0.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-contour/
-- License text: **JAV-0106** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-delaunay 6.0.4
 
 - License: `ISC`
 - Source: https://github.com/d3/d3-delaunay
-- License text: **JAV-0107** — ISC
+- License text: **JAV-0089** — ISC
 
 ### d3-dispatch 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-dispatch/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-drag 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-drag/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-dsv 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-dsv/
-- License text: **JAV-0108** — ISC
+- License text: **JAV-0090** — ISC
 
 ### d3-ease 3.0.1
 
 - License: `BSD-3-Clause`
 - Source: https://d3js.org/d3-ease/
-- License text: **JAV-0109** — BSD-3-Clause
+- License text: **JAV-0091** — BSD-3-Clause
 
 ### d3-fetch 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-fetch/
-- License text: **JAV-0110** — ISC
+- License text: **JAV-0092** — ISC
 
 ### d3-force 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-force/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-format 3.1.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-format/
-- License text: **JAV-0111** — ISC
+- License text: **JAV-0093** — ISC
 
 ### d3-geo 3.1.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-geo/
-- License text: **JAV-0112** — ISC
+- License text: **JAV-0094** — ISC
 
 ### d3-hierarchy 3.1.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-hierarchy/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-interpolate 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-interpolate/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-path 1.0.9
 
 - License: `ISC`
 - Source: https://d3js.org/d3-path/
-- License text: **JAV-0113** — ISC
+- License text: **JAV-0095** — ISC
 
 ### d3-path 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-path/
-- License text: **JAV-0113** — ISC
+- License text: **JAV-0095** — ISC
 
 ### d3-polygon 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-polygon/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-quadtree 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-quadtree/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-random 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-random/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-sankey 0.12.3
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/d3/d3-sankey
-- License text: **JAV-0114** — BSD-3-Clause
+- License text: **JAV-0096** — BSD-3-Clause
 
 ### d3-scale 4.0.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-scale/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-scale-chromatic 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-scale-chromatic/
-- License text: **JAV-0115** — ISC
+- License text: **JAV-0097** — ISC
 
 ### d3-selection 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-selection/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-shape 1.3.7
 
 - License: `ISC`
 - Source: https://d3js.org/d3-shape/
-- License text: **JAV-0105** — ISC
+- License text: **JAV-0087** — ISC
 
 ### d3-shape 3.2.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-shape/
-- License text: **JAV-0105** — ISC
+- License text: **JAV-0087** — ISC
 
 ### d3-time 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-time/
-- License text: **JAV-0105** — ISC
+- License text: **JAV-0087** — ISC
 
 ### d3-time-format 4.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-time-format/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-timer 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-timer/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-transition 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-transition/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-zoom 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-zoom/
-- License text: **JAV-0104** — ISC
+- License text: **JAV-0086** — ISC
 
 ### dagre-d3-es 7.0.14
 
 - License: `MIT`
 - Source: https://github.com/tbo47/dagre-es
-- License text: **JAV-0116** — MIT
+- License text: **JAV-0098** — MIT
 
 ### data-uri-to-buffer 4.0.1
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/node-data-uri-to-buffer
-- License text: **JAV-0117** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0099** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### dayjs 1.11.21
 
 - License: `MIT`
 - Source: https://day.js.org
-- License text: **JAV-0118** — MIT
+- License text: **JAV-0100** — MIT
 
 ### debug 4.4.3
 
 - License: `MIT`
 - Source: https://github.com/debug-js/debug
-- License text: **JAV-0119** — MIT
+- License text: **JAV-0101** — MIT
 
 ### decode-named-character-reference 1.3.0
 
 - License: `MIT`
 - Source: wooorm/decode-named-character-reference
-- License text: **JAV-0120** — MIT
-
-### deepmerge 4.3.1
-
-- License: `MIT`
-- Source: https://github.com/TehShrike/deepmerge
-- License text: **JAV-0121** — MIT
-
-### default-browser 5.5.0
-
-- License: `MIT`
-- Source: sindresorhus/default-browser
-- License text: **JAV-0052** — MIT
-
-### default-browser-id 5.0.1
-
-- License: `MIT`
-- Source: sindresorhus/default-browser-id
-- License text: **JAV-0052** — MIT
-
-### define-data-property 1.1.4
-
-- License: `MIT`
-- Source: https://github.com/ljharb/define-data-property#readme
-- License text: **JAV-0122** — MIT
-
-### define-lazy-prop 3.0.0
-
-- License: `MIT`
-- Source: sindresorhus/define-lazy-prop
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0102** — MIT
 
 ### delaunator 5.1.0
 
 - License: `ISC`
 - Source: https://github.com/mapbox/delaunator
-- License text: **JAV-0123** — ISC
+- License text: **JAV-0103** — ISC
 
 ### depd 2.0.0
 
 - License: `MIT`
 - Source: dougwilson/nodejs-depd
-- License text: **JAV-0124** — MIT
+- License text: **JAV-0104** — MIT
 
 ### dequal 2.0.3
 
 - License: `MIT`
 - Source: lukeed/dequal
-- License text: **JAV-0125** — MIT
+- License text: **JAV-0105** — MIT
 
 ### devlop 1.1.0
 
 - License: `MIT`
 - Source: wooorm/devlop
-- License text: **JAV-0126** — MIT
-
-### devtools-protocol 0.0.1666840
-
-- License: `BSD-3-Clause`
-- Source: https://github.com/ChromeDevTools/devtools-protocol
-- License text: **JAV-0127** — BSD-3-Clause
-
-### diff 8.0.3
-
-- License: `BSD-3-Clause`
-- Source: https://github.com/kpdecker/jsdiff
-- License text: **JAV-0128** — BSD-3-Clause
+- License text: **JAV-0106** — MIT
 
 ### diff 8.0.4
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/kpdecker/jsdiff
-- License text: **JAV-0128** — BSD-3-Clause
-
-### dom-serializer 2.0.0
-
-- License: `MIT`
-- Source: https://github.com/cheeriojs/dom-serializer
-- License text: **JAV-0129** — MIT
-
-### domelementtype 2.3.0
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/fb55/domelementtype
-- License text: **JAV-0130** — BSD-2-Clause
-
-### domhandler 5.0.3
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/fb55/domhandler
-- License text: **JAV-0130** — BSD-2-Clause
+- License text: **JAV-0107** — BSD-3-Clause
 
 ### dompurify 3.4.14
 
 - License: `(MPL-2.0 OR Apache-2.0)`
 - Redistributed under: `Apache-2.0`
 - Source: https://github.com/cure53/DOMPurify
-- License text: **JAV-0001** — Apache-2.0 (LICENSE)
-- License text: **JAV-0131** — Apache-2.0 (LICENSE-MPL)
-
-### domutils 3.2.2
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/fb55/domutils
-- License text: **JAV-0130** — BSD-2-Clause
-
-### dot-prop 6.0.1
-
-- License: `MIT`
-- Source: sindresorhus/dot-prop
-- License text: **JAV-0052** — MIT
-
-### dotenv 16.6.1
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/motdotla/dotenv#readme
-- License text: **JAV-0132** — BSD-2-Clause
-
-### dotenv 17.2.4
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/motdotla/dotenv#readme
-- License text: **JAV-0132** — BSD-2-Clause
-
-### dotenv-expand 12.0.3
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/motdotla/dotenv-expand
-- License text: **JAV-0133** — BSD-2-Clause
+- License text: **JAV-0004** — Apache-2.0 (LICENSE)
+- License text: **JAV-0108** — Apache-2.0 (LICENSE-MPL)
 
 ### dunder-proto 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/es-shims/dunder-proto#readme
-- License text: **JAV-0134** — MIT
-
-### duplexify 4.1.3
-
-- License: `MIT`
-- Source: https://github.com/mafintosh/duplexify
-- License text: **JAV-0135** — MIT
+- License text: **JAV-0109** — MIT
 
 ### eastasianwidth 0.2.0
 
 - License: `MIT`
 - Source: https://github.com/komagata/eastasianwidth
-- License text: **JAV-0136** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0110** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### ecdsa-sig-formatter 1.0.11
 
 - License: `Apache-2.0`
 - Source: https://github.com/Brightspace/node-ecdsa-sig-formatter#readme
-- License text: **JAV-0137** — Apache-2.0
+- License text: **JAV-0111** — Apache-2.0
 
 ### ee-first 1.1.1
 
 - License: `MIT`
 - Source: jonathanong/ee-first
-- License text: **JAV-0138** — MIT
-
-### emoji-regex 10.6.0
-
-- License: `MIT`
-- Source: https://mths.be/emoji-regex
-- License text: **JAV-0139** — MIT
+- License text: **JAV-0112** — MIT
 
 ### emoji-regex 8.0.0
 
 - License: `MIT`
 - Source: https://mths.be/emoji-regex
-- License text: **JAV-0139** — MIT
+- License text: **JAV-0113** — MIT
 
 ### emoji-regex 9.2.2
 
 - License: `MIT`
 - Source: https://mths.be/emoji-regex
-- License text: **JAV-0139** — MIT
+- License text: **JAV-0113** — MIT
 
 ### encodeurl 2.0.0
 
 - License: `MIT`
 - Source: pillarjs/encodeurl
-- License text: **JAV-0140** — MIT
-
-### end-of-stream 1.4.5
-
-- License: `MIT`
-- Source: https://github.com/mafintosh/end-of-stream
-- License text: **JAV-0135** — MIT
-
-### entities 4.5.0
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/fb55/entities
-- License text: **JAV-0130** — BSD-2-Clause
+- License text: **JAV-0114** — MIT
 
 ### entities 6.0.1
 
 - License: `BSD-2-Clause`
 - Source: https://github.com/fb55/entities
-- License text: **JAV-0130** — BSD-2-Clause
+- License text: **JAV-0115** — BSD-2-Clause
 
 ### es-define-property 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/es-define-property#readme
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0067** — MIT
 
 ### es-errors 1.3.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/es-errors#readme
-- License text: **JAV-0081** — MIT
-
-### es-module-lexer 2.3.2
-
-- License: `MIT`
-- Source: https://github.com/guybedford/es-module-lexer#readme
-- License text: **JAV-0141** — MIT
+- License text: **JAV-0067** — MIT
 
 ### es-object-atoms 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/es-object-atoms#readme
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0067** — MIT
 
 ### es-toolkit 1.49.0
 
 - License: `MIT`
 - Source: https://es-toolkit.dev
-- License text: **JAV-0142** — MIT
-
-### escalade 3.2.0
-
-- License: `MIT`
-- Source: lukeed/escalade
-- License text: **JAV-0143** — MIT
+- License text: **JAV-0116** — MIT
 
 ### escape-html 1.0.3
 
 - License: `MIT`
 - Source: component/escape-html
-- License text: **JAV-0144** — MIT
+- License text: **JAV-0117** — MIT
 
 ### escape-string-regexp 5.0.0
 
 - License: `MIT`
 - Source: sindresorhus/escape-string-regexp
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### estree-util-is-identifier-name 3.0.0
 
 - License: `MIT`
 - Source: syntax-tree/estree-util-is-identifier-name
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### etag 1.8.1
 
 - License: `MIT`
 - Source: jshttp/etag
-- License text: **JAV-0146** — MIT
+- License text: **JAV-0119** — MIT
 
 ### eventsource 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/EventSource/eventsource#readme
-- License text: **JAV-0147** — MIT
+- License text: **JAV-0120** — MIT
 
 ### eventsource-parser 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/rexxars/eventsource-parser#readme
-- License text: **JAV-0148** — MIT
-
-### execa 9.6.1
-
-- License: `MIT`
-- Source: sindresorhus/execa
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0121** — MIT
 
 ### express 5.2.1
 
 - License: `MIT`
 - Source: https://expressjs.com/
-- License text: **JAV-0149** — MIT
+- License text: **JAV-0122** — MIT
 
 ### express-rate-limit 8.3.0
 
 - License: `MIT`
 - Source: https://github.com/express-rate-limit/express-rate-limit
-- License text: **JAV-0150** — MIT
+- License text: **JAV-0123** — MIT
 
 ### extend 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/justmoon/node-extend
-- License text: **JAV-0151** — MIT
+- License text: **JAV-0124** — MIT
 
 ### fast-deep-equal 3.1.3
 
 - License: `MIT`
 - Source: https://github.com/epoberezkin/fast-deep-equal#readme
-- License text: **JAV-0152** — MIT
-
-### fast-levenshtein 2.0.6
-
-- License: `MIT`
-- Source: https://github.com/hiddentao/fast-levenshtein
-- License text: **JAV-0153** — MIT
+- License text: **JAV-0125** — MIT
 
 ### fast-sha256 1.3.0
 
 - License: `Unlicense`
 - Source: https://github.com/dchest/fast-sha256-js
-- License text: **JAV-0154** — Unlicense
+- License text: **JAV-0126** — Unlicense
 
 ### fast-uri 3.1.6
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/fastify/fast-uri
-- License text: **JAV-0155** — BSD-3-Clause
+- License text: **JAV-0127** — BSD-3-Clause
 
 ### fastdom 1.0.12
 
 - License: `MIT`
 - Source: https://github.com/wilsonpage/fastdom
-- License text: **JAV-0156** — MIT — text not published by this component; attribution derived from its package metadata
-
-### fdir 6.4.6
-
-- License: `MIT`
-- Source: https://github.com/thecodrr/fdir#readme
-- License text: **JAV-0157** — MIT
+- License text: **JAV-0128** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### fetch-blob 3.2.0
 
 - License: `MIT`
 - Source: https://github.com/node-fetch/fetch-blob#readme
-- License text: **JAV-0158** — MIT
-
-### figures 6.1.0
-
-- License: `MIT`
-- Source: sindresorhus/figures
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0129** — MIT
 
 ### finalhandler 2.1.1
 
 - License: `MIT`
 - Source: pillarjs/finalhandler
-- License text: **JAV-0159** — MIT
-
-### find-up-simple 1.0.1
-
-- License: `MIT`
-- Source: sindresorhus/find-up-simple
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0130** — MIT
 
 ### foreground-child 3.3.1
 
 - License: `ISC`
 - Source: https://github.com/tapjs/foreground-child
-- License text: **JAV-0160** — ISC
+- License text: **JAV-0131** — ISC
 
 ### formdata-polyfill 4.0.10
 
 - License: `MIT`
 - Source: https://github.com/jimmywarting/FormData#readme
-- License text: **JAV-0161** — MIT
+- License text: **JAV-0132** — MIT
 
 ### forwarded 0.2.0
 
 - License: `MIT`
 - Source: jshttp/forwarded
-- License text: **JAV-0090** — MIT
-
-### forwarded-parse 2.1.2
-
-- License: `MIT`
-- Source: https://github.com/lpinca/forwarded-parse
-- License text: **JAV-0162** — MIT
+- License text: **JAV-0072** — MIT
 
 ### fresh 2.0.0
 
 - License: `MIT`
 - Source: jshttp/fresh
-- License text: **JAV-0163** — MIT
+- License text: **JAV-0133** — MIT
 
 ### function-bind 1.1.2
 
 - License: `MIT`
 - Source: https://github.com/Raynos/function-bind
-- License text: **JAV-0164** — MIT
-
-### fzf 0.5.2
-
-- License: `BSD-3-Clause`
-- Source: https://fzf.netlify.app
-- License text: **JAV-0165** — BSD-3-Clause
+- License text: **JAV-0134** — MIT
 
 ### gaxios 7.1.3
 
 - License: `Apache-2.0`
 - Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gaxios
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### gaxios 7.3.1
 
 - License: `Apache-2.0`
 - Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gaxios
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### gcp-metadata 8.1.2
 
 - License: `Apache-2.0`
 - Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gcp-metadata
-- License text: **JAV-0001** — Apache-2.0
-
-### gcp-metadata 9.0.3
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gcp-metadata
-- License text: **JAV-0001** — Apache-2.0
-
-### get-caller-file 2.0.5
-
-- License: `ISC`
-- Source: https://github.com/stefanpenner/get-caller-file#readme
-- License text: **JAV-0166** — ISC
+- License text: **JAV-0004** — Apache-2.0
 
 ### get-east-asian-width 1.6.0
 
 - License: `MIT`
 - Source: sindresorhus/get-east-asian-width
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### get-intrinsic 1.3.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/get-intrinsic#readme
-- License text: **JAV-0080** — MIT
+- License text: **JAV-0135** — MIT
 
 ### get-proto 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/get-proto#readme
-- License text: **JAV-0167** — MIT
-
-### get-stream 9.0.1
-
-- License: `MIT`
-- Source: sindresorhus/get-stream
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0136** — MIT
 
 ### glob 10.5.0
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/node-glob
-- License text: **JAV-0168** — BlueOak-1.0.0
-
-### glob 12.0.0
-
-- License: `BlueOak-1.0.0`
-- Source: git@github.com:isaacs/node-glob
-- License text: **JAV-0168** — BlueOak-1.0.0
+- License text: **JAV-0137** — BlueOak-1.0.0
 
 ### glob 13.0.6
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/node-glob
-- License text: **JAV-0168** — BlueOak-1.0.0
-
-### google-auth-library 10.5.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0137** — BlueOak-1.0.0
 
 ### google-auth-library 10.9.0
 
 - License: `Apache-2.0`
 - Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs
-- License text: **JAV-0001** — Apache-2.0
-
-### google-auth-library 11.0.2
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/google-auth-library-nodejs
-- License text: **JAV-0001** — Apache-2.0
-
-### google-gax 6.0.2
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/gax
-- License text: **JAV-0169** — Apache-2.0 — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0004** — Apache-2.0
 
 ### google-logging-utils 1.1.3
 
 - License: `Apache-2.0`
 - Source: https://github.com/googleapis/google-cloud-node-core/tree/main/dev-packages/logging-utils
-- License text: **JAV-0001** — Apache-2.0
-
-### google-logging-utils 2.0.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node-core/tree/main/dev-packages/logging-utils
-- License text: **JAV-0001** — Apache-2.0
-
-### googleapis 173.0.0
-
-- License: `Apache-2.0`
-- Source: googleapis/google-api-nodejs-client
-- License text: **JAV-0001** — Apache-2.0
-
-### googleapis-common 8.0.3
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/nodejs-googleapis-common
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### gopd 1.2.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/gopd#readme
-- License text: **JAV-0170** — MIT
+- License text: **JAV-0138** — MIT
 
 ### graceful-fs 4.2.11
 
 - License: `ISC`
 - Source: https://github.com/isaacs/node-graceful-fs
-- License text: **JAV-0171** — ISC
-
-### gtoken 8.0.0
-
-- License: `MIT`
-- Source: google/node-gtoken
-- License text: **JAV-0172** — MIT
+- License text: **JAV-0139** — ISC
 
 ### hachure-fill 0.5.2
 
 - License: `MIT`
 - Source: https://github.com/pshihn/hachure-fill#readme
-- License text: **JAV-0173** — MIT
-
-### has-property-descriptors 1.0.2
-
-- License: `MIT`
-- Source: https://github.com/inspect-js/has-property-descriptors#readme
-- License text: **JAV-0174** — MIT
+- License text: **JAV-0140** — MIT
 
 ### has-symbols 1.1.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/has-symbols#readme
-- License text: **JAV-0175** — MIT
+- License text: **JAV-0141** — MIT
 
 ### hasown 2.0.2
 
 - License: `MIT`
 - Source: https://github.com/inspect-js/hasOwn#readme
-- License text: **JAV-0176** — MIT
+- License text: **JAV-0142** — MIT
 
 ### hast-util-from-parse5 8.0.3
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-from-parse5
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### hast-util-parse-selector 4.0.0
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-parse-selector
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### hast-util-raw 9.1.0
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-raw
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### hast-util-sanitize 5.0.2
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-sanitize
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### hast-util-to-jsx-runtime 2.3.6
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-to-jsx-runtime
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### hast-util-to-parse5 8.0.1
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-to-parse5
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### hast-util-whitespace 3.0.0
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-whitespace
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### hastscript 9.0.1
 
 - License: `MIT`
 - Source: syntax-tree/hastscript
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### highlight.js 10.7.3
 
 - License: `BSD-3-Clause`
 - Source: https://highlightjs.org/
-- License text: **JAV-0177** — BSD-3-Clause
+- License text: **JAV-0143** — BSD-3-Clause
 
 ### highlight.js 11.12.0
 
 - License: `BSD-3-Clause`
 - Source: https://highlightjs.org/
-- License text: **JAV-0177** — BSD-3-Clause
+- License text: **JAV-0143** — BSD-3-Clause
 
 ### hono 4.13.5
 
 - License: `MIT`
 - Source: https://hono.dev
-- License text: **JAV-0178** — MIT
-
-### hosted-git-info 7.0.2
-
-- License: `ISC`
-- Source: https://github.com/npm/hosted-git-info
-- License text: **JAV-0179** — ISC
+- License text: **JAV-0144** — MIT
 
 ### hosted-git-info 9.0.3
 
 - License: `ISC`
 - Source: https://github.com/npm/hosted-git-info
-- License text: **JAV-0179** — ISC
-
-### html-entities 2.6.0
-
-- License: `MIT`
-- Source: https://github.com/mdevils/html-entities
-- License text: **JAV-0180** — MIT
-
-### html-to-text 9.0.5
-
-- License: `MIT`
-- Source: https://github.com/html-to-text/node-html-to-text
-- License text: **JAV-0181** — MIT
+- License text: **JAV-0145** — ISC
 
 ### html-url-attributes 3.0.1
 
 - License: `MIT`
 - Source: https://github.com/rehypejs/rehype-minify/tree/main/packages/html-url-attributes
-- License text: **JAV-0182** — MIT
+- License text: **JAV-0146** — MIT
 
 ### html-void-elements 3.0.0
 
 - License: `MIT`
 - Source: wooorm/html-void-elements
-- License text: **JAV-0087** — MIT
-
-### htmlparser2 8.0.2
-
-- License: `MIT`
-- Source: https://github.com/fb55/htmlparser2
-- License text: **JAV-0183** — MIT
+- License text: **JAV-0070** — MIT
 
 ### http-errors 2.0.1
 
 - License: `MIT`
 - Source: jshttp/http-errors
-- License text: **JAV-0184** — MIT
+- License text: **JAV-0147** — MIT
 
 ### http-proxy-agent 7.0.2
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/proxy-agents
-- License text: **JAV-0065** — MIT
+- License text: **JAV-0052** — MIT
 
 ### https-proxy-agent 7.0.6
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/proxy-agents
-- License text: **JAV-0065** — MIT
-
-### human-signals 8.0.1
-
-- License: `Apache-2.0`
-- Source: https://www.github.com/ehmicky/human-signals
-- License text: **JAV-0185** — Apache-2.0
+- License text: **JAV-0052** — MIT
 
 ### iconv-lite 0.6.3
 
 - License: `MIT`
 - Source: https://github.com/ashtuchkin/iconv-lite
-- License text: **JAV-0186** — MIT
+- License text: **JAV-0148** — MIT
 
 ### iconv-lite 0.7.2
 
 - License: `MIT`
 - Source: https://github.com/pillarjs/iconv-lite
-- License text: **JAV-0186** — MIT
-
-### ignore 7.0.0
-
-- License: `MIT`
-- Source: git@github.com:kaelzhang/node-ignore
-- License text: **JAV-0187** — MIT
+- License text: **JAV-0148** — MIT
 
 ### ignore 7.0.5
 
 - License: `MIT`
 - Source: git@github.com:kaelzhang/node-ignore
-- License text: **JAV-0187** — MIT
-
-### import-in-the-middle 3.3.3
-
-- License: `Apache-2.0`
-- Source: https://github.com/nodejs/import-in-the-middle#readme
-- License text: **JAV-0042** — Apache-2.0 (LICENSE)
-- License text: **JAV-0188** — Apache-2.0 (LICENSE-3rdparty.csv)
-- License text: **JAV-0189** — Apache-2.0 (NOTICE)
+- License text: **JAV-0149** — MIT
 
 ### import-meta-resolve 4.2.0
 
 - License: `MIT`
 - Source: wooorm/import-meta-resolve
-- License text: **JAV-0190** — MIT
-
-### index-to-position 1.2.0
-
-- License: `MIT`
-- Source: sindresorhus/index-to-position
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0150** — MIT
 
 ### inherits 2.0.4
 
 - License: `ISC`
 - Source: https://github.com/isaacs/inherits
-- License text: **JAV-0191** — ISC
+- License text: **JAV-0151** — ISC
 
 ### inline-style-parser 0.2.7
 
 - License: `MIT`
 - Source: https://github.com/remarkablemark/inline-style-parser
-- License text: **JAV-0192** — MIT
+- License text: **JAV-0152** — MIT
 
 ### internmap 1.0.1
 
 - License: `ISC`
 - Source: https://github.com/mbostock/internmap/
-- License text: **JAV-0193** — ISC
+- License text: **JAV-0153** — ISC
 
 ### internmap 2.0.3
 
 - License: `ISC`
 - Source: https://github.com/mbostock/internmap/
-- License text: **JAV-0193** — ISC
+- License text: **JAV-0153** — ISC
 
 ### ip-address 10.5.0
 
 - License: `MIT`
 - Source: https://github.com/beaugunderson/ip-address
-- License text: **JAV-0194** — MIT
+- License text: **JAV-0154** — MIT
 
 ### ipaddr.js 1.9.1
 
 - License: `MIT`
 - Source: https://github.com/whitequark/ipaddr.js
-- License text: **JAV-0195** — MIT
+- License text: **JAV-0155** — MIT
 
 ### is-alphabetical 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-alphabetical
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### is-alphanumerical 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-alphanumerical
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### is-decimal 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-decimal
-- License text: **JAV-0087** — MIT
-
-### is-docker 3.0.0
-
-- License: `MIT`
-- Source: sindresorhus/is-docker
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0070** — MIT
 
 ### is-fullwidth-code-point 3.0.0
 
 - License: `MIT`
 - Source: sindresorhus/is-fullwidth-code-point
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### is-hexadecimal 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-hexadecimal
-- License text: **JAV-0087** — MIT
-
-### is-inside-container 1.0.0
-
-- License: `MIT`
-- Source: sindresorhus/is-inside-container
-- License text: **JAV-0052** — MIT
-
-### is-obj 2.0.0
-
-- License: `MIT`
-- Source: sindresorhus/is-obj
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0070** — MIT
 
 ### is-plain-obj 4.1.0
 
 - License: `MIT`
 - Source: sindresorhus/is-plain-obj
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### is-promise 4.0.0
 
 - License: `MIT`
 - Source: https://github.com/then/is-promise
-- License text: **JAV-0196** — MIT
-
-### is-stream 4.0.1
-
-- License: `MIT`
-- Source: sindresorhus/is-stream
-- License text: **JAV-0052** — MIT
-
-### is-unicode-supported 2.1.0
-
-- License: `MIT`
-- Source: sindresorhus/is-unicode-supported
-- License text: **JAV-0052** — MIT
-
-### is-wsl 3.1.1
-
-- License: `MIT`
-- Source: sindresorhus/is-wsl
-- License text: **JAV-0052** — MIT
-
-### isarray 2.0.5
-
-- License: `MIT`
-- Source: https://github.com/juliangruber/isarray
-- License text: **JAV-0197** — MIT
-
-### isbinaryfile 5.0.7
-
-- License: `MIT`
-- Source: https://github.com/gjtorikian/isBinaryFile
-- License text: **JAV-0198** — MIT
+- License text: **JAV-0156** — MIT
 
 ### isexe 2.0.0
 
 - License: `ISC`
 - Source: https://github.com/isaacs/isexe#readme
-- License text: **JAV-0199** — ISC
+- License text: **JAV-0157** — ISC
 
 ### jackspeak 3.4.3
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/jackspeak
-- License text: **JAV-0200** — BlueOak-1.0.0
-
-### jackspeak 4.2.3
-
-- License: `BlueOak-1.0.0`
-- Source: https://github.com/isaacs/jackspeak
-- License text: **JAV-0200** — BlueOak-1.0.0
+- License text: **JAV-0158** — BlueOak-1.0.0
 
 ### jiti 2.7.0
 
 - License: `MIT`
 - Source: unjs/jiti
-- License text: **JAV-0201** — MIT
+- License text: **JAV-0159** — MIT
 
 ### jose 6.2.0
 
 - License: `MIT`
 - Source: https://github.com/panva/jose
-- License text: **JAV-0202** — MIT
+- License text: **JAV-0160** — MIT
 
 ### js-base64 3.9.1
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dankogai/js-base64
-- License text: **JAV-0203** — BSD-3-Clause
-
-### js-tokens 4.0.0
-
-- License: `MIT`
-- Source: lydell/js-tokens
-- License text: **JAV-0204** — MIT
-
-### js-yaml 4.3.2
-
-- License: `MIT`
-- Source: nodeca/js-yaml
-- License text: **JAV-0205** — MIT
+- License text: **JAV-0161** — BSD-3-Clause
 
 ### json-bigint 1.0.0
 
 - License: `MIT`
 - Source: git@github.com:sidorares/json-bigint
-- License text: **JAV-0206** — MIT
+- License text: **JAV-0162** — MIT
 
 ### json-schema-to-ts 3.1.1
 
 - License: `MIT`
 - Source: https://github.com/ThomasAribart/json-schema-to-ts#readme
-- License text: **JAV-0207** — MIT
+- License text: **JAV-0163** — MIT
 
 ### json-schema-traverse 1.0.0
 
 - License: `MIT`
 - Source: https://github.com/epoberezkin/json-schema-traverse#readme
-- License text: **JAV-0152** — MIT
+- License text: **JAV-0125** — MIT
 
 ### json-schema-typed 8.0.2
 
 - License: `BSD-2-Clause`
 - Source: https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node
-- License text: **JAV-0208** — BSD-2-Clause
-
-### json-stable-stringify 1.3.0
-
-- License: `MIT`
-- Source: https://github.com/ljharb/json-stable-stringify
-- License text: **JAV-0209** — MIT
-
-### jsonify 0.0.1
-
-- License: `LicenseRef-PublicDomain`
-- Source: https://github.com/ljharb/jsonify
-- License text: **JAV-0210** — LicenseRef-PublicDomain — quoted from its README.md "license" section
+- License text: **JAV-0164** — BSD-2-Clause
 
 ### jwa 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/brianloveswords/node-jwa
-- License text: **JAV-0211** — MIT
+- License text: **JAV-0165** — MIT
 
 ### jws 4.0.1
 
 - License: `MIT`
 - Source: https://github.com/brianloveswords/node-jws
-- License text: **JAV-0211** — MIT
+- License text: **JAV-0165** — MIT
 
 ### katex 0.16.47
 
 - License: `MIT`
 - Source: https://katex.org
-- License text: **JAV-0212** — MIT
+- License text: **JAV-0166** — MIT
 
 ### khroma 2.1.0
 
 - License: `MIT`
 - Source: github:fabiospampinato/khroma
-- License text: **JAV-0213** — MIT
+- License text: **JAV-0167** — MIT
 
 ### layout-base 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/layout-base#readme
-- License text: **JAV-0214** — MIT
+- License text: **JAV-0168** — MIT
 
 ### layout-base 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/layout-base#readme
-- License text: **JAV-0214** — MIT
-
-### leac 0.6.0
-
-- License: `MIT`
-- Source: https://github.com/mxxii/leac
-- License text: **JAV-0048** — MIT
+- License text: **JAV-0168** — MIT
 
 ### lodash-es 4.18.1
 
 - License: `MIT`
 - Source: https://lodash.com/custom-builds
-- License text: **JAV-0215** — MIT
-
-### lodash.camelcase 4.3.0
-
-- License: `MIT`
-- Source: https://lodash.com/
-- License text: **JAV-0216** — MIT
+- License text: **JAV-0169** — MIT
 
 ### long 5.3.2
 
 - License: `Apache-2.0`
 - Source: https://github.com/dcodeIO/long.js
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0004** — Apache-2.0
 
 ### longest-streak 3.1.0
 
 - License: `MIT`
 - Source: wooorm/longest-streak
-- License text: **JAV-0217** — MIT
+- License text: **JAV-0170** — MIT
 
 ### lru-cache 10.4.3
 
 - License: `BlueOak-1.0.0`
 - Source: ssh://git@github.com/isaacs/node-lru-cache
-- License text: **JAV-0218** — BlueOak-1.0.0
+- License text: **JAV-0171** — BlueOak-1.0.0
 
 ### lru-cache 11.2.6
 
 - License: `BlueOak-1.0.0`
 - Source: ssh://git@github.com/isaacs/node-lru-cache
-- License text: **JAV-0218** — BlueOak-1.0.0
+- License text: **JAV-0171** — BlueOak-1.0.0
 
 ### lucide-react 0.577.0
 
 - License: `ISC`
 - Source: https://lucide.dev
-- License text: **JAV-0219** — ISC
+- License text: **JAV-0172** — ISC
 
 ### markdown-table 3.0.4
 
 - License: `MIT`
 - Source: wooorm/markdown-table
-- License text: **JAV-0120** — MIT
-
-### marked 15.0.12
-
-- License: `MIT`
-- Source: https://marked.js.org
-- License text: **JAV-0220** — MIT
+- License text: **JAV-0102** — MIT
 
 ### marked 16.4.2
 
 - License: `MIT`
 - Source: https://marked.js.org
-- License text: **JAV-0220** — MIT
+- License text: **JAV-0173** — MIT
 
 ### marked 18.0.5
 
 - License: `MIT`
 - Source: https://marked.js.org
-- License text: **JAV-0220** — MIT
+- License text: **JAV-0173** — MIT
 
 ### math-intrinsics 1.1.0
 
 - License: `MIT`
 - Source: https://github.com/es-shims/math-intrinsics#readme
-- License text: **JAV-0134** — MIT
+- License text: **JAV-0109** — MIT
 
 ### mdast-util-find-and-replace 3.0.2
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-find-and-replace
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### mdast-util-from-markdown 2.0.3
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-from-markdown
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### mdast-util-gfm 3.1.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### mdast-util-gfm-autolink-literal 2.0.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-autolink-literal
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-gfm-footnote 2.1.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-footnote
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### mdast-util-gfm-strikethrough 2.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-strikethrough
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-gfm-table 2.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-table
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-gfm-task-list-item 2.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-task-list-item
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-mdx-expression 2.0.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-mdx-expression
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-mdx-jsx 3.2.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-mdx-jsx
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-mdxjs-esm 2.0.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-mdxjs-esm
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### mdast-util-phrasing 4.1.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-phrasing
-- License text: **JAV-0221** — MIT
+- License text: **JAV-0174** — MIT
 
 ### mdast-util-to-hast 13.2.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-to-hast
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### mdast-util-to-markdown 2.1.2
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-to-markdown
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### mdast-util-to-string 4.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-to-string
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### media-typer 1.1.0
 
 - License: `MIT`
 - Source: jshttp/media-typer
-- License text: **JAV-0090** — MIT
+- License text: **JAV-0072** — MIT
 
 ### merge-descriptors 2.0.0
 
 - License: `MIT`
 - Source: sindresorhus/merge-descriptors
-- License text: **JAV-0222** — MIT
+- License text: **JAV-0175** — MIT
 
 ### mermaid 11.17.0
 
 - License: `MIT`
 - Source: https://github.com/mermaid-js/mermaid
-- License text: **JAV-0223** — MIT
+- License text: **JAV-0176** — MIT
 
 ### micromark 4.0.2
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-core-commonmark 2.0.3
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-extension-gfm 3.0.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### micromark-extension-gfm-autolink-literal 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-autolink-literal
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### micromark-extension-gfm-footnote 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-footnote
-- License text: **JAV-0224** — MIT
+- License text: **JAV-0177** — MIT
 
 ### micromark-extension-gfm-strikethrough 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-strikethrough
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### micromark-extension-gfm-table 2.1.1
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-table
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-extension-gfm-tagfilter 2.0.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-tagfilter
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### micromark-extension-gfm-task-list-item 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-task-list-item
-- License text: **JAV-0145** — MIT
+- License text: **JAV-0118** — MIT
 
 ### micromark-factory-destination 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-destination
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-factory-label 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-label
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-factory-space 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-space
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-factory-title 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-title
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-factory-whitespace 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-whitespace
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-character 2.1.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-character
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-chunked 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-chunked
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-classify-character 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-classify-character
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-combine-extensions 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-combine-extensions
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-decode-numeric-character-reference 2.0.2
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-decode-string 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-string
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-encode 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-encode
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-html-tag-name 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-html-tag-name
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-normalize-identifier 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-normalize-identifier
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-resolve-all 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-resolve-all
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-sanitize-uri 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-subtokenize 2.1.0
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-subtokenize
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-symbol 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### micromark-util-types 2.0.2
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-types
-- License text: **JAV-0120** — MIT
-
-### mime 4.0.7
-
-- License: `MIT`
-- Source: https://github.com/broofa/mime
-- License text: **JAV-0225** — MIT
+- License text: **JAV-0102** — MIT
 
 ### mime-db 1.54.0
 
 - License: `MIT`
 - Source: jshttp/mime-db
-- License text: **JAV-0226** — MIT
+- License text: **JAV-0178** — MIT
 
 ### mime-types 3.0.2
 
 - License: `MIT`
 - Source: jshttp/mime-types
-- License text: **JAV-0064** — MIT
+- License text: **JAV-0051** — MIT
 
 ### minimatch 10.2.4
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/minimatch
-- License text: **JAV-0200** — BlueOak-1.0.0
+- License text: **JAV-0158** — BlueOak-1.0.0
 
 ### minimatch 10.2.5
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/minimatch
-- License text: **JAV-0200** — BlueOak-1.0.0
+- License text: **JAV-0158** — BlueOak-1.0.0
 
 ### minimatch 9.0.9
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/minimatch
-- License text: **JAV-0200** — BlueOak-1.0.0
+- License text: **JAV-0158** — BlueOak-1.0.0
 
 ### minipass 7.1.3
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/minipass
-- License text: **JAV-0218** — BlueOak-1.0.0
-
-### mitt 3.0.1
-
-- License: `MIT`
-- Source: https://github.com/developit/mitt
-- License text: **JAV-0227** — MIT
-
-### mnemonist 0.40.3
-
-- License: `MIT`
-- Source: https://github.com/yomguithereal/mnemonist#readme
-- License text: **JAV-0228** — MIT
-
-### modern-tar 0.8.4
-
-- License: `MIT`
-- Source: https://github.com/ayuhito/modern-tar
-- License text: **JAV-0229** — MIT
-
-### module-details-from-path 1.0.4
-
-- License: `MIT`
-- Source: https://github.com/watson/module-details-from-path#readme
-- License text: **JAV-0230** — MIT
+- License text: **JAV-0171** — BlueOak-1.0.0
 
 ### ms 2.1.3
 
 - License: `MIT`
 - Source: vercel/ms
-- License text: **JAV-0231** — MIT
+- License text: **JAV-0179** — MIT
 
 ### negotiator 1.0.0
 
 - License: `MIT`
 - Source: jshttp/negotiator
-- License text: **JAV-0232** — MIT
-
-### node-addon-api 8.6.0
-
-- License: `MIT`
-- Source: https://github.com/nodejs/node-addon-api
-- License text: **JAV-0233** — MIT
+- License text: **JAV-0180** — MIT
 
 ### node-domexception 1.0.0
 
 - License: `MIT`
 - Source: https://github.com/jimmywarting/node-domexception#readme
-- License text: **JAV-0234** — MIT
+- License text: **JAV-0181** — MIT
 
 ### node-fetch 3.3.2
 
 - License: `MIT`
 - Source: https://github.com/node-fetch/node-fetch
-- License text: **JAV-0235** — MIT
-
-### node-gyp-build 4.8.4
-
-- License: `MIT`
-- Source: https://github.com/prebuild/node-gyp-build
-- License text: **JAV-0236** — MIT
-
-### normalize-package-data 6.0.2
-
-- License: `BSD-2-Clause`
-- Source: https://github.com/npm/normalize-package-data
-- License text: **JAV-0237** — BSD-2-Clause
-
-### npm-run-path 6.0.0
-
-- License: `MIT`
-- Source: sindresorhus/npm-run-path
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0182** — MIT
 
 ### object-assign 4.1.1
 
 - License: `MIT`
 - Source: sindresorhus/object-assign
-- License text: **JAV-0238** — MIT
-
-### object-hash 3.0.0
-
-- License: `MIT`
-- Source: https://github.com/puleos/object-hash
-- License text: **JAV-0239** — MIT
+- License text: **JAV-0183** — MIT
 
 ### object-inspect 1.13.4
 
 - License: `MIT`
 - Source: https://github.com/inspect-js/object-inspect
-- License text: **JAV-0240** — MIT
-
-### object-keys 1.1.1
-
-- License: `MIT`
-- Source: https://github.com/ljharb/object-keys
-- License text: **JAV-0241** — MIT
-
-### obliterator 2.0.5
-
-- License: `MIT`
-- Source: https://github.com/yomguithereal/obliterator#readme
-- License text: **JAV-0242** — MIT
+- License text: **JAV-0184** — MIT
 
 ### on-finished 2.4.1
 
 - License: `MIT`
 - Source: jshttp/on-finished
-- License text: **JAV-0243** — MIT
+- License text: **JAV-0185** — MIT
 
 ### once 1.4.0
 
 - License: `ISC`
 - Source: https://github.com/isaacs/once
-- License text: **JAV-0199** — ISC
-
-### open 10.1.2
-
-- License: `MIT`
-- Source: sindresorhus/open
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0157** — ISC
 
 ### openai 6.26.0
 
 - License: `Apache-2.0`
 - Source: github:openai/openai-node
-- License text: **JAV-0244** — Apache-2.0
+- License text: **JAV-0186** — Apache-2.0
 
 ### p-retry 4.6.2
 
 - License: `MIT`
 - Source: sindresorhus/p-retry
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### package-json-from-dist 1.0.1
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/package-json-from-dist
-- License text: **JAV-0168** — BlueOak-1.0.0
+- License text: **JAV-0137** — BlueOak-1.0.0
 
 ### package-manager-detector 1.8.0
 
 - License: `MIT`
 - Source: https://github.com/antfu-collective/package-manager-detector#readme
-- License text: **JAV-0245** — MIT
+- License text: **JAV-0187** — MIT
 
 ### parse-entities 4.0.2
 
 - License: `MIT`
 - Source: wooorm/parse-entities
-- License text: **JAV-0246** — MIT
-
-### parse-json 8.3.0
-
-- License: `MIT`
-- Source: sindresorhus/parse-json
-- License text: **JAV-0052** — MIT
-
-### parse-ms 4.0.0
-
-- License: `MIT`
-- Source: sindresorhus/parse-ms
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0188** — MIT
 
 ### parse5 7.3.0
 
 - License: `MIT`
 - Source: https://parse5.js.org
-- License text: **JAV-0247** — MIT
-
-### parseley 0.12.1
-
-- License: `MIT`
-- Source: https://github.com/mxxii/parseley
-- License text: **JAV-0048** — MIT
+- License text: **JAV-0189** — MIT
 
 ### parseurl 1.3.3
 
 - License: `MIT`
 - Source: pillarjs/parseurl
-- License text: **JAV-0248** — MIT
+- License text: **JAV-0190** — MIT
 
 ### partial-json 0.1.7
 
 - License: `MIT`
 - Source: https://promplate.dev/partial-json-parser
-- License text: **JAV-0249** — MIT
+- License text: **JAV-0191** — MIT
 
 ### path-data-parser 0.1.0
 
 - License: `MIT`
 - Source: https://github.com/pshihn/path-data-parser#readme
-- License text: **JAV-0250** — MIT
+- License text: **JAV-0192** — MIT
 
 ### path-key 3.1.1
 
 - License: `MIT`
 - Source: sindresorhus/path-key
-- License text: **JAV-0068** — MIT
-
-### path-key 4.0.0
-
-- License: `MIT`
-- Source: sindresorhus/path-key
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### path-scurry 1.11.1
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/path-scurry
-- License text: **JAV-0218** — BlueOak-1.0.0
+- License text: **JAV-0171** — BlueOak-1.0.0
 
 ### path-scurry 2.0.2
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/path-scurry
-- License text: **JAV-0218** — BlueOak-1.0.0
+- License text: **JAV-0171** — BlueOak-1.0.0
 
 ### path-to-regexp 8.4.0
 
 - License: `MIT`
 - Source: https://github.com/pillarjs/path-to-regexp
-- License text: **JAV-0251** — MIT
-
-### peberminta 0.9.0
-
-- License: `MIT`
-- Source: https://github.com/mxxii/peberminta
-- License text: **JAV-0048** — MIT
-
-### picocolors 1.1.1
-
-- License: `ISC`
-- Source: alexeyraspopov/picocolors
-- License text: **JAV-0252** — ISC
-
-### picomatch 4.0.5
-
-- License: `MIT`
-- Source: https://github.com/micromatch/picomatch
-- License text: **JAV-0253** — MIT
+- License text: **JAV-0193** — MIT
 
 ### pkce-challenge 5.0.1
 
 - License: `MIT`
 - Source: https://github.com/crouchcd/pkce-challenge#readme
-- License text: **JAV-0254** — MIT
+- License text: **JAV-0194** — MIT
 
 ### points-on-curve 0.2.0
 
 - License: `MIT`
 - Source: https://github.com/pshihn/bezier-points#readme
-- License text: **JAV-0250** — MIT
+- License text: **JAV-0192** — MIT
 
 ### points-on-path 0.2.1
 
 - License: `MIT`
 - Source: https://github.com/pshihn/points-on-path#readme
-- License text: **JAV-0255** — MIT
-
-### pretty-ms 9.3.0
-
-- License: `MIT`
-- Source: sindresorhus/pretty-ms
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0195** — MIT
 
 ### proper-lockfile 4.1.2
 
 - License: `MIT`
 - Source: https://github.com/moxystudio/node-proper-lockfile
-- License text: **JAV-0097** — MIT
+- License text: **JAV-0079** — MIT
 
 ### property-information 7.2.0
 
 - License: `MIT`
 - Source: wooorm/property-information
-- License text: **JAV-0246** — MIT
-
-### proto3-json-serializer 4.0.2
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/proto3-json-serializer-nodejs
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0188** — MIT
 
 ### protobufjs 7.6.5
 
 - License: `BSD-3-Clause`
 - Source: https://protobufjs.github.io/protobuf.js/
-- License text: **JAV-0256** — BSD-3-Clause
+- License text: **JAV-0196** — BSD-3-Clause
 
 ### proxy-addr 2.0.7
 
 - License: `MIT`
 - Source: jshttp/proxy-addr
-- License text: **JAV-0146** — MIT
-
-### pump 3.0.4
-
-- License: `MIT`
-- Source: https://github.com/mafintosh/pump
-- License text: **JAV-0135** — MIT
-
-### pumpify 2.0.1
-
-- License: `MIT`
-- Source: https://github.com/mafintosh/pumpify
-- License text: **JAV-0135** — MIT
-
-### puppeteer-core 25.8.0
-
-- License: `Apache-2.0`
-- Source: https://github.com/puppeteer/puppeteer/tree/main/packages/puppeteer-core
-- License text: **JAV-0044** — Apache-2.0 — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0119** — MIT
 
 ### qs 6.16.0
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/ljharb/qs
-- License text: **JAV-0257** — BSD-3-Clause
+- License text: **JAV-0197** — BSD-3-Clause
 
 ### range-parser 1.2.1
 
 - License: `MIT`
 - Source: jshttp/range-parser
-- License text: **JAV-0258** — MIT
+- License text: **JAV-0198** — MIT
 
 ### raw-body 3.0.2
 
 - License: `MIT`
 - Source: stream-utils/raw-body
-- License text: **JAV-0259** — MIT
+- License text: **JAV-0199** — MIT
 
 ### react 19.2.8
 
 - License: `MIT`
 - Source: https://react.dev/
-- License text: **JAV-0260** — MIT
+- License text: **JAV-0200** — MIT
 
 ### react-dom 19.2.8
 
 - License: `MIT`
 - Source: https://react.dev/
-- License text: **JAV-0260** — MIT
+- License text: **JAV-0200** — MIT
 
 ### react-markdown 10.1.0
 
 - License: `MIT`
 - Source: remarkjs/react-markdown
-- License text: **JAV-0261** — MIT
-
-### read-package-up 11.0.0
-
-- License: `MIT`
-- Source: sindresorhus/read-package-up
-- License text: **JAV-0052** — MIT
-
-### read-pkg 9.0.1
-
-- License: `MIT`
-- Source: sindresorhus/read-pkg
-- License text: **JAV-0052** — MIT
-
-### readable-stream 3.6.2
-
-- License: `MIT`
-- Source: https://github.com/nodejs/readable-stream
-- License text: **JAV-0262** — MIT
-
-### readdirp 5.1.1
-
-- License: `MIT`
-- Source: https://github.com/paulmillr/readdirp
-- License text: **JAV-0263** — MIT
+- License text: **JAV-0201** — MIT
 
 ### rehype-raw 7.0.0
 
 - License: `MIT`
 - Source: rehypejs/rehype-raw
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### rehype-sanitize 6.0.0
 
 - License: `MIT`
 - Source: rehypejs/rehype-sanitize
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### remark-gfm 4.0.1
 
 - License: `MIT`
 - Source: remarkjs/remark-gfm
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### remark-parse 11.0.0
 
 - License: `MIT`
 - Source: https://remark.js.org
-- License text: **JAV-0264** — MIT
+- License text: **JAV-0202** — MIT
 
 ### remark-rehype 11.1.2
 
 - License: `MIT`
 - Source: remarkjs/remark-rehype
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### remark-stringify 11.0.0
 
 - License: `MIT`
 - Source: https://remark.js.org
-- License text: **JAV-0264** — MIT
-
-### require-directory 2.1.1
-
-- License: `MIT`
-- Source: https://github.com/troygoode/node-require-directory/
-- License text: **JAV-0265** — MIT
+- License text: **JAV-0202** — MIT
 
 ### require-from-string 2.0.2
 
 - License: `MIT`
 - Source: floatdrop/require-from-string
-- License text: **JAV-0266** — MIT
-
-### require-in-the-middle 8.0.1
-
-- License: `MIT`
-- Source: https://github.com/nodejs/require-in-the-middle#readme
-- License text: **JAV-0267** — MIT
+- License text: **JAV-0203** — MIT
 
 ### retry 0.12.0
 
 - License: `MIT`
 - Source: https://github.com/tim-kos/node-retry
-- License text: **JAV-0268** — MIT
+- License text: **JAV-0204** — MIT
 
 ### retry 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/tim-kos/node-retry
-- License text: **JAV-0268** — MIT
-
-### retry-request 9.0.1
-
-- License: `MIT`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/retry-request
-- License text: **JAV-0269** — MIT
+- License text: **JAV-0204** — MIT
 
 ### rimraf 5.0.10
 
 - License: `ISC`
 - Source: https://github.com/isaacs/rimraf
-- License text: **JAV-0270** — ISC
+- License text: **JAV-0205** — ISC
 
 ### robust-predicates 3.0.3
 
 - License: `Unlicense`
 - Source: https://github.com/mourner/robust-predicates
-- License text: **JAV-0154** — Unlicense
+- License text: **JAV-0126** — Unlicense
 
 ### roughjs 4.6.6
 
 - License: `MIT`
 - Source: https://roughjs.com
-- License text: **JAV-0271** — MIT
+- License text: **JAV-0206** — MIT
 
 ### router 2.2.0
 
 - License: `MIT`
 - Source: pillarjs/router
-- License text: **JAV-0272** — MIT
-
-### run-applescript 7.1.0
-
-- License: `MIT`
-- Source: sindresorhus/run-applescript
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0207** — MIT
 
 ### rw 1.3.3
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/mbostock/rw
-- License text: **JAV-0273** — BSD-3-Clause
+- License text: **JAV-0208** — BSD-3-Clause
 
 ### safe-buffer 5.2.1
 
 - License: `MIT`
 - Source: https://github.com/feross/safe-buffer
-- License text: **JAV-0274** — MIT
+- License text: **JAV-0209** — MIT
 
 ### safer-buffer 2.1.2
 
 - License: `MIT`
 - Source: https://github.com/ChALkeR/safer-buffer
-- License text: **JAV-0275** — MIT
+- License text: **JAV-0210** — MIT
 
 ### scheduler 0.27.0
 
 - License: `MIT`
 - Source: https://react.dev/
-- License text: **JAV-0260** — MIT
-
-### selderee 0.11.0
-
-- License: `MIT`
-- Source: https://github.com/mxxii/selderee
-- License text: **JAV-0048** — MIT
-
-### semver 7.7.4
-
-- License: `ISC`
-- Source: https://github.com/npm/node-semver
-- License text: **JAV-0199** — ISC
+- License text: **JAV-0200** — MIT
 
 ### send 1.2.1
 
 - License: `MIT`
 - Source: pillarjs/send
-- License text: **JAV-0276** — MIT
+- License text: **JAV-0211** — MIT
 
 ### serve-static 2.2.1
 
 - License: `MIT`
 - Source: expressjs/serve-static
-- License text: **JAV-0277** — MIT
-
-### set-function-length 1.2.2
-
-- License: `MIT`
-- Source: https://github.com/ljharb/set-function-length#readme
-- License text: **JAV-0176** — MIT
+- License text: **JAV-0212** — MIT
 
 ### setprototypeof 1.2.0
 
 - License: `ISC`
 - Source: https://github.com/wesleytodd/setprototypeof
-- License text: **JAV-0278** — ISC
+- License text: **JAV-0213** — ISC
 
 ### shebang-command 2.0.0
 
 - License: `MIT`
 - Source: kevva/shebang-command
-- License text: **JAV-0279** — MIT
+- License text: **JAV-0214** — MIT
 
 ### shebang-regex 3.0.0
 
 - License: `MIT`
 - Source: sindresorhus/shebang-regex
-- License text: **JAV-0068** — MIT
-
-### shell-quote 1.10.0
-
-- License: `MIT`
-- Source: https://github.com/ljharb/shell-quote
-- License text: **JAV-0280** — MIT
+- License text: **JAV-0056** — MIT
 
 ### side-channel 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel#readme
-- License text: **JAV-0281** — MIT
+- License text: **JAV-0215** — MIT
 
 ### side-channel-list 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-list#readme
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0067** — MIT
 
 ### side-channel-map 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-map#readme
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0067** — MIT
 
 ### side-channel-weakmap 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-weakmap#readme
-- License text: **JAV-0281** — MIT
+- License text: **JAV-0215** — MIT
 
 ### signal-exit 3.0.7
 
 - License: `ISC`
 - Source: https://github.com/tapjs/signal-exit
-- License text: **JAV-0282** — ISC
+- License text: **JAV-0216** — ISC
 
 ### signal-exit 4.1.0
 
 - License: `ISC`
 - Source: https://github.com/tapjs/signal-exit
-- License text: **JAV-0282** — ISC
+- License text: **JAV-0216** — ISC
 
 ### simple-git 3.36.0
 
 - License: `MIT`
 - Source: https://github.com/steveukx/git-js
-- License text: **JAV-0283** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0217** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### space-separated-tokens 2.0.2
 
 - License: `MIT`
 - Source: wooorm/space-separated-tokens
-- License text: **JAV-0087** — MIT
-
-### spdx-correct 3.2.0
-
-- License: `Apache-2.0`
-- Source: jslicense/spdx-correct.js
-- License text: **JAV-0001** — Apache-2.0
-
-### spdx-exceptions 2.5.0
-
-- License: `CC-BY-3.0`
-- Source: kemitchell/spdx-exceptions.json
-- License text: **JAV-0284** — CC-BY-3.0 — text not published by this component; attribution derived from its package metadata
-
-### spdx-expression-parse 3.0.1
-
-- License: `MIT`
-- Source: jslicense/spdx-expression-parse.js
-- License text: **JAV-0285** — MIT
-
-### spdx-license-ids 3.0.23
-
-- License: `CC0-1.0`
-- Source: jslicense/spdx-license-ids
-- License text: **JAV-0286** — CC0-1.0 — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0070** — MIT
 
 ### standardwebhooks 1.0.0
 
 - License: `MIT`
 - Source: https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries/javascript
-- License text: **JAV-0287** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0218** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### statuses 2.0.2
 
 - License: `MIT`
 - Source: jshttp/statuses
-- License text: **JAV-0288** — MIT
-
-### stream-events 1.0.5
-
-- License: `MIT`
-- Source: https://github.com/stephenplusplus/stream-events
-- License text: **JAV-0289** — MIT — text not published by this component; attribution derived from its package metadata
-
-### stream-shift 1.0.3
-
-- License: `MIT`
-- Source: https://github.com/mafintosh/stream-shift
-- License text: **JAV-0290** — MIT
+- License text: **JAV-0219** — MIT
 
 ### strictdom 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/wilsonpage/strictdom
-- License text: **JAV-0156** — MIT — text not published by this component; attribution derived from its package metadata
-
-### string_decoder 1.3.0
-
-- License: `MIT`
-- Source: https://github.com/nodejs/string_decoder
-- License text: **JAV-0262** — MIT
+- License text: **JAV-0128** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### string-width 4.2.3
 
 - License: `MIT`
 - Source: sindresorhus/string-width
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### string-width 5.1.2
 
 - License: `MIT`
 - Source: sindresorhus/string-width
-- License text: **JAV-0068** — MIT
-
-### string-width 7.2.0
-
-- License: `MIT`
-- Source: sindresorhus/string-width
-- License text: **JAV-0068** — MIT
-
-### string-width 8.2.2
-
-- License: `MIT`
-- Source: sindresorhus/string-width
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0056** — MIT
 
 ### stringify-entities 4.0.4
 
 - License: `MIT`
 - Source: wooorm/stringify-entities
-- License text: **JAV-0217** — MIT
+- License text: **JAV-0170** — MIT
 
 ### strip-ansi 6.0.1
 
 - License: `MIT`
 - Source: chalk/strip-ansi
-- License text: **JAV-0052** — MIT
-
-### strip-ansi 7.1.0
-
-- License: `MIT`
-- Source: chalk/strip-ansi
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### strip-ansi 7.2.0
 
 - License: `MIT`
 - Source: chalk/strip-ansi
-- License text: **JAV-0052** — MIT
-
-### strip-final-newline 4.0.0
-
-- License: `MIT`
-- Source: sindresorhus/strip-final-newline
-- License text: **JAV-0052** — MIT
-
-### strip-json-comments 3.1.1
-
-- License: `MIT`
-- Source: sindresorhus/strip-json-comments
-- License text: **JAV-0052** — MIT
-
-### stubs 3.0.0
-
-- License: `MIT`
-- Source: https://github.com/stephenplusplus/stubs
-- License text: **JAV-0289** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0055** — MIT
 
 ### style-mod 4.1.3
 
 - License: `MIT`
 - Source: https://github.com/marijnh/style-mod
-- License text: **JAV-0291** — MIT
+- License text: **JAV-0220** — MIT
 
 ### style-to-js 1.1.21
 
 - License: `MIT`
 - Source: https://github.com/remarkablemark/style-to-js
-- License text: **JAV-0292** — MIT
+- License text: **JAV-0221** — MIT
 
 ### style-to-object 1.0.14
 
 - License: `MIT`
 - Source: https://github.com/remarkablemark/style-to-object
-- License text: **JAV-0293** — MIT
+- License text: **JAV-0222** — MIT
 
 ### stylis 4.4.0
 
 - License: `MIT`
 - Source: https://github.com/thysultan/stylis.js
-- License text: **JAV-0294** — MIT
-
-### systeminformation 5.33.1
-
-- License: `MIT`
-- Source: https://systeminformation.io
-- License text: **JAV-0295** — MIT
-
-### teeny-request 11.0.1
-
-- License: `Apache-2.0`
-- Source: https://github.com/googleapis/google-cloud-node/tree/main/core/packages/teeny-request
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0223** — MIT
 
 ### tinyexec 1.2.4
 
 - License: `MIT`
 - Source: https://github.com/tinylibs/tinyexec#readme
-- License text: **JAV-0296** — MIT
+- License text: **JAV-0224** — MIT
 
 ### toidentifier 1.0.1
 
 - License: `MIT`
 - Source: component/toidentifier
-- License text: **JAV-0297** — MIT
-
-### tree-sitter-bash 0.25.0
-
-- License: `MIT`
-- Source: https://github.com/tree-sitter/tree-sitter-bash
-- License text: **JAV-0298** — MIT
+- License text: **JAV-0225** — MIT
 
 ### trim-lines 3.0.1
 
 - License: `MIT`
 - Source: wooorm/trim-lines
-- License text: **JAV-0217** — MIT
+- License text: **JAV-0170** — MIT
 
 ### trough 2.2.0
 
 - License: `MIT`
 - Source: wooorm/trough
-- License text: **JAV-0299** — MIT
+- License text: **JAV-0226** — MIT
 
 ### ts-algebra 2.0.0
 
 - License: `MIT`
 - Source: https://github.com/ThomasAribart/ts-algebra#readme
-- License text: **JAV-0207** — MIT
+- License text: **JAV-0163** — MIT
 
 ### ts-dedent 2.3.0
 
 - License: `MIT`
 - Source: https://github.com/tamino-martinius/node-ts-dedent
-- License text: **JAV-0300** — MIT
+- License text: **JAV-0227** — MIT
 
 ### tslib 2.8.1
 
 - License: `0BSD`
 - Source: https://www.typescriptlang.org/
-- License text: **JAV-0301** — 0BSD
-
-### type-fest 4.41.0
-
-- License: `(MIT OR CC0-1.0)`
-- Redistributed under: `MIT`
-- Source: sindresorhus/type-fest
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0228** — 0BSD
 
 ### type-is 2.0.1
 
 - License: `MIT`
 - Source: jshttp/type-is
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0061** — MIT
 
 ### type-is 2.1.0
 
 - License: `MIT`
 - Source: jshttp/type-is
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0061** — MIT
 
 ### typebox 1.1.38
 
 - License: `MIT`
 - Source: https://github.com/sinclairzx81/typebox
-- License text: **JAV-0302** — MIT
-
-### typed-query-selector 2.12.2
-
-- License: `MIT`
-- Source: g-plane/typed-query-selector
-- License text: **JAV-0303** — MIT
+- License text: **JAV-0229** — MIT
 
 ### undici 7.29.0
 
 - License: `MIT`
 - Source: https://undici.nodejs.org
-- License text: **JAV-0304** — MIT
+- License text: **JAV-0230** — MIT
 
 ### undici-types 7.18.2
 
 - License: `MIT`
 - Source: https://undici.nodejs.org
-- License text: **JAV-0304** — MIT
-
-### unicorn-magic 0.1.0
-
-- License: `MIT`
-- Source: sindresorhus/unicorn-magic
-- License text: **JAV-0052** — MIT
-
-### unicorn-magic 0.3.0
-
-- License: `MIT`
-- Source: sindresorhus/unicorn-magic
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0230** — MIT
 
 ### unified 11.0.5
 
 - License: `MIT`
 - Source: https://unifiedjs.com
-- License text: **JAV-0305** — MIT
+- License text: **JAV-0231** — MIT
 
 ### unist-util-is 6.0.1
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-is
-- License text: **JAV-0306** — MIT
+- License text: **JAV-0232** — MIT
 
 ### unist-util-position 5.0.0
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-position
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### unist-util-stringify-position 4.0.0
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-stringify-position
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### unist-util-visit 5.1.0
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-visit
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0057** — MIT
 
 ### unist-util-visit-parents 6.0.2
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-visit-parents
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### unpipe 1.0.0
 
 - License: `MIT`
 - Source: stream-utils/unpipe
-- License text: **JAV-0307** — MIT
-
-### url-template 2.0.8
-
-- License: `BSD`
-- Source: https://github.com/bramstein/url-template
-- License text: **JAV-0308** — BSD
-
-### util-deprecate 1.0.2
-
-- License: `MIT`
-- Source: https://github.com/TooTallNate/util-deprecate
-- License text: **JAV-0309** — MIT
+- License text: **JAV-0233** — MIT
 
 ### uuid 11.1.1
 
 - License: `MIT`
 - Source: https://github.com/uuidjs/uuid
-- License text: **JAV-0310** — MIT
-
-### uuid 13.0.1
-
-- License: `MIT`
-- Source: https://github.com/uuidjs/uuid
-- License text: **JAV-0310** — MIT
-
-### validate-npm-package-license 3.0.4
-
-- License: `Apache-2.0`
-- Source: kemitchell/validate-npm-package-license.js
-- License text: **JAV-0001** — Apache-2.0
+- License text: **JAV-0234** — MIT
 
 ### vary 1.1.2
 
 - License: `MIT`
 - Source: jshttp/vary
-- License text: **JAV-0090** — MIT
+- License text: **JAV-0072** — MIT
 
 ### vfile 6.0.3
 
 - License: `MIT`
 - Source: vfile/vfile
-- License text: **JAV-0305** — MIT
+- License text: **JAV-0231** — MIT
 
 ### vfile-location 5.0.3
 
 - License: `MIT`
 - Source: vfile/vfile-location
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### vfile-message 4.0.3
 
 - License: `MIT`
 - Source: vfile/vfile-message
-- License text: **JAV-0120** — MIT
+- License text: **JAV-0102** — MIT
 
 ### w3c-keyname 2.2.8
 
 - License: `MIT`
 - Source: https://github.com/marijnh/w3c-keyname#readme
-- License text: **JAV-0311** — MIT
+- License text: **JAV-0235** — MIT
 
 ### web-namespaces 2.0.1
 
 - License: `MIT`
 - Source: wooorm/web-namespaces
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ### web-streams-polyfill 3.3.3
 
 - License: `MIT`
 - Source: https://github.com/MattiasBuelens/web-streams-polyfill#readme
-- License text: **JAV-0312** — MIT
-
-### web-tree-sitter 0.25.10
-
-- License: `MIT`
-- Source: https://github.com/tree-sitter/tree-sitter
-- License text: **JAV-0313** — MIT
-
-### webdriver-bidi-protocol 0.4.2
-
-- License: `Apache-2.0`
-- Source: https://github.com/GoogleChromeLabs/webdriver-bidi-protocol
-- License text: **JAV-0314** — Apache-2.0
+- License text: **JAV-0236** — MIT
 
 ### which 2.0.2
 
 - License: `ISC`
 - Source: https://github.com/isaacs/node-which
-- License text: **JAV-0199** — ISC
+- License text: **JAV-0157** — ISC
 
 ### wrap-ansi 7.0.0
 
 - License: `MIT`
 - Source: chalk/wrap-ansi
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### wrap-ansi 8.1.0
 
 - License: `MIT`
 - Source: chalk/wrap-ansi
-- License text: **JAV-0052** — MIT
-
-### wrap-ansi 9.0.2
-
-- License: `MIT`
-- Source: chalk/wrap-ansi
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0055** — MIT
 
 ### wrappy 1.0.2
 
 - License: `ISC`
 - Source: https://github.com/npm/wrappy
-- License text: **JAV-0199** — ISC
+- License text: **JAV-0157** — ISC
 
 ### ws 8.21.3
 
 - License: `MIT`
 - Source: https://github.com/websockets/ws
-- License text: **JAV-0315** — MIT
-
-### y18n 5.0.8
-
-- License: `ISC`
-- Source: https://github.com/yargs/y18n
-- License text: **JAV-0316** — ISC
+- License text: **JAV-0237** — MIT
 
 ### yaml 2.9.0
 
 - License: `ISC`
 - Source: https://eemeli.org/yaml/
-- License text: **JAV-0317** — ISC
-
-### yargs 17.7.2
-
-- License: `MIT`
-- Source: https://yargs.js.org/
-- License text: **JAV-0318** — MIT
-
-### yargs 18.1.0
-
-- License: `MIT`
-- Source: https://yargs.js.org/
-- License text: **JAV-0318** — MIT
-
-### yargs-parser 21.1.1
-
-- License: `ISC`
-- Source: https://github.com/yargs/yargs-parser
-- License text: **JAV-0319** — ISC
-
-### yargs-parser 22.0.0
-
-- License: `ISC`
-- Source: https://github.com/yargs/yargs-parser
-- License text: **JAV-0319** — ISC
-
-### yoctocolors 2.1.2
-
-- License: `MIT`
-- Source: sindresorhus/yoctocolors
-- License text: **JAV-0052** — MIT
-
-### zod 3.25.76
-
-- License: `MIT`
-- Source: https://zod.dev
-- License text: **JAV-0320** — MIT
+- License text: **JAV-0238** — ISC
 
 ### zod 4.4.3
 
 - License: `MIT`
 - Source: https://zod.dev
-- License text: **JAV-0320** — MIT
+- License text: **JAV-0239** — MIT
 
 ### zod-to-json-schema 3.25.1
 
 - License: `ISC`
 - Source: https://github.com/StefanTerdell/zod-to-json-schema
-- License text: **JAV-0321** — ISC
+- License text: **JAV-0240** — ISC
 
 ### zwitch 2.0.4
 
 - License: `MIT`
 - Source: wooorm/zwitch
-- License text: **JAV-0087** — MIT
+- License text: **JAV-0070** — MIT
 
 ## JavaScript components — license texts
 
 Each block is reproduced verbatim. The component entries above name the block that
 applies to them by label.
 
-### JAV-0001 — Apache-2.0
+### JAV-0001 — MIT
 
-Applies to 34 components: @a2a-js/sdk 0.3.11, @aws-crypto/sha256-browser 5.2.0, @aws-crypto/supports-web-crypto 5.2.0, @chevrotain/types 11.1.2, @google-cloud/common 8.0.1, @google-cloud/logging 12.0.1, @google-cloud/opentelemetry-cloud-monitoring-exporter 0.22.0, @google-cloud/opentelemetry-cloud-trace-exporter 3.1.0, @google-cloud/opentelemetry-resource-util 3.1.0, @google-cloud/paginator 7.0.1, @google-cloud/precise-date 4.0.0, @google-cloud/projectify 6.0.1, @google-cloud/promisify 4.0.0, @google-cloud/promisify 6.0.1, @google/gemini-cli-core 0.56.0, @google/genai 1.30.0, @google/genai 1.52.0, dompurify 3.4.14, gaxios 7.1.3, gaxios 7.3.1, gcp-metadata 8.1.2, gcp-metadata 9.0.3, google-auth-library 10.5.0, google-auth-library 10.9.0, google-auth-library 11.0.2, google-logging-utils 1.1.3, google-logging-utils 2.0.1, googleapis 173.0.0, googleapis-common 8.0.3, long 5.3.2, proto3-json-serializer 4.0.2, spdx-correct 3.2.0, teeny-request 11.0.1, validate-npm-package-license 3.0.4.
+Applies to 1 component: @antfu/install-pkg 1.1.0.
+
+```text
+MIT License
+
+Copyright (c) 2021 Anthony Fu <https://github.com/antfu>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### JAV-0002 — LicenseRef-Anthropic-Commercial
+
+Applies to 1 component: @anthropic-ai/claude-agent-sdk 0.3.239.
+
+```text
+© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.
+```
+
+### JAV-0003 — MIT
+
+Applies to 2 components: @anthropic-ai/sdk 0.100.1, @anthropic-ai/sdk 0.91.1.
+
+```text
+Copyright 2023 Anthropic, PBC.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### JAV-0004 — Apache-2.0
+
+Applies to 11 components: @aws-crypto/sha256-browser 5.2.0, @aws-crypto/supports-web-crypto 5.2.0, @chevrotain/types 11.1.2, @google/genai 1.52.0, dompurify 3.4.14, gaxios 7.1.3, gaxios 7.3.1, gcp-metadata 8.1.2, google-auth-library 10.9.0, google-logging-utils 1.1.3, long 5.3.2.
 
 ```text
 
@@ -4690,56 +3493,6 @@ Applies to 34 components: @a2a-js/sdk 0.3.11, @aws-crypto/sha256-browser 5.2.0, 
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-```
-
-### JAV-0002 — MIT
-
-Applies to 1 component: @antfu/install-pkg 1.1.0.
-
-```text
-MIT License
-
-Copyright (c) 2021 Anthony Fu <https://github.com/antfu>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0003 — LicenseRef-Anthropic-Commercial
-
-Applies to 1 component: @anthropic-ai/claude-agent-sdk 0.3.239.
-
-```text
-© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.
-```
-
-### JAV-0004 — MIT
-
-Applies to 2 components: @anthropic-ai/sdk 0.100.1, @anthropic-ai/sdk 0.91.1.
-
-```text
-Copyright 2023 Anthropic, PBC.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### JAV-0005 — Apache-2.0
@@ -6672,7 +5425,7 @@ Applies to 1 component: @aws/lambda-invoke-store 0.3.0.
 
 ### JAV-0015 — MIT
 
-Applies to 3 components: @babel/code-frame 7.29.0, @babel/helper-validator-identifier 7.28.5, @babel/runtime 7.28.6.
+Applies to 1 component: @babel/runtime 7.28.6.
 
 ```text
 MIT License
@@ -6727,109 +5480,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0017 — Apache-2.0 — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: @bufbuild/protobuf 2.11.0.
-
-```text
-Copyright (c) the @bufbuild/protobuf authors
-
-Apache License
-Version 2.0, January 2004
-http://www.apache.org/licenses/
-
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-1. Definitions.
-
-"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
-
-"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
-
-"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
-
-"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
-
-"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
-
-"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
-
-"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
-
-"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
-
-"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
-
-"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
-
-2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
-
-3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
-
-4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
-
-     (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
-
-     (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
-
-     (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
-
-     (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
-
-     You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
-
-5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
-
-6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
-
-7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
-
-8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
-
-9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
-
-END OF TERMS AND CONDITIONS
-
-APPENDIX: How to apply the Apache License to your work.
-
-To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
-
-Copyright [yyyy] [name of copyright owner]
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-### JAV-0018 — BSD-3-Clause — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: @bufbuild/protobuf 2.11.0.
-
-```text
-Copyright (c) the @bufbuild/protobuf authors
-
-Copyright (c) <year> <owner>. 
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0019 — MIT
+### JAV-0017 — MIT
 
 Applies to 1 component: @chenglou/pretext 0.0.5.
 
@@ -6857,7 +5508,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0020 — MIT
+### JAV-0018 — MIT
 
 Applies to 13 components: @codemirror/autocomplete 6.20.3, @codemirror/commands 6.11.0, @codemirror/lang-css 6.3.1, @codemirror/lang-html 6.4.12, @codemirror/lang-javascript 6.2.5, @codemirror/lang-json 6.0.2, @codemirror/lang-markdown 6.5.2, @codemirror/lang-python 6.2.1, @codemirror/language 6.12.4, @codemirror/lint 6.9.7, @codemirror/search 6.7.1, @codemirror/state 6.7.1, @codemirror/view 6.43.9.
 
@@ -6885,7 +5536,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0021 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0019 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 4 components: @earendil-works/pi-agent-core 0.79.0, @earendil-works/pi-ai 0.79.0, @earendil-works/pi-coding-agent 0.79.0, @earendil-works/pi-tui 0.79.10.
 
@@ -6912,324 +5563,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0022 — MIT
-
-Applies to 1 component: @github/keytar 7.10.6.
-
-```text
-Copyright (c) 2013 GitHub Inc.
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0023 — Apache-2.0 — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: @google-cloud/logging-api 0.3.0.
-
-```text
-Copyright (c) Google LLC
-
-Apache License
-Version 2.0, January 2004
-http://www.apache.org/licenses/
-
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-1. Definitions.
-
-"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
-
-"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
-
-"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
-
-"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
-
-"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
-
-"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
-
-"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
-
-"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
-
-"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
-
-"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
-
-2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
-
-3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
-
-4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
-
-     (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
-
-     (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
-
-     (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
-
-     (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
-
-     You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
-
-5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
-
-6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
-
-7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
-
-8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
-
-9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
-
-END OF TERMS AND CONDITIONS
-
-APPENDIX: How to apply the Apache License to your work.
-
-To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
-
-Copyright [yyyy] [name of copyright owner]
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-### JAV-0024 — Apache-2.0
-
-Applies to 2 components: @grpc/grpc-js 1.14.4, @grpc/proto-loader 0.8.0.
-
-```text
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "{}"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright {yyyy} {name of copyright owner}
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-```
-
-### JAV-0025 — MIT
+### JAV-0020 — MIT
 
 Applies to 1 component: @hono/node-server 1.19.15.
 
@@ -7257,27 +5591,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0026 — ISC
-
-Applies to 1 component: @iarna/toml 2.2.5.
-
-```text
-Copyright (c) 2016, Rebecca Turner <me@re-becca.org>
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-### JAV-0027 — MIT
+### JAV-0021 — MIT
 
 Applies to 1 component: @iconify/types 2.0.0.
 
@@ -7305,7 +5619,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0028 — MIT
+### JAV-0022 — MIT
 
 Applies to 1 component: @iconify/utils 3.1.4.
 
@@ -7333,9 +5647,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0029 — BlueOak-1.0.0
+### JAV-0023 — BlueOak-1.0.0
 
-Applies to 2 components: @isaacs/cliui 8.0.2, @isaacs/cliui 9.0.0.
+Applies to 1 component: @isaacs/cliui 8.0.2.
 
 ```text
 Several modules are vendored under `./src`, which are used and
@@ -7403,35 +5717,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 ```
 
-### JAV-0030 — MIT
-
-Applies to 1 component: @js-sdsl/ordered-map 4.4.2.
-
-```text
-MIT License
-
-Copyright (c) 2021 Zilong Yao
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0031 — MIT
+### JAV-0024 — MIT
 
 Applies to 1 component: @kwsites/file-exists 1.1.1.
 
@@ -7458,7 +5744,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0032 — MIT
+### JAV-0025 — MIT
 
 Applies to 1 component: @kwsites/promise-deferred 1.1.1.
 
@@ -7486,7 +5772,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0033 — MIT
+### JAV-0026 — MIT
 
 Applies to 6 components: @lezer/common 1.5.2, @lezer/css 1.3.4, @lezer/highlight 1.2.3, @lezer/html 1.3.13, @lezer/javascript 1.5.4, @lezer/lr 1.4.10.
 
@@ -7514,7 +5800,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0034 — MIT
+### JAV-0027 — MIT
 
 Applies to 1 component: @lezer/json 1.0.3.
 
@@ -7542,7 +5828,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0035 — MIT
+### JAV-0028 — MIT
 
 Applies to 2 components: @lezer/markdown 1.7.2, @lezer/python 1.1.19.
 
@@ -7570,83 +5856,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0036 — MIT
-
-Applies to 1 component: @lydell/node-pty 1.1.0.
-
-```text
-Copyright (c) 2012-2015, Christopher Jeffrey (https://github.com/chjj/)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-
-
-The MIT License (MIT)
-
-Copyright (c) 2016, Daniel Imms (http://www.growingwiththeweb.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
-
-MIT License
-
-Copyright (c) 2018 - present Microsoft Corporation
-
-All rights reserved.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0037 — MIT
+### JAV-0029 — MIT
 
 Applies to 1 component: @marijn/find-cluster-break 1.0.3.
 
@@ -7674,7 +5884,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0038 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0030 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: @mariozechner/clipboard 0.3.9.
 
@@ -7701,7 +5911,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0039 — MIT
+### JAV-0031 — MIT
 
 Applies to 1 component: @mermaid-js/parser 1.2.1.
 
@@ -7729,7 +5939,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0040 — Apache-2.0
+### JAV-0032 — Apache-2.0
 
 Applies to 1 component: @mistralai/mistralai 2.2.1.
 
@@ -7937,7 +6147,7 @@ Applies to 1 component: @mistralai/mistralai 2.2.1.
    limitations under the License.
 ```
 
-### JAV-0041 — MIT
+### JAV-0033 — MIT
 
 Applies to 1 component: @modelcontextprotocol/sdk 1.30.0.
 
@@ -7965,9 +6175,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0042 — Apache-2.0
+### JAV-0034 — MIT
 
-Applies to 34 components: @opentelemetry/api 1.9.0, @opentelemetry/api-logs 0.218.0, @opentelemetry/configuration 0.218.0, @opentelemetry/context-async-hooks 2.7.1, @opentelemetry/core 2.9.0, @opentelemetry/exporter-logs-otlp-grpc 0.218.0, @opentelemetry/exporter-logs-otlp-http 0.218.0, @opentelemetry/exporter-logs-otlp-proto 0.218.0, @opentelemetry/exporter-metrics-otlp-grpc 0.218.0, @opentelemetry/exporter-metrics-otlp-http 0.218.0, @opentelemetry/exporter-metrics-otlp-proto 0.218.0, @opentelemetry/exporter-prometheus 0.218.0, @opentelemetry/exporter-trace-otlp-grpc 0.218.0, @opentelemetry/exporter-trace-otlp-http 0.218.0, @opentelemetry/exporter-trace-otlp-proto 0.218.0, @opentelemetry/exporter-zipkin 2.7.1, @opentelemetry/instrumentation 0.218.0, @opentelemetry/instrumentation-http 0.218.0, @opentelemetry/otlp-exporter-base 0.218.0, @opentelemetry/otlp-grpc-exporter-base 0.218.0, @opentelemetry/otlp-transformer 0.218.0, @opentelemetry/propagator-b3 2.7.1, @opentelemetry/propagator-jaeger 2.9.0, @opentelemetry/resources 2.7.1, @opentelemetry/sdk-logs 0.218.0, @opentelemetry/sdk-metrics 2.7.1, @opentelemetry/sdk-node 0.218.0, @opentelemetry/sdk-trace-base 2.7.1, @opentelemetry/sdk-trace-node 2.7.1, @opentelemetry/semantic-conventions 1.39.0, @opentelemetry/semantic-conventions 1.40.0, @pkgjs/parseargs 0.11.0, chromium-bidi 17.0.2, import-in-the-middle 3.3.3.
+Applies to 1 component: @pkgjs/parseargs 0.11.0.
 
 ```text
                                  Apache License
@@ -8173,7 +6383,7 @@ Applies to 34 components: @opentelemetry/api 1.9.0, @opentelemetry/api-logs 0.21
    limitations under the License.
 ```
 
-### JAV-0043 — BSD-3-Clause
+### JAV-0035 — BSD-3-Clause
 
 Applies to 9 components: @protobufjs/aspromise 1.1.2, @protobufjs/base64 1.1.2, @protobufjs/codegen 2.0.5, @protobufjs/eventemitter 1.1.1, @protobufjs/fetch 1.1.1, @protobufjs/float 1.0.2, @protobufjs/path 1.1.2, @protobufjs/pool 1.1.0, @protobufjs/utf8 1.1.1.
 
@@ -8206,89 +6416,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0044 — Apache-2.0 — text not published by this component; attribution derived from its package metadata
-
-Applies to 2 components: @puppeteer/browsers 3.2.1, puppeteer-core 25.8.0.
-
-```text
-Copyright (c) The Chromium Authors
-
-Apache License
-Version 2.0, January 2004
-http://www.apache.org/licenses/
-
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-1. Definitions.
-
-"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
-
-"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
-
-"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
-
-"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
-
-"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
-
-"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
-
-"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
-
-"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
-
-"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
-
-"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
-
-2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
-
-3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
-
-4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
-
-     (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
-
-     (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
-
-     (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
-
-     (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
-
-     You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
-
-5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
-
-6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
-
-7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
-
-8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
-
-9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
-
-END OF TERMS AND CONDITIONS
-
-APPENDIX: How to apply the Apache License to your work.
-
-To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
-
-Copyright [yyyy] [name of copyright owner]
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-### JAV-0045 — MPL-2.0
+### JAV-0036 — MPL-2.0
 
 Applies to 1 component: @resvg/resvg-js 2.6.2.
 
@@ -8668,7 +6796,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### JAV-0046 — MPL-2.0 — text not published by this component; attribution derived from its package metadata
+### JAV-0037 — MPL-2.0 — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: @resvg/resvg-js-win32-x64-msvc 2.6.2.
 
@@ -9050,63 +7178,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### JAV-0047 — MIT
-
-Applies to 1 component: @sec-ant/readable-stream 0.4.1.
-
-```text
-MIT License
-
-Copyright (c) 2022 Ze-Zheng Wu
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0048 — MIT
-
-Applies to 5 components: @selderee/plugin-htmlparser2 0.11.0, leac 0.6.0, parseley 0.12.1, peberminta 0.9.0, selderee 0.11.0.
-
-```text
-MIT License
-
-Copyright (c) 2021-2022 KillyMXI <killy@mxii.eu.org>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0049 — Apache-2.0
+### JAV-0038 — Apache-2.0
 
 Applies to 1 component: @silvia-odwyer/photon-node 0.3.4.
 
@@ -9314,7 +7386,7 @@ Applies to 1 component: @silvia-odwyer/photon-node 0.3.4.
    limitations under the License.
 ```
 
-### JAV-0050 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0039 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: @simple-git/args-pathspec 1.0.3.
 
@@ -9341,7 +7413,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0051 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0040 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: @simple-git/argv-parser 1.1.1.
 
@@ -9368,23 +7440,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0052 — MIT
-
-Applies to 42 components: @sindresorhus/merge-streams 4.0.0, ansi-regex 5.0.1, ansi-regex 6.2.2, bundle-name 4.1.0, chalk 5.6.2, default-browser 5.5.0, default-browser-id 5.0.1, define-lazy-prop 3.0.0, dot-prop 6.0.1, escape-string-regexp 5.0.0, execa 9.6.1, figures 6.1.0, find-up-simple 1.0.1, get-east-asian-width 1.6.0, get-stream 9.0.1, index-to-position 1.2.0, is-docker 3.0.0, is-inside-container 1.0.0, is-plain-obj 4.1.0, is-stream 4.0.1, is-unicode-supported 2.1.0, is-wsl 3.1.1, npm-run-path 6.0.0, open 10.1.2, parse-json 8.3.0, parse-ms 4.0.0, pretty-ms 9.3.0, read-package-up 11.0.0, read-pkg 9.0.1, run-applescript 7.1.0, strip-ansi 6.0.1, strip-ansi 7.1.0, strip-ansi 7.2.0, strip-final-newline 4.0.0, strip-json-comments 3.1.1, type-fest 4.41.0, unicorn-magic 0.1.0, unicorn-magic 0.3.0, wrap-ansi 7.0.0, wrap-ansi 8.1.0, wrap-ansi 9.0.2, yoctocolors 2.1.2.
-
-```text
-MIT License
-
-Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0053 — MIT
+### JAV-0041 — MIT
 
 Applies to 1 component: @stablelib/base64 1.0.1.
 
@@ -9412,9 +7468,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0054 — MIT
+### JAV-0042 — MIT
 
-Applies to 45 components: @types/d3 7.4.3, @types/d3-array 3.2.2, @types/d3-axis 3.0.6, @types/d3-brush 3.0.6, @types/d3-chord 3.0.6, @types/d3-color 3.1.3, @types/d3-contour 3.0.6, @types/d3-delaunay 6.0.4, @types/d3-dispatch 3.0.7, @types/d3-drag 3.0.7, @types/d3-dsv 3.0.7, @types/d3-ease 3.0.2, @types/d3-fetch 3.0.7, @types/d3-force 3.0.10, @types/d3-format 3.0.4, @types/d3-geo 3.1.0, @types/d3-hierarchy 3.1.7, @types/d3-interpolate 3.0.4, @types/d3-path 3.1.1, @types/d3-polygon 3.0.2, @types/d3-quadtree 3.0.6, @types/d3-random 3.0.4, @types/d3-scale 4.0.9, @types/d3-scale-chromatic 3.1.0, @types/d3-selection 3.0.11, @types/d3-shape 3.1.8, @types/d3-time 3.0.4, @types/d3-time-format 4.0.3, @types/d3-timer 3.0.2, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.8, @types/debug 4.1.13, @types/estree 1.0.9, @types/estree-jsx 1.0.5, @types/geojson 7946.0.16, @types/hast 3.0.5, @types/html-to-text 9.0.4, @types/mdast 4.0.4, @types/ms 2.1.0, @types/node 25.3.3, @types/normalize-package-data 2.4.4, @types/react 19.2.18, @types/trusted-types 2.0.7, @types/unist 2.0.11, @types/unist 3.0.3.
+Applies to 43 components: @types/d3 7.4.3, @types/d3-array 3.2.2, @types/d3-axis 3.0.6, @types/d3-brush 3.0.6, @types/d3-chord 3.0.6, @types/d3-color 3.1.3, @types/d3-contour 3.0.6, @types/d3-delaunay 6.0.4, @types/d3-dispatch 3.0.7, @types/d3-drag 3.0.7, @types/d3-dsv 3.0.7, @types/d3-ease 3.0.2, @types/d3-fetch 3.0.7, @types/d3-force 3.0.10, @types/d3-format 3.0.4, @types/d3-geo 3.1.0, @types/d3-hierarchy 3.1.7, @types/d3-interpolate 3.0.4, @types/d3-path 3.1.1, @types/d3-polygon 3.0.2, @types/d3-quadtree 3.0.6, @types/d3-random 3.0.4, @types/d3-scale 4.0.9, @types/d3-scale-chromatic 3.1.0, @types/d3-selection 3.0.11, @types/d3-shape 3.1.8, @types/d3-time 3.0.4, @types/d3-time-format 4.0.3, @types/d3-timer 3.0.2, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.8, @types/debug 4.1.13, @types/estree 1.0.9, @types/estree-jsx 1.0.5, @types/geojson 7946.0.16, @types/hast 3.0.5, @types/mdast 4.0.4, @types/ms 2.1.0, @types/node 25.3.3, @types/react 19.2.18, @types/trusted-types 2.0.7, @types/unist 2.0.11, @types/unist 3.0.3.
 
 ```text
     MIT License
@@ -9440,7 +7496,7 @@ Applies to 45 components: @types/d3 7.4.3, @types/d3-array 3.2.2, @types/d3-axis
     SOFTWARE
 ```
 
-### JAV-0055 — MIT
+### JAV-0043 — MIT
 
 Applies to 1 component: @types/retry 0.12.0.
 
@@ -9468,7 +7524,7 @@ Applies to 1 component: @types/retry 0.12.0.
     SOFTWARE
 ```
 
-### JAV-0056 — ISC
+### JAV-0044 — ISC
 
 Applies to 1 component: @ungap/structured-clone 1.3.3.
 
@@ -9490,7 +7546,7 @@ OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0057 — MIT
+### JAV-0045 — MIT
 
 Applies to 1 component: @upsetjs/venn.js 2.0.0.
 
@@ -9519,7 +7575,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0058 — MIT
+### JAV-0046 — MIT
 
 Applies to 1 component: @xterm/addon-clipboard 0.2.0.
 
@@ -9545,7 +7601,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0059 — MIT
+### JAV-0047 — MIT
 
 Applies to 2 components: @xterm/addon-fit 0.11.0, @xterm/addon-unicode11 0.9.0.
 
@@ -9571,7 +7627,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0060 — MIT
+### JAV-0048 — MIT
 
 Applies to 2 components: @xterm/addon-search 0.16.0, @xterm/addon-web-links 0.12.0.
 
@@ -9597,7 +7653,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0061 — MIT
+### JAV-0049 — MIT
 
 Applies to 1 component: @xterm/addon-webgl 0.19.0.
 
@@ -9623,34 +7679,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0062 — MIT — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: @xterm/headless 5.5.0.
-
-```text
-Copyright (c) the @xterm/headless authors
-
-MIT License
-
-Copyright (c) <year> <copyright holders>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0063 — MIT
+### JAV-0050 — MIT
 
 Applies to 1 component: @xterm/xterm 6.0.0.
 
@@ -9678,7 +7707,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0064 — MIT
+### JAV-0051 — MIT
 
 Applies to 2 components: accepts 2.0.0, mime-types 3.0.2.
 
@@ -9708,7 +7737,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0065 — MIT
+### JAV-0052 — MIT
 
 Applies to 3 components: agent-base 7.1.4, http-proxy-agent 7.0.2, https-proxy-agent 7.0.6.
 
@@ -9737,7 +7766,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0066 — MIT
+### JAV-0053 — MIT
 
 Applies to 1 component: ajv 8.18.0.
 
@@ -9765,7 +7794,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0067 — MIT
+### JAV-0054 — MIT
 
 Applies to 1 component: ajv-formats 3.0.1.
 
@@ -9793,9 +7822,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0068 — MIT
+### JAV-0055 — MIT
 
-Applies to 13 components: ansi-styles 4.3.0, ansi-styles 6.2.3, arrify 2.0.1, is-fullwidth-code-point 3.0.0, is-obj 2.0.0, p-retry 4.6.2, path-key 3.1.1, path-key 4.0.0, shebang-regex 3.0.0, string-width 4.2.3, string-width 5.1.2, string-width 7.2.0, string-width 8.2.2.
+Applies to 10 components: ansi-regex 5.0.1, ansi-regex 6.2.2, chalk 5.6.2, escape-string-regexp 5.0.0, get-east-asian-width 1.6.0, is-plain-obj 4.1.0, strip-ansi 6.0.1, strip-ansi 7.2.0, wrap-ansi 7.0.0, wrap-ansi 8.1.0.
+
+```text
+MIT License
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### JAV-0056 — MIT
+
+Applies to 8 components: ansi-styles 4.3.0, ansi-styles 6.2.3, is-fullwidth-code-point 3.0.0, p-retry 4.6.2, path-key 3.1.1, shebang-regex 3.0.0, string-width 4.2.3, string-width 5.1.2.
 
 ```text
 MIT License
@@ -9809,268 +7854,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0069 — Python-2.0
-
-Applies to 1 component: argparse 2.0.1.
-
-```text
-A. HISTORY OF THE SOFTWARE
-==========================
-
-Python was created in the early 1990s by Guido van Rossum at Stichting
-Mathematisch Centrum (CWI, see http://www.cwi.nl) in the Netherlands
-as a successor of a language called ABC.  Guido remains Python's
-principal author, although it includes many contributions from others.
-
-In 1995, Guido continued his work on Python at the Corporation for
-National Research Initiatives (CNRI, see http://www.cnri.reston.va.us)
-in Reston, Virginia where he released several versions of the
-software.
-
-In May 2000, Guido and the Python core development team moved to
-BeOpen.com to form the BeOpen PythonLabs team.  In October of the same
-year, the PythonLabs team moved to Digital Creations, which became
-Zope Corporation.  In 2001, the Python Software Foundation (PSF, see
-https://www.python.org/psf/) was formed, a non-profit organization
-created specifically to own Python-related Intellectual Property.
-Zope Corporation was a sponsoring member of the PSF.
-
-All Python releases are Open Source (see http://www.opensource.org for
-the Open Source Definition).  Historically, most, but not all, Python
-releases have also been GPL-compatible; the table below summarizes
-the various releases.
-
-    Release         Derived     Year        Owner       GPL-
-                    from                                compatible? (1)
-
-    0.9.0 thru 1.2              1991-1995   CWI         yes
-    1.3 thru 1.5.2  1.2         1995-1999   CNRI        yes
-    1.6             1.5.2       2000        CNRI        no
-    2.0             1.6         2000        BeOpen.com  no
-    1.6.1           1.6         2001        CNRI        yes (2)
-    2.1             2.0+1.6.1   2001        PSF         no
-    2.0.1           2.0+1.6.1   2001        PSF         yes
-    2.1.1           2.1+2.0.1   2001        PSF         yes
-    2.1.2           2.1.1       2002        PSF         yes
-    2.1.3           2.1.2       2002        PSF         yes
-    2.2 and above   2.1.1       2001-now    PSF         yes
-
-Footnotes:
-
-(1) GPL-compatible doesn't mean that we're distributing Python under
-    the GPL.  All Python licenses, unlike the GPL, let you distribute
-    a modified version without making your changes open source.  The
-    GPL-compatible licenses make it possible to combine Python with
-    other software that is released under the GPL; the others don't.
-
-(2) According to Richard Stallman, 1.6.1 is not GPL-compatible,
-    because its license has a choice of law clause.  According to
-    CNRI, however, Stallman's lawyer has told CNRI's lawyer that 1.6.1
-    is "not incompatible" with the GPL.
-
-Thanks to the many outside volunteers who have worked under Guido's
-direction to make these releases possible.
-
-
-B. TERMS AND CONDITIONS FOR ACCESSING OR OTHERWISE USING PYTHON
-===============================================================
-
-PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2
---------------------------------------------
-
-1. This LICENSE AGREEMENT is between the Python Software Foundation
-("PSF"), and the Individual or Organization ("Licensee") accessing and
-otherwise using this software ("Python") in source or binary form and
-its associated documentation.
-
-2. Subject to the terms and conditions of this License Agreement, PSF hereby
-grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce,
-analyze, test, perform and/or display publicly, prepare derivative works,
-distribute, and otherwise use Python alone or in any derivative version,
-provided, however, that PSF's License Agreement and PSF's notice of copyright,
-i.e., "Copyright (c) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010,
-2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020 Python Software Foundation;
-All Rights Reserved" are retained in Python alone or in any derivative version
-prepared by Licensee.
-
-3. In the event Licensee prepares a derivative work that is based on
-or incorporates Python or any part thereof, and wants to make
-the derivative work available to others as provided herein, then
-Licensee hereby agrees to include in any such work a brief summary of
-the changes made to Python.
-
-4. PSF is making Python available to Licensee on an "AS IS"
-basis.  PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
-IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND
-DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
-FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON WILL NOT
-INFRINGE ANY THIRD PARTY RIGHTS.
-
-5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON
-FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS
-A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON,
-OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
-
-6. This License Agreement will automatically terminate upon a material
-breach of its terms and conditions.
-
-7. Nothing in this License Agreement shall be deemed to create any
-relationship of agency, partnership, or joint venture between PSF and
-Licensee.  This License Agreement does not grant permission to use PSF
-trademarks or trade name in a trademark sense to endorse or promote
-products or services of Licensee, or any third party.
-
-8. By copying, installing or otherwise using Python, Licensee
-agrees to be bound by the terms and conditions of this License
-Agreement.
-
-
-BEOPEN.COM LICENSE AGREEMENT FOR PYTHON 2.0
--------------------------------------------
-
-BEOPEN PYTHON OPEN SOURCE LICENSE AGREEMENT VERSION 1
-
-1. This LICENSE AGREEMENT is between BeOpen.com ("BeOpen"), having an
-office at 160 Saratoga Avenue, Santa Clara, CA 95051, and the
-Individual or Organization ("Licensee") accessing and otherwise using
-this software in source or binary form and its associated
-documentation ("the Software").
-
-2. Subject to the terms and conditions of this BeOpen Python License
-Agreement, BeOpen hereby grants Licensee a non-exclusive,
-royalty-free, world-wide license to reproduce, analyze, test, perform
-and/or display publicly, prepare derivative works, distribute, and
-otherwise use the Software alone or in any derivative version,
-provided, however, that the BeOpen Python License is retained in the
-Software, alone or in any derivative version prepared by Licensee.
-
-3. BeOpen is making the Software available to Licensee on an "AS IS"
-basis.  BEOPEN MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
-IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, BEOPEN MAKES NO AND
-DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
-FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF THE SOFTWARE WILL NOT
-INFRINGE ANY THIRD PARTY RIGHTS.
-
-4. BEOPEN SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF THE
-SOFTWARE FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS
-AS A RESULT OF USING, MODIFYING OR DISTRIBUTING THE SOFTWARE, OR ANY
-DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
-
-5. This License Agreement will automatically terminate upon a material
-breach of its terms and conditions.
-
-6. This License Agreement shall be governed by and interpreted in all
-respects by the law of the State of California, excluding conflict of
-law provisions.  Nothing in this License Agreement shall be deemed to
-create any relationship of agency, partnership, or joint venture
-between BeOpen and Licensee.  This License Agreement does not grant
-permission to use BeOpen trademarks or trade names in a trademark
-sense to endorse or promote products or services of Licensee, or any
-third party.  As an exception, the "BeOpen Python" logos available at
-http://www.pythonlabs.com/logos.html may be used according to the
-permissions granted on that web page.
-
-7. By copying, installing or otherwise using the software, Licensee
-agrees to be bound by the terms and conditions of this License
-Agreement.
-
-
-CNRI LICENSE AGREEMENT FOR PYTHON 1.6.1
----------------------------------------
-
-1. This LICENSE AGREEMENT is between the Corporation for National
-Research Initiatives, having an office at 1895 Preston White Drive,
-Reston, VA 20191 ("CNRI"), and the Individual or Organization
-("Licensee") accessing and otherwise using Python 1.6.1 software in
-source or binary form and its associated documentation.
-
-2. Subject to the terms and conditions of this License Agreement, CNRI
-hereby grants Licensee a nonexclusive, royalty-free, world-wide
-license to reproduce, analyze, test, perform and/or display publicly,
-prepare derivative works, distribute, and otherwise use Python 1.6.1
-alone or in any derivative version, provided, however, that CNRI's
-License Agreement and CNRI's notice of copyright, i.e., "Copyright (c)
-1995-2001 Corporation for National Research Initiatives; All Rights
-Reserved" are retained in Python 1.6.1 alone or in any derivative
-version prepared by Licensee.  Alternately, in lieu of CNRI's License
-Agreement, Licensee may substitute the following text (omitting the
-quotes): "Python 1.6.1 is made available subject to the terms and
-conditions in CNRI's License Agreement.  This Agreement together with
-Python 1.6.1 may be located on the Internet using the following
-unique, persistent identifier (known as a handle): 1895.22/1013.  This
-Agreement may also be obtained from a proxy server on the Internet
-using the following URL: http://hdl.handle.net/1895.22/1013".
-
-3. In the event Licensee prepares a derivative work that is based on
-or incorporates Python 1.6.1 or any part thereof, and wants to make
-the derivative work available to others as provided herein, then
-Licensee hereby agrees to include in any such work a brief summary of
-the changes made to Python 1.6.1.
-
-4. CNRI is making Python 1.6.1 available to Licensee on an "AS IS"
-basis.  CNRI MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR
-IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, CNRI MAKES NO AND
-DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS
-FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON 1.6.1 WILL NOT
-INFRINGE ANY THIRD PARTY RIGHTS.
-
-5. CNRI SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON
-1.6.1 FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS
-A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON 1.6.1,
-OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
-
-6. This License Agreement will automatically terminate upon a material
-breach of its terms and conditions.
-
-7. This License Agreement shall be governed by the federal
-intellectual property law of the United States, including without
-limitation the federal copyright law, and, to the extent such
-U.S. federal law does not apply, by the law of the Commonwealth of
-Virginia, excluding Virginia's conflict of law provisions.
-Notwithstanding the foregoing, with regard to derivative works based
-on Python 1.6.1 that incorporate non-separable material that was
-previously distributed under the GNU General Public License (GPL), the
-law of the Commonwealth of Virginia shall govern this License
-Agreement only as to issues arising under or with respect to
-Paragraphs 4, 5, and 7 of this License Agreement.  Nothing in this
-License Agreement shall be deemed to create any relationship of
-agency, partnership, or joint venture between CNRI and Licensee.  This
-License Agreement does not grant permission to use CNRI trademarks or
-trade name in a trademark sense to endorse or promote products or
-services of Licensee, or any third party.
-
-8. By clicking on the "ACCEPT" button where indicated, or by copying,
-installing or otherwise using Python 1.6.1, Licensee agrees to be
-bound by the terms and conditions of this License Agreement.
-
-        ACCEPT
-
-
-CWI LICENSE AGREEMENT FOR PYTHON 0.9.0 THROUGH 1.2
---------------------------------------------------
-
-Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam,
-The Netherlands.  All rights reserved.
-
-Permission to use, copy, modify, and distribute this software and its
-documentation for any purpose and without fee is hereby granted,
-provided that the above copyright notice appear in all copies and that
-both that copyright notice and this permission notice appear in
-supporting documentation, and that the name of Stichting Mathematisch
-Centrum or CWI not be used in advertising or publicity pertaining to
-distribution of the software without specific, written prior
-permission.
-
-STICHTING MATHEMATISCH CENTRUM DISCLAIMS ALL WARRANTIES WITH REGARD TO
-THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS, IN NO EVENT SHALL STICHTING MATHEMATISCH CENTRUM BE LIABLE
-FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
-OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-### JAV-0070 — MIT
+### JAV-0057 — MIT
 
 Applies to 9 components: bail 2.0.2, ccount 2.0.1, character-entities 2.0.2, character-entities-html4 2.1.0, character-entities-legacy 3.0.0, character-reference-invalid 2.0.1, mdast-util-to-string 4.0.0, unist-util-position 5.0.0, unist-util-visit 5.1.0.
 
@@ -10099,7 +7883,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0071 — MIT
+### JAV-0058 — MIT
 
 Applies to 2 components: balanced-match 1.0.2, balanced-match 4.0.4.
 
@@ -10129,7 +7913,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0072 — MIT
+### JAV-0059 — MIT
 
 Applies to 1 component: base64-js 1.5.1.
 
@@ -10157,7 +7941,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0073 — MIT
+### JAV-0060 — MIT
 
 Applies to 1 component: bignumber.js 9.3.1.
 
@@ -10189,7 +7973,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0074 — MIT
+### JAV-0061 — MIT
 
 Applies to 3 components: body-parser 2.3.0, type-is 2.0.1, type-is 2.1.0.
 
@@ -10219,7 +8003,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0075 — MIT
+### JAV-0062 — MIT
 
 Applies to 1 component: bowser 2.14.1.
 
@@ -10265,7 +8049,7 @@ programs and associated documentation files created by the
 Original Author, when distributed with the Software.
 ```
 
-### JAV-0076 — MIT
+### JAV-0063 — MIT
 
 Applies to 2 components: brace-expansion 2.1.4, brace-expansion 5.0.9.
 
@@ -10295,7 +8079,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0077 — BSD-3-Clause
+### JAV-0064 — BSD-3-Clause
 
 Applies to 1 component: buffer-equal-constant-time 1.0.1.
 
@@ -10314,7 +8098,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0078 — MIT
+### JAV-0065 — MIT
 
 Applies to 1 component: bun-pty 0.4.8.
 
@@ -10342,7 +8126,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0079 — MIT
+### JAV-0066 — MIT
 
 Applies to 1 component: bytes 3.1.2.
 
@@ -10372,35 +8156,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0080 — MIT
-
-Applies to 2 components: call-bind 1.0.9, get-intrinsic 1.3.0.
-
-```text
-MIT License
-
-Copyright (c) 2020 Jordan Harband
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0081 — MIT
+### JAV-0067 — MIT
 
 Applies to 7 components: call-bind-apply-helpers 1.0.2, call-bound 1.0.4, es-define-property 1.0.1, es-errors 1.3.0, es-object-atoms 1.1.1, side-channel-list 1.0.1, side-channel-map 1.0.1.
 
@@ -10428,73 +8184,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0082 — MIT
-
-Applies to 1 component: chokidar 5.0.0.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2012 Paul Miller (https://paulmillr.com), Elan Shanker
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the “Software”), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0083 — MIT
-
-Applies to 1 component: cjs-module-lexer 2.2.0.
-
-```text
-MIT License
------------
-
-Copyright (C) 2018-2020 Guy Bedford
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0084 — ISC
-
-Applies to 2 components: cliui 8.0.1, cliui 9.0.1.
-
-```text
-Copyright (c) 2015, Contributors
-
-Permission to use, copy, modify, and/or distribute this software
-for any purpose with or without fee is hereby granted, provided
-that the above copyright notice and this permission notice
-appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
-OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE
-LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
-OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
-WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
-ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-### JAV-0085 — MIT
+### JAV-0068 — MIT
 
 Applies to 1 component: color-convert 2.0.1.
 
@@ -10521,7 +8211,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0086 — MIT
+### JAV-0069 — MIT
 
 Applies to 1 component: color-name 1.1.4.
 
@@ -10536,7 +8226,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0087 — MIT
+### JAV-0070 — MIT
 
 Applies to 17 components: comma-separated-tokens 2.0.3, hast-util-parse-selector 4.0.0, hast-util-whitespace 3.0.0, html-void-elements 3.0.0, is-alphabetical 2.0.1, is-alphanumerical 2.0.1, is-decimal 2.0.1, is-hexadecimal 2.0.1, mdast-util-to-hast 13.2.1, rehype-raw 7.0.0, rehype-sanitize 6.0.0, space-separated-tokens 2.0.2, unist-util-stringify-position 4.0.0, unist-util-visit-parents 6.0.2, vfile-location 5.0.3, web-namespaces 2.0.1, zwitch 2.0.4.
 
@@ -10565,35 +8255,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0088 — MIT
-
-Applies to 1 component: command-exists 1.2.9.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014 Matthew Conlen
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0089 — MIT
+### JAV-0071 — MIT
 
 Applies to 2 components: commander 7.2.0, commander 8.3.0.
 
@@ -10622,7 +8284,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0090 — MIT
+### JAV-0072 — MIT
 
 Applies to 4 components: content-disposition 1.0.1, forwarded 0.2.0, media-typer 1.1.0, vary 1.1.2.
 
@@ -10651,7 +8313,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0091 — MIT
+### JAV-0073 — MIT
 
 Applies to 2 components: content-type 1.0.5, content-type 2.1.0.
 
@@ -10680,7 +8342,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0092 — MIT
+### JAV-0074 — MIT
 
 Applies to 1 component: cookie 0.7.2.
 
@@ -10710,7 +8372,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0093 — MIT
+### JAV-0075 — MIT
 
 Applies to 1 component: cookie-signature 1.2.2.
 
@@ -10739,7 +8401,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0094 — MIT
+### JAV-0076 — MIT
 
 Applies to 1 component: cors 2.8.6.
 
@@ -10768,7 +8430,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0095 — MIT
+### JAV-0077 — MIT
 
 Applies to 2 components: cose-base 1.0.3, cose-base 2.2.0.
 
@@ -10796,7 +8458,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0096 — MIT
+### JAV-0078 — MIT
 
 Applies to 1 component: crelt 1.0.7.
 
@@ -10822,7 +8484,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0097 — MIT
+### JAV-0079 — MIT
 
 Applies to 2 components: cross-spawn 7.0.6, proper-lockfile 4.1.2.
 
@@ -10850,7 +8512,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0098 — MIT
+### JAV-0080 — MIT
 
 Applies to 1 component: csstype 3.2.3.
 
@@ -10876,7 +8538,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0099 — MIT (LICENSE)
+### JAV-0081 — MIT (LICENSE)
 
 Applies to 1 component: cytoscape 3.34.0.
 
@@ -10902,7 +8564,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0100 — MIT (license-update.mjs)
+### JAV-0082 — MIT (license-update.mjs)
 
 Applies to 1 component: cytoscape 3.34.0.
 
@@ -10941,7 +8603,7 @@ SOFTWARE.`;
 fs.writeFileSync(path.join(__dirname, 'LICENSE'), license);
 ```
 
-### JAV-0101 — MIT
+### JAV-0083 — MIT
 
 Applies to 1 component: cytoscape-cose-bilkent 4.1.0.
 
@@ -10969,7 +8631,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0102 — MIT
+### JAV-0084 — MIT
 
 Applies to 1 component: cytoscape-fcose 2.2.0.
 
@@ -10995,7 +8657,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0103 — ISC
+### JAV-0085 — ISC
 
 Applies to 3 components: d3 7.9.0, d3-array 2.12.1, d3-array 3.2.4.
 
@@ -11015,7 +8677,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0104 — ISC
+### JAV-0086 — ISC
 
 Applies to 17 components: d3-axis 3.0.0, d3-brush 3.0.0, d3-chord 3.0.1, d3-dispatch 3.0.1, d3-drag 3.0.0, d3-force 3.0.0, d3-hierarchy 3.1.2, d3-interpolate 3.0.1, d3-polygon 3.0.1, d3-quadtree 3.0.1, d3-random 3.0.1, d3-scale 4.0.2, d3-selection 3.0.0, d3-time-format 4.1.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0.
 
@@ -11035,7 +8697,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0105 — ISC
+### JAV-0087 — ISC
 
 Applies to 4 components: d3-color 3.1.0, d3-shape 1.3.7, d3-shape 3.2.0, d3-time 3.1.0.
 
@@ -11055,7 +8717,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0106 — ISC
+### JAV-0088 — ISC
 
 Applies to 1 component: d3-contour 4.0.2.
 
@@ -11075,7 +8737,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0107 — ISC
+### JAV-0089 — ISC
 
 Applies to 1 component: d3-delaunay 6.0.4.
 
@@ -11096,7 +8758,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0108 — ISC
+### JAV-0090 — ISC
 
 Applies to 1 component: d3-dsv 3.0.1.
 
@@ -11116,7 +8778,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0109 — BSD-3-Clause
+### JAV-0091 — BSD-3-Clause
 
 Applies to 1 component: d3-ease 3.0.1.
 
@@ -11151,7 +8813,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0110 — ISC
+### JAV-0092 — ISC
 
 Applies to 1 component: d3-fetch 3.0.1.
 
@@ -11171,7 +8833,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0111 — ISC
+### JAV-0093 — ISC
 
 Applies to 1 component: d3-format 3.1.2.
 
@@ -11191,7 +8853,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0112 — ISC
+### JAV-0094 — ISC
 
 Applies to 1 component: d3-geo 3.1.1.
 
@@ -11232,7 +8894,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0113 — ISC
+### JAV-0095 — ISC
 
 Applies to 2 components: d3-path 1.0.9, d3-path 3.1.0.
 
@@ -11252,7 +8914,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0114 — BSD-3-Clause
+### JAV-0096 — BSD-3-Clause
 
 Applies to 1 component: d3-sankey 0.12.3.
 
@@ -11286,7 +8948,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0115 — ISC
+### JAV-0097 — ISC
 
 Applies to 1 component: d3-scale-chromatic 3.1.0.
 
@@ -11321,7 +8983,7 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 ```
 
-### JAV-0116 — MIT
+### JAV-0098 — MIT
 
 Applies to 1 component: dagre-d3-es 7.0.14.
 
@@ -11351,7 +9013,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0117 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0099 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: data-uri-to-buffer 4.0.1.
 
@@ -11378,7 +9040,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0118 — MIT
+### JAV-0100 — MIT
 
 Applies to 1 component: dayjs 1.11.21.
 
@@ -11406,7 +9068,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0119 — MIT
+### JAV-0101 — MIT
 
 Applies to 1 component: debug 4.4.3.
 
@@ -11432,7 +9094,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0120 — MIT
+### JAV-0102 — MIT
 
 Applies to 38 components: decode-named-character-reference 1.3.0, hast-util-from-parse5 8.0.3, hast-util-raw 9.1.0, hast-util-sanitize 5.0.2, hast-util-to-jsx-runtime 2.3.6, hast-util-to-parse5 8.0.1, hastscript 9.0.1, markdown-table 3.0.4, mdast-util-find-and-replace 3.0.2, mdast-util-from-markdown 2.0.3, mdast-util-gfm 3.1.0, mdast-util-gfm-footnote 2.1.0, mdast-util-to-markdown 2.1.2, micromark 4.0.2, micromark-core-commonmark 2.0.3, micromark-extension-gfm-table 2.1.1, micromark-factory-destination 2.0.1, micromark-factory-label 2.0.1, micromark-factory-space 2.0.1, micromark-factory-title 2.0.1, micromark-factory-whitespace 2.0.1, micromark-util-character 2.1.1, micromark-util-chunked 2.0.1, micromark-util-classify-character 2.0.1, micromark-util-combine-extensions 2.0.1, micromark-util-decode-numeric-character-reference 2.0.2, micromark-util-decode-string 2.0.1, micromark-util-encode 2.0.1, micromark-util-html-tag-name 2.0.1, micromark-util-normalize-identifier 2.0.1, micromark-util-resolve-all 2.0.1, micromark-util-sanitize-uri 2.0.1, micromark-util-subtokenize 2.1.0, micromark-util-symbol 2.0.1, micromark-util-types 2.0.2, remark-gfm 4.0.1, remark-rehype 11.1.2, vfile-message 4.0.3.
 
@@ -11461,63 +9123,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0121 — MIT
-
-Applies to 1 component: deepmerge 4.3.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2012 James Halliday, Josh Duff, and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0122 — MIT
-
-Applies to 1 component: define-data-property 1.1.4.
-
-```text
-MIT License
-
-Copyright (c) 2023 Jordan Harband
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0123 — ISC
+### JAV-0103 — ISC
 
 Applies to 1 component: delaunator 5.1.0.
 
@@ -11539,7 +9145,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0124 — MIT
+### JAV-0104 — MIT
 
 Applies to 1 component: depd 2.0.0.
 
@@ -11568,7 +9174,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0125 — MIT
+### JAV-0105 — MIT
 
 Applies to 1 component: dequal 2.0.3.
 
@@ -11596,7 +9202,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0126 — MIT
+### JAV-0106 — MIT
 
 Applies to 1 component: devlop 1.1.0.
 
@@ -11625,43 +9231,9 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0127 — BSD-3-Clause
+### JAV-0107 — BSD-3-Clause
 
-Applies to 1 component: devtools-protocol 0.0.1666840.
-
-```text
-// Copyright 2014 The Chromium Authors. All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-//    * Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//    * Redistributions in binary form must reproduce the above
-// copyright notice, this list of conditions and the following disclaimer
-// in the documentation and/or other materials provided with the
-// distribution.
-//    * Neither the name of Google Inc. nor the names of its
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0128 — BSD-3-Clause
-
-Applies to 2 components: diff 8.0.3, diff 8.0.4.
+Applies to 1 component: diff 8.0.4.
 
 ```text
 BSD 3-Clause License
@@ -11695,43 +9267,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0129 — MIT
-
-Applies to 1 component: dom-serializer 2.0.0.
-
-```text
-License
-
-(The MIT License)
-
-Copyright (c) 2014 The cheeriojs contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the 'Software'), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0130 — BSD-2-Clause
-
-Applies to 5 components: domelementtype 2.3.0, domhandler 5.0.3, domutils 3.2.2, entities 4.5.0, entities 6.0.1.
-
-```text
-Copyright (c) Felix Böhm
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS,
-EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0131 — Apache-2.0 (LICENSE-MPL)
+### JAV-0108 — Apache-2.0 (LICENSE-MPL)
 
 Applies to 1 component: dompurify 3.4.14.
 
@@ -12111,67 +9647,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### JAV-0132 — BSD-2-Clause
-
-Applies to 2 components: dotenv 16.6.1, dotenv 17.2.4.
-
-```text
-Copyright (c) 2015, Scott Motte
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this
-  list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0133 — BSD-2-Clause
-
-Applies to 1 component: dotenv-expand 12.0.3.
-
-```text
-Copyright (c) 2016, Scott Motte
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this
-  list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0134 — MIT
+### JAV-0109 — MIT
 
 Applies to 2 components: dunder-proto 1.0.1, math-intrinsics 1.1.0.
 
@@ -12199,35 +9675,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0135 — MIT
-
-Applies to 4 components: duplexify 4.1.3, end-of-stream 1.4.5, pump 3.0.4, pumpify 2.0.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014 Mathias Buus
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0136 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0110 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: eastasianwidth 0.2.0.
 
@@ -12254,7 +9702,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0137 — Apache-2.0
+### JAV-0111 — Apache-2.0
 
 Applies to 1 component: ecdsa-sig-formatter 1.0.11.
 
@@ -12462,7 +9910,7 @@ Apache License
    limitations under the License.
 ```
 
-### JAV-0138 — MIT
+### JAV-0112 — MIT
 
 Applies to 1 component: ee-first 1.1.1.
 
@@ -12491,9 +9939,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0139 — MIT
+### JAV-0113 — MIT
 
-Applies to 3 components: emoji-regex 10.6.0, emoji-regex 8.0.0, emoji-regex 9.2.2.
+Applies to 2 components: emoji-regex 8.0.0, emoji-regex 9.2.2.
 
 ```text
 Copyright Mathias Bynens <https://mathiasbynens.be/>
@@ -12518,7 +9966,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0140 — MIT
+### JAV-0114 — MIT
 
 Applies to 1 component: encodeurl 2.0.0.
 
@@ -12547,24 +9995,25 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0141 — MIT
+### JAV-0115 — BSD-2-Clause
 
-Applies to 1 component: es-module-lexer 2.3.2.
+Applies to 1 component: entities 6.0.1.
 
 ```text
-MIT License
------------
+Copyright (c) Felix Böhm
+All rights reserved.
 
-Copyright (C) 2018-2022 Guy Bedford
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS,
+EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0142 — MIT
+### JAV-0116 — MIT
 
 Applies to 1 component: es-toolkit 1.49.0.
 
@@ -12592,23 +10041,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0143 — MIT
-
-Applies to 1 component: escalade 3.2.0.
-
-```text
-MIT License
-
-Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0144 — MIT
+### JAV-0117 — MIT
 
 Applies to 1 component: escape-html 1.0.3.
 
@@ -12639,7 +10072,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0145 — MIT
+### JAV-0118 — MIT
 
 Applies to 13 components: estree-util-is-identifier-name 3.0.0, mdast-util-gfm-autolink-literal 2.0.1, mdast-util-gfm-strikethrough 2.0.0, mdast-util-gfm-table 2.0.0, mdast-util-gfm-task-list-item 2.0.0, mdast-util-mdx-expression 2.0.1, mdast-util-mdx-jsx 3.2.0, mdast-util-mdxjs-esm 2.0.1, micromark-extension-gfm 3.0.0, micromark-extension-gfm-autolink-literal 2.1.0, micromark-extension-gfm-strikethrough 2.1.0, micromark-extension-gfm-tagfilter 2.0.0, micromark-extension-gfm-task-list-item 2.1.0.
 
@@ -12668,7 +10101,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0146 — MIT
+### JAV-0119 — MIT
 
 Applies to 2 components: etag 1.8.1, proxy-addr 2.0.7.
 
@@ -12697,7 +10130,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0147 — MIT
+### JAV-0120 — MIT
 
 Applies to 1 component: eventsource 3.0.7.
 
@@ -12726,7 +10159,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0148 — MIT
+### JAV-0121 — MIT
 
 Applies to 1 component: eventsource-parser 3.0.6.
 
@@ -12754,7 +10187,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0149 — MIT
+### JAV-0122 — MIT
 
 Applies to 1 component: express 5.2.1.
 
@@ -12785,7 +10218,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0150 — MIT
+### JAV-0123 — MIT
 
 Applies to 1 component: express-rate-limit 8.3.0.
 
@@ -12812,7 +10245,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0151 — MIT
+### JAV-0124 — MIT
 
 Applies to 1 component: extend 3.0.2.
 
@@ -12841,7 +10274,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0152 — MIT
+### JAV-0125 — MIT
 
 Applies to 2 components: fast-deep-equal 3.1.3, json-schema-traverse 1.0.0.
 
@@ -12869,38 +10302,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0153 — MIT
-
-Applies to 1 component: fast-levenshtein 2.0.6.
-
-```text
-(MIT License)
-
-Copyright (c) 2013 [Ramesh Nair](http://www.hiddentao.com/)
-
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0154 — Unlicense
+### JAV-0126 — Unlicense
 
 Applies to 2 components: fast-sha256 1.3.0, robust-predicates 3.0.3.
 
@@ -12931,7 +10333,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org>
 ```
 
-### JAV-0155 — BSD-3-Clause
+### JAV-0127 — BSD-3-Clause
 
 Applies to 1 component: fast-uri 3.1.6.
 
@@ -12968,7 +10370,7 @@ The complete list of contributors can be found at:
 - https://github.com/garycourt/uri-js/graphs/contributors
 ```
 
-### JAV-0156 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0128 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 2 components: fastdom 1.0.12, strictdom 1.0.1.
 
@@ -12995,21 +10397,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0157 — MIT
-
-Applies to 1 component: fdir 6.4.6.
-
-```text
-Copyright 2023 Abdullah Atta
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0158 — MIT
+### JAV-0129 — MIT
 
 Applies to 1 component: fetch-blob 3.2.0.
 
@@ -13037,7 +10425,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0159 — MIT
+### JAV-0130 — MIT
 
 Applies to 1 component: finalhandler 2.1.1.
 
@@ -13066,7 +10454,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0160 — ISC
+### JAV-0131 — ISC
 
 Applies to 1 component: foreground-child 3.3.1.
 
@@ -13088,7 +10476,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0161 — MIT
+### JAV-0132 — MIT
 
 Applies to 1 component: formdata-polyfill 4.0.10.
 
@@ -13116,33 +10504,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0162 — MIT
-
-Applies to 1 component: forwarded-parse 2.1.2.
-
-```text
-Copyright (c) 2015 Luigi Pinca
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0163 — MIT
+### JAV-0133 — MIT
 
 Applies to 1 component: fresh 2.0.0.
 
@@ -13172,7 +10534,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0164 — MIT
+### JAV-0134 — MIT
 
 Applies to 1 component: function-bind 1.1.2.
 
@@ -13198,56 +10560,35 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0165 — BSD-3-Clause
+### JAV-0135 — MIT
 
-Applies to 1 component: fzf 0.5.2.
-
-```text
-BSD 3-Clause License
-
-Copyright (c) 2021, Ajit
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
-
-3. Neither the name of the copyright holder nor the names of its
-   contributors may be used to endorse or promote products derived from
-   this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0166 — ISC
-
-Applies to 1 component: get-caller-file 2.0.5.
+Applies to 1 component: get-intrinsic 1.3.0.
 
 ```text
-ISC License (ISC)
-Copyright 2018 Stefan Penner
+MIT License
 
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+Copyright (c) 2020 Jordan Harband
 
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
-### JAV-0167 — MIT
+### JAV-0136 — MIT
 
 Applies to 1 component: get-proto 1.0.1.
 
@@ -13275,9 +10616,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0168 — BlueOak-1.0.0
+### JAV-0137 — BlueOak-1.0.0
 
-Applies to 4 components: glob 10.5.0, glob 12.0.0, glob 13.0.6, package-json-from-dist 1.0.1.
+Applies to 3 components: glob 10.5.0, glob 13.0.6, package-json-from-dist 1.0.1.
 
 ```text
 All packages under `src/` are licensed according to the terms in
@@ -13345,89 +10686,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### JAV-0169 — Apache-2.0 — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: google-gax 6.0.2.
-
-```text
-Copyright (c) Google API Authors
-
-Apache License
-Version 2.0, January 2004
-http://www.apache.org/licenses/
-
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-1. Definitions.
-
-"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
-
-"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
-
-"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
-
-"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
-
-"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
-
-"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
-
-"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
-
-"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
-
-"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
-
-"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
-
-2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
-
-3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
-
-4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
-
-     (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
-
-     (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
-
-     (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
-
-     (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
-
-     You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
-
-5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
-
-6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
-
-7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
-
-8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
-
-9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
-
-END OF TERMS AND CONDITIONS
-
-APPENDIX: How to apply the Apache License to your work.
-
-To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
-
-Copyright [yyyy] [name of copyright owner]
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-### JAV-0170 — MIT
+### JAV-0138 — MIT
 
 Applies to 1 component: gopd 1.2.0.
 
@@ -13455,7 +10714,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0171 — ISC
+### JAV-0139 — ISC
 
 Applies to 1 component: graceful-fs 4.2.11.
 
@@ -13477,35 +10736,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0172 — MIT
-
-Applies to 1 component: gtoken 8.0.0.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014 Ryan Seys
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0173 — MIT
+### JAV-0140 — MIT
 
 Applies to 1 component: hachure-fill 0.5.2.
 
@@ -13533,35 +10764,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0174 — MIT
-
-Applies to 1 component: has-property-descriptors 1.0.2.
-
-```text
-MIT License
-
-Copyright (c) 2022 Inspect JS
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0175 — MIT
+### JAV-0141 — MIT
 
 Applies to 1 component: has-symbols 1.1.0.
 
@@ -13589,9 +10792,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0176 — MIT
+### JAV-0142 — MIT
 
-Applies to 2 components: hasown 2.0.2, set-function-length 1.2.2.
+Applies to 1 component: hasown 2.0.2.
 
 ```text
 MIT License
@@ -13617,7 +10820,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0177 — BSD-3-Clause
+### JAV-0143 — BSD-3-Clause
 
 Applies to 2 components: highlight.js 10.7.3, highlight.js 11.12.0.
 
@@ -13653,7 +10856,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0178 — MIT
+### JAV-0144 — MIT
 
 Applies to 1 component: hono 4.13.5.
 
@@ -13681,9 +10884,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0179 — ISC
+### JAV-0145 — ISC
 
-Applies to 2 components: hosted-git-info 7.0.2, hosted-git-info 9.0.3.
+Applies to 1 component: hosted-git-info 9.0.3.
 
 ```text
 Copyright (c) 2015, Rebecca Turner
@@ -13701,65 +10904,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0180 — MIT
-
-Applies to 1 component: html-entities 2.6.0.
-
-```text
-Copyright (c) 2021 Dulin Marat
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0181 — MIT
-
-Applies to 1 component: html-to-text 9.0.5.
-
-```text
-MIT License
-
-Portions Copyright (c) 2012-2019 werk85 <malte@werk85.de>
-Portions Copyright (c) 2020-2022 KillyMXI <killy@mxii.eu.org>
-
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0182 — MIT
+### JAV-0146 — MIT
 
 Applies to 1 component: html-url-attributes 3.0.1.
 
@@ -13787,32 +10932,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0183 — MIT
-
-Applies to 1 component: htmlparser2 8.0.2.
-
-```text
-Copyright 2010, 2011, Chris Winberry <chris@winberry.net>. All rights reserved.
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to
-deal in the Software without restriction, including without limitation the
-rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
- 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
- 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-IN THE SOFTWARE.
-```
-
-### JAV-0184 — MIT
+### JAV-0147 — MIT
 
 Applies to 1 component: http-errors 2.0.1.
 
@@ -13842,215 +10962,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0185 — Apache-2.0
-
-Applies to 1 component: human-signals 8.0.1.
-
-```text
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright 2025 ehmicky <ehmicky@gmail.com>
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-```
-
-### JAV-0186 — MIT
+### JAV-0148 — MIT
 
 Applies to 2 components: iconv-lite 0.6.3, iconv-lite 0.7.2.
 
@@ -14077,9 +10989,9 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0187 — MIT
+### JAV-0149 — MIT
 
-Applies to 2 components: ignore 7.0.0, ignore 7.0.5.
+Applies to 1 component: ignore 7.0.5.
 
 ```text
 Copyright (c) 2013 Kael Zhang <i@kael.me>, contributors
@@ -14105,59 +11017,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0188 — Apache-2.0 (LICENSE-3rdparty.csv)
-
-Applies to 1 component: import-in-the-middle 3.3.3.
-
-```text
-Component,Origin,License,Copyright
-require,module-details-from-path,MIT,Copyright 2016 Thomas Watson Steen
-dev,c8,ISC,"Copyright (c) 2017, Contributors"
-dev,imhotap,MIT,Copyright (c) 2019 Bryan English.
-```
-
-### JAV-0189 — Apache-2.0 (NOTICE)
-
-Applies to 1 component: import-in-the-middle 3.3.3.
-
-```text
-import-in-the-middle is licensed for use as follows:
-
-Copyright 2024 Node.js contributors. All rights reserved.
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-
-This license applies to parts of import-in-the-middle originating from the
-https://github.com/DataDog/import-in-the-middle repository:
-
-    This product includes software developed at Datadog (https://www.datadoghq.com/).
-
-    Copyright 2021 Datadog, Inc.
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-```
-
-### JAV-0190 — MIT
+### JAV-0150 — MIT
 
 Applies to 1 component: import-meta-resolve 4.2.0.
 
@@ -14238,7 +11098,7 @@ IN THE SOFTWARE.
 """
 ```
 
-### JAV-0191 — ISC
+### JAV-0151 — ISC
 
 Applies to 1 component: inherits 2.0.4.
 
@@ -14260,7 +11120,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0192 — MIT
+### JAV-0152 — MIT
 
 Applies to 1 component: inline-style-parser 0.2.7.
 
@@ -14276,7 +11136,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0193 — ISC
+### JAV-0153 — ISC
 
 Applies to 2 components: internmap 1.0.1, internmap 2.0.3.
 
@@ -14296,7 +11156,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0194 — MIT
+### JAV-0154 — MIT
 
 Applies to 1 component: ip-address 10.5.0.
 
@@ -14322,7 +11182,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0195 — MIT
+### JAV-0155 — MIT
 
 Applies to 1 component: ipaddr.js 1.9.1.
 
@@ -14348,7 +11208,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0196 — MIT
+### JAV-0156 — MIT
 
 Applies to 1 component: is-promise 4.0.0.
 
@@ -14374,66 +11234,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0197 — MIT
+### JAV-0157 — ISC
 
-Applies to 1 component: isarray 2.0.5.
-
-```text
-MIT License
-
-Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0198 — MIT
-
-Applies to 1 component: isbinaryfile 5.0.7.
-
-```text
-Copyright (c) 2019 Garen J. Torikian
-
-MIT License
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0199 — ISC
-
-Applies to 5 components: isexe 2.0.0, once 1.4.0, semver 7.7.4, which 2.0.2, wrappy 1.0.2.
+Applies to 4 components: isexe 2.0.0, once 1.4.0, which 2.0.2, wrappy 1.0.2.
 
 ```text
 The ISC License
@@ -14453,9 +11256,9 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0200 — BlueOak-1.0.0
+### JAV-0158 — BlueOak-1.0.0
 
-Applies to 5 components: jackspeak 3.4.3, jackspeak 4.2.3, minimatch 10.2.4, minimatch 10.2.5, minimatch 9.0.9.
+Applies to 4 components: jackspeak 3.4.3, minimatch 10.2.4, minimatch 10.2.5, minimatch 9.0.9.
 
 ```text
 # Blue Oak Model License
@@ -14515,7 +11318,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 ```
 
-### JAV-0201 — MIT
+### JAV-0159 — MIT
 
 Applies to 1 component: jiti 2.7.0.
 
@@ -14543,7 +11346,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0202 — MIT
+### JAV-0160 — MIT
 
 Applies to 1 component: jose 6.2.0.
 
@@ -14571,7 +11374,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0203 — BSD-3-Clause
+### JAV-0161 — BSD-3-Clause
 
 Applies to 1 component: js-base64 3.9.1.
 
@@ -14605,63 +11408,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0204 — MIT
-
-Applies to 1 component: js-tokens 4.0.0.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0205 — MIT
-
-Applies to 1 component: js-yaml 4.3.2.
-
-```text
-(The MIT License)
-
-Copyright (C) 2011-2015 by Vitaly Puzrin
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0206 — MIT
+### JAV-0162 — MIT
 
 Applies to 1 component: json-bigint 1.0.0.
 
@@ -14688,7 +11435,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0207 — MIT
+### JAV-0163 — MIT
 
 Applies to 2 components: json-schema-to-ts 3.1.1, ts-algebra 2.0.0.
 
@@ -14716,7 +11463,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0208 — BSD-2-Clause
+### JAV-0164 — BSD-2-Clause
 
 Applies to 1 component: json-schema-typed 8.0.2.
 
@@ -14780,43 +11527,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0209 — MIT
-
-Applies to 1 component: json-stable-stringify 1.3.0.
-
-```text
-MIT License
-
-Copyright (c) 2013 contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0210 — LicenseRef-PublicDomain — quoted from its README.md "license" section
-
-Applies to 1 component: jsonify 0.0.1.
-
-```text
-public domain
-```
-
-### JAV-0211 — MIT
+### JAV-0165 — MIT
 
 Applies to 2 components: jwa 2.0.1, jws 4.0.1.
 
@@ -14840,7 +11551,7 @@ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TOR
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0212 — MIT
+### JAV-0166 — MIT
 
 Applies to 1 component: katex 0.16.47.
 
@@ -14868,7 +11579,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0213 — MIT
+### JAV-0167 — MIT
 
 Applies to 1 component: khroma 2.1.0.
 
@@ -14896,7 +11607,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0214 — MIT
+### JAV-0168 — MIT
 
 Applies to 2 components: layout-base 1.0.2, layout-base 2.0.1.
 
@@ -14924,7 +11635,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0215 — MIT
+### JAV-0169 — MIT
 
 Applies to 1 component: lodash-es 4.18.1.
 
@@ -14978,61 +11689,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-### JAV-0216 — MIT
-
-Applies to 1 component: lodash.camelcase 4.3.0.
-
-```text
-Copyright jQuery Foundation and other contributors <https://jquery.org/>
-
-Based on Underscore.js, copyright Jeremy Ashkenas,
-DocumentCloud and Investigative Reporters & Editors <http://underscorejs.org/>
-
-This software consists of voluntary contributions made by many
-individuals. For exact contribution history, see the revision history
-available at https://github.com/lodash/lodash
-
-The following license applies to all parts of this software except as
-documented below:
-
-====
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-====
-
-Copyright and related rights for sample code are waived via CC0. Sample
-code is defined as all source code displayed within the prose of the
-documentation.
-
-CC0: http://creativecommons.org/publicdomain/zero/1.0/
-
-====
-
-Files located in the node_modules and vendor directories are externally
-maintained libraries used by this software which have their own
-licenses; we recommend you read them, as their terms may differ from the
-terms above.
-```
-
-### JAV-0217 — MIT
+### JAV-0170 — MIT
 
 Applies to 3 components: longest-streak 3.1.0, stringify-entities 4.0.4, trim-lines 3.0.1.
 
@@ -15061,7 +11718,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0218 — BlueOak-1.0.0
+### JAV-0171 — BlueOak-1.0.0
 
 Applies to 5 components: lru-cache 10.4.3, lru-cache 11.2.6, minipass 7.1.3, path-scurry 1.11.1, path-scurry 2.0.2.
 
@@ -15123,7 +11780,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### JAV-0219 — ISC
+### JAV-0172 — ISC
 
 Applies to 1 component: lucide-react 0.577.0.
 
@@ -15169,9 +11826,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0220 — MIT
+### JAV-0173 — MIT
 
-Applies to 3 components: marked 15.0.12, marked 16.4.2, marked 18.0.5.
+Applies to 2 components: marked 16.4.2, marked 18.0.5.
 
 ```text
 # License information
@@ -15220,7 +11877,7 @@ Redistribution and use in source and binary forms, with or without modification,
 This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 ```
 
-### JAV-0221 — MIT
+### JAV-0174 — MIT
 
 Applies to 1 component: mdast-util-phrasing 4.1.0.
 
@@ -15250,7 +11907,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0222 — MIT
+### JAV-0175 — MIT
 
 Applies to 1 component: merge-descriptors 2.0.0.
 
@@ -15268,7 +11925,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0223 — MIT
+### JAV-0176 — MIT
 
 Applies to 1 component: mermaid 11.17.0.
 
@@ -15296,7 +11953,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0224 — MIT
+### JAV-0177 — MIT
 
 Applies to 1 component: micromark-extension-gfm-footnote 2.1.0.
 
@@ -15325,35 +11982,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0225 — MIT
-
-Applies to 1 component: mime 4.0.7.
-
-```text
-MIT License
-
-Copyright (c) 2023 Robert Kieffer
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0226 — MIT
+### JAV-0178 — MIT
 
 Applies to 1 component: mime-db 1.54.0.
 
@@ -15383,119 +12012,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0227 — MIT
-
-Applies to 1 component: mitt 3.0.1.
-
-```text
-MIT License
-
-Copyright (c) 2021 Jason Miller
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0228 — MIT
-
-Applies to 1 component: mnemonist 0.40.3.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2016 Guillaume Plique (Yomguithereal)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0229 — MIT
-
-Applies to 1 component: modern-tar 0.8.4.
-
-```text
-MIT License
-
-Copyright (c) 2025 Ayuhito
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0230 — MIT
-
-Applies to 1 component: module-details-from-path 1.0.4.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2016-2025 Thomas Watson Steen
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0231 — MIT
+### JAV-0179 — MIT
 
 Applies to 1 component: ms 2.1.3.
 
@@ -15523,7 +12040,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0232 — MIT
+### JAV-0180 — MIT
 
 Applies to 1 component: negotiator 1.0.0.
 
@@ -15554,23 +12071,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0233 — MIT
-
-Applies to 1 component: node-addon-api 8.6.0.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2017 [Node.js API collaborators](https://github.com/nodejs/node-addon-api#collaborators)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0234 — MIT
+### JAV-0181 — MIT
 
 Applies to 1 component: node-domexception 1.0.0.
 
@@ -15598,7 +12099,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0235 — MIT
+### JAV-0182 — MIT
 
 Applies to 1 component: node-fetch 3.3.2.
 
@@ -15626,57 +12127,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0236 — MIT
-
-Applies to 1 component: node-gyp-build 4.8.4.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2017 Mathias Buus
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0237 — BSD-2-Clause
-
-Applies to 1 component: normalize-package-data 6.0.2.
-
-```text
-This package contains code originally written by Isaac Z. Schlueter.
-Used with permission.
-
-Copyright (c) Meryn Stol ("Author")
-All rights reserved.
-
-The BSD License
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0238 — MIT
+### JAV-0183 — MIT
 
 Applies to 1 component: object-assign 4.1.1.
 
@@ -15704,35 +12155,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0239 — MIT
-
-Applies to 1 component: object-hash 3.0.0.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014 object-hash contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0240 — MIT
+### JAV-0184 — MIT
 
 Applies to 1 component: object-inspect 1.13.4.
 
@@ -15760,63 +12183,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0241 — MIT
-
-Applies to 1 component: object-keys 1.1.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (C) 2013 Jordan Harband
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0242 — MIT
-
-Applies to 1 component: obliterator 2.0.5.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2017-2021 Guillaume Plique (Yomguithereal)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0243 — MIT
+### JAV-0185 — MIT
 
 Applies to 1 component: on-finished 2.4.1.
 
@@ -15846,7 +12213,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0244 — Apache-2.0
+### JAV-0186 — Apache-2.0
 
 Applies to 1 component: openai 6.26.0.
 
@@ -16054,7 +12421,7 @@ Applies to 1 component: openai 6.26.0.
    limitations under the License.
 ```
 
-### JAV-0245 — MIT
+### JAV-0187 — MIT
 
 Applies to 1 component: package-manager-detector 1.8.0.
 
@@ -16082,7 +12449,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0246 — MIT
+### JAV-0188 — MIT
 
 Applies to 2 components: parse-entities 4.0.2, property-information 7.2.0.
 
@@ -16111,7 +12478,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0247 — MIT
+### JAV-0189 — MIT
 
 Applies to 1 component: parse5 7.3.0.
 
@@ -16137,7 +12504,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0248 — MIT
+### JAV-0190 — MIT
 
 Applies to 1 component: parseurl 1.3.3.
 
@@ -16168,7 +12535,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0249 — MIT
+### JAV-0191 — MIT
 
 Applies to 1 component: partial-json 0.1.7.
 
@@ -16196,7 +12563,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0250 — MIT
+### JAV-0192 — MIT
 
 Applies to 2 components: path-data-parser 0.1.0, points-on-curve 0.2.0.
 
@@ -16224,7 +12591,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0251 — MIT
+### JAV-0193 — MIT
 
 Applies to 1 component: path-to-regexp 8.4.0.
 
@@ -16252,57 +12619,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0252 — ISC
-
-Applies to 1 component: picocolors 1.1.1.
-
-```text
-ISC License
-
-Copyright (c) 2021-2024 Oleksii Raspopov, Kostiantyn Denysov, Anton Verinov
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-### JAV-0253 — MIT
-
-Applies to 1 component: picomatch 4.0.5.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2017-present, Jon Schlinkert.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0254 — MIT
+### JAV-0194 — MIT
 
 Applies to 1 component: pkce-challenge 5.0.1.
 
@@ -16330,7 +12647,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0255 — MIT
+### JAV-0195 — MIT
 
 Applies to 1 component: points-on-path 0.2.1.
 
@@ -16358,7 +12675,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0256 — BSD-3-Clause
+### JAV-0196 — BSD-3-Clause
 
 Applies to 1 component: protobufjs 7.6.5.
 
@@ -16404,7 +12721,7 @@ standalone and requires a support library to be linked with it. This
 support library is itself covered by the above license.
 ```
 
-### JAV-0257 — BSD-3-Clause
+### JAV-0197 — BSD-3-Clause
 
 Applies to 1 component: qs 6.16.0.
 
@@ -16440,7 +12757,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0258 — MIT
+### JAV-0198 — MIT
 
 Applies to 1 component: range-parser 1.2.1.
 
@@ -16470,7 +12787,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0259 — MIT
+### JAV-0199 — MIT
 
 Applies to 1 component: raw-body 3.0.2.
 
@@ -16499,7 +12816,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0260 — MIT
+### JAV-0200 — MIT
 
 Applies to 3 components: react 19.2.8, react-dom 19.2.8, scheduler 0.27.0.
 
@@ -16527,7 +12844,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0261 — MIT
+### JAV-0201 — MIT
 
 Applies to 1 component: react-markdown 10.1.0.
 
@@ -16555,89 +12872,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0262 — MIT
-
-Applies to 2 components: readable-stream 3.6.2, string_decoder 1.3.0.
-
-```text
-Node.js is licensed for use as follows:
-
-"""
-Copyright Node.js contributors. All rights reserved.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to
-deal in the Software without restriction, including without limitation the
-rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-IN THE SOFTWARE.
-"""
-
-This license applies to parts of Node.js originating from the
-https://github.com/joyent/node repository:
-
-"""
-Copyright Joyent, Inc. and other Node contributors. All rights reserved.
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to
-deal in the Software without restriction, including without limitation the
-rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-IN THE SOFTWARE.
-"""
-```
-
-### JAV-0263 — MIT
-
-Applies to 1 component: readdirp 5.1.1.
-
-```text
-MIT License
-
-Copyright (c) 2012-2019 Thorsten Lorenz, Paul Miller (https://paulmillr.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0264 — MIT
+### JAV-0202 — MIT
 
 Applies to 2 components: remark-parse 11.0.0, remark-stringify 11.0.0.
 
@@ -16665,36 +12900,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0265 — MIT
-
-Applies to 1 component: require-directory 2.1.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2011 Troy Goode <troygoode@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a
-copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0266 — MIT
+### JAV-0203 — MIT
 
 Applies to 1 component: require-from-string 2.0.2.
 
@@ -16722,37 +12928,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0267 — MIT
-
-Applies to 1 component: require-in-the-middle 8.0.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2016-2019, Thomas Watson Steen
-Copyright (c) 2019-2025, Elasticsearch B.V.
-Copyright (c) 2025+, require-in-the-middle contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0268 — MIT
+### JAV-0204 — MIT
 
 Applies to 2 components: retry 0.12.0, retry 0.13.1.
 
@@ -16780,34 +12956,7 @@ Felix Geisendörfer (felix@debuggable.com)
  THE SOFTWARE.
 ```
 
-### JAV-0269 — MIT
-
-Applies to 1 component: retry-request 9.0.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2015 Stephen Sawchuk
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0270 — ISC
+### JAV-0205 — ISC
 
 Applies to 1 component: rimraf 5.0.10.
 
@@ -16829,7 +12978,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0271 — MIT
+### JAV-0206 — MIT
 
 Applies to 1 component: roughjs 4.6.6.
 
@@ -16857,7 +13006,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0272 — MIT
+### JAV-0207 — MIT
 
 Applies to 1 component: router 2.2.0.
 
@@ -16887,7 +13036,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0273 — BSD-3-Clause
+### JAV-0208 — BSD-3-Clause
 
 Applies to 1 component: rw 1.3.3.
 
@@ -16920,7 +13069,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0274 — MIT
+### JAV-0209 — MIT
 
 Applies to 1 component: safe-buffer 5.2.1.
 
@@ -16948,7 +13097,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0275 — MIT
+### JAV-0210 — MIT
 
 Applies to 1 component: safer-buffer 2.1.2.
 
@@ -16976,7 +13125,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0276 — MIT
+### JAV-0211 — MIT
 
 Applies to 1 component: send 1.2.1.
 
@@ -17006,7 +13155,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0277 — MIT
+### JAV-0212 — MIT
 
 Applies to 1 component: serve-static 2.2.1.
 
@@ -17038,7 +13187,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0278 — ISC
+### JAV-0213 — ISC
 
 Applies to 1 component: setprototypeof 1.2.0.
 
@@ -17058,7 +13207,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0279 — MIT
+### JAV-0214 — MIT
 
 Applies to 1 component: shebang-command 2.0.0.
 
@@ -17074,38 +13223,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0280 — MIT
-
-Applies to 1 component: shell-quote 1.10.0.
-
-```text
-The MIT License
-
-Copyright (c) 2013 James Halliday (mail@substack.net)
-
-Permission is hereby granted, free of charge, 
-to any person obtaining a copy of this software and 
-associated documentation files (the "Software"), to 
-deal in the Software without restriction, including 
-without limitation the rights to use, copy, modify, 
-merge, publish, distribute, sublicense, and/or sell 
-copies of the Software, and to permit persons to whom 
-the Software is furnished to do so, 
-subject to the following conditions:
-
-The above copyright notice and this permission notice 
-shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR 
-ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0281 — MIT
+### JAV-0215 — MIT
 
 Applies to 2 components: side-channel 1.1.1, side-channel-weakmap 1.0.2.
 
@@ -17133,7 +13251,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0282 — ISC
+### JAV-0216 — ISC
 
 Applies to 2 components: signal-exit 3.0.7, signal-exit 4.1.0.
 
@@ -17156,7 +13274,7 @@ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0283 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0217 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: simple-git 3.36.0.
 
@@ -17183,494 +13301,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0284 — CC-BY-3.0 — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: spdx-exceptions 2.5.0.
-
-```text
-Copyright (c) The Linux Foundation
-
-Creative Commons Legal Code
-
-Attribution 3.0 Unported
-
-    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
-    LEGAL SERVICES. DISTRIBUTION OF THIS LICENSE DOES NOT CREATE AN
-    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
-    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
-    REGARDING THE INFORMATION PROVIDED, AND DISCLAIMS LIABILITY FOR
-    DAMAGES RESULTING FROM ITS USE.
-
-License
-
-THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THIS CREATIVE
-COMMONS PUBLIC LICENSE ("CCPL" OR "LICENSE"). THE WORK IS PROTECTED BY
-COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF THE WORK OTHER THAN AS
-AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS PROHIBITED.
-
-BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE
-TO BE BOUND BY THE TERMS OF THIS LICENSE. TO THE EXTENT THIS LICENSE MAY
-BE CONSIDERED TO BE A CONTRACT, THE LICENSOR GRANTS YOU THE RIGHTS
-CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND
-CONDITIONS.
-
-1. Definitions
-
- a. "Adaptation" means a work based upon the Work, or upon the Work and
-    other pre-existing works, such as a translation, adaptation,
-    derivative work, arrangement of music or other alterations of a
-    literary or artistic work, or phonogram or performance and includes
-    cinematographic adaptations or any other form in which the Work may be
-    recast, transformed, or adapted including in any form recognizably
-    derived from the original, except that a work that constitutes a
-    Collection will not be considered an Adaptation for the purpose of
-    this License. For the avoidance of doubt, where the Work is a musical
-    work, performance or phonogram, the synchronization of the Work in
-    timed-relation with a moving image ("synching") will be considered an
-    Adaptation for the purpose of this License.
- b. "Collection" means a collection of literary or artistic works, such as
-    encyclopedias and anthologies, or performances, phonograms or
-    broadcasts, or other works or subject matter other than works listed
-    in Section 1(f) below, which, by reason of the selection and
-    arrangement of their contents, constitute intellectual creations, in
-    which the Work is included in its entirety in unmodified form along
-    with one or more other contributions, each constituting separate and
-    independent works in themselves, which together are assembled into a
-    collective whole. A work that constitutes a Collection will not be
-    considered an Adaptation (as defined above) for the purposes of this
-    License.
- c. "Distribute" means to make available to the public the original and
-    copies of the Work or Adaptation, as appropriate, through sale or
-    other transfer of ownership.
- d. "Licensor" means the individual, individuals, entity or entities that
-    offer(s) the Work under the terms of this License.
- e. "Original Author" means, in the case of a literary or artistic work,
-    the individual, individuals, entity or entities who created the Work
-    or if no individual or entity can be identified, the publisher; and in
-    addition (i) in the case of a performance the actors, singers,
-    musicians, dancers, and other persons who act, sing, deliver, declaim,
-    play in, interpret or otherwise perform literary or artistic works or
-    expressions of folklore; (ii) in the case of a phonogram the producer
-    being the person or legal entity who first fixes the sounds of a
-    performance or other sounds; and, (iii) in the case of broadcasts, the
-    organization that transmits the broadcast.
- f. "Work" means the literary and/or artistic work offered under the terms
-    of this License including without limitation any production in the
-    literary, scientific and artistic domain, whatever may be the mode or
-    form of its expression including digital form, such as a book,
-    pamphlet and other writing; a lecture, address, sermon or other work
-    of the same nature; a dramatic or dramatico-musical work; a
-    choreographic work or entertainment in dumb show; a musical
-    composition with or without words; a cinematographic work to which are
-    assimilated works expressed by a process analogous to cinematography;
-    a work of drawing, painting, architecture, sculpture, engraving or
-    lithography; a photographic work to which are assimilated works
-    expressed by a process analogous to photography; a work of applied
-    art; an illustration, map, plan, sketch or three-dimensional work
-    relative to geography, topography, architecture or science; a
-    performance; a broadcast; a phonogram; a compilation of data to the
-    extent it is protected as a copyrightable work; or a work performed by
-    a variety or circus performer to the extent it is not otherwise
-    considered a literary or artistic work.
- g. "You" means an individual or entity exercising rights under this
-    License who has not previously violated the terms of this License with
-    respect to the Work, or who has received express permission from the
-    Licensor to exercise rights under this License despite a previous
-    violation.
- h. "Publicly Perform" means to perform public recitations of the Work and
-    to communicate to the public those public recitations, by any means or
-    process, including by wire or wireless means or public digital
-    performances; to make available to the public Works in such a way that
-    members of the public may access these Works from a place and at a
-    place individually chosen by them; to perform the Work to the public
-    by any means or process and the communication to the public of the
-    performances of the Work, including by public digital performance; to
-    broadcast and rebroadcast the Work by any means including signs,
-    sounds or images.
- i. "Reproduce" means to make copies of the Work by any means including
-    without limitation by sound or visual recordings and the right of
-    fixation and reproducing fixations of the Work, including storage of a
-    protected performance or phonogram in digital form or other electronic
-    medium.
-
-2. Fair Dealing Rights. Nothing in this License is intended to reduce,
-limit, or restrict any uses free from copyright or rights arising from
-limitations or exceptions that are provided for in connection with the
-copyright protection under copyright law or other applicable laws.
-
-3. License Grant. Subject to the terms and conditions of this License,
-Licensor hereby grants You a worldwide, royalty-free, non-exclusive,
-perpetual (for the duration of the applicable copyright) license to
-exercise the rights in the Work as stated below:
-
- a. to Reproduce the Work, to incorporate the Work into one or more
-    Collections, and to Reproduce the Work as incorporated in the
-    Collections;
- b. to create and Reproduce Adaptations provided that any such Adaptation,
-    including any translation in any medium, takes reasonable steps to
-    clearly label, demarcate or otherwise identify that changes were made
-    to the original Work. For example, a translation could be marked "The
-    original work was translated from English to Spanish," or a
-    modification could indicate "The original work has been modified.";
- c. to Distribute and Publicly Perform the Work including as incorporated
-    in Collections; and,
- d. to Distribute and Publicly Perform Adaptations.
- e. For the avoidance of doubt:
-
-     i. Non-waivable Compulsory License Schemes. In those jurisdictions in
-        which the right to collect royalties through any statutory or
-        compulsory licensing scheme cannot be waived, the Licensor
-        reserves the exclusive right to collect such royalties for any
-        exercise by You of the rights granted under this License;
-    ii. Waivable Compulsory License Schemes. In those jurisdictions in
-        which the right to collect royalties through any statutory or
-        compulsory licensing scheme can be waived, the Licensor waives the
-        exclusive right to collect such royalties for any exercise by You
-        of the rights granted under this License; and,
-   iii. Voluntary License Schemes. The Licensor waives the right to
-        collect royalties, whether individually or, in the event that the
-        Licensor is a member of a collecting society that administers
-        voluntary licensing schemes, via that society, from any exercise
-        by You of the rights granted under this License.
-
-The above rights may be exercised in all media and formats whether now
-known or hereafter devised. The above rights include the right to make
-such modifications as are technically necessary to exercise the rights in
-other media and formats. Subject to Section 8(f), all rights not expressly
-granted by Licensor are hereby reserved.
-
-4. Restrictions. The license granted in Section 3 above is expressly made
-subject to and limited by the following restrictions:
-
- a. You may Distribute or Publicly Perform the Work only under the terms
-    of this License. You must include a copy of, or the Uniform Resource
-    Identifier (URI) for, this License with every copy of the Work You
-    Distribute or Publicly Perform. You may not offer or impose any terms
-    on the Work that restrict the terms of this License or the ability of
-    the recipient of the Work to exercise the rights granted to that
-    recipient under the terms of the License. You may not sublicense the
-    Work. You must keep intact all notices that refer to this License and
-    to the disclaimer of warranties with every copy of the Work You
-    Distribute or Publicly Perform. When You Distribute or Publicly
-    Perform the Work, You may not impose any effective technological
-    measures on the Work that restrict the ability of a recipient of the
-    Work from You to exercise the rights granted to that recipient under
-    the terms of the License. This Section 4(a) applies to the Work as
-    incorporated in a Collection, but this does not require the Collection
-    apart from the Work itself to be made subject to the terms of this
-    License. If You create a Collection, upon notice from any Licensor You
-    must, to the extent practicable, remove from the Collection any credit
-    as required by Section 4(b), as requested. If You create an
-    Adaptation, upon notice from any Licensor You must, to the extent
-    practicable, remove from the Adaptation any credit as required by
-    Section 4(b), as requested.
- b. If You Distribute, or Publicly Perform the Work or any Adaptations or
-    Collections, You must, unless a request has been made pursuant to
-    Section 4(a), keep intact all copyright notices for the Work and
-    provide, reasonable to the medium or means You are utilizing: (i) the
-    name of the Original Author (or pseudonym, if applicable) if supplied,
-    and/or if the Original Author and/or Licensor designate another party
-    or parties (e.g., a sponsor institute, publishing entity, journal) for
-    attribution ("Attribution Parties") in Licensor's copyright notice,
-    terms of service or by other reasonable means, the name of such party
-    or parties; (ii) the title of the Work if supplied; (iii) to the
-    extent reasonably practicable, the URI, if any, that Licensor
-    specifies to be associated with the Work, unless such URI does not
-    refer to the copyright notice or licensing information for the Work;
-    and (iv) , consistent with Section 3(b), in the case of an Adaptation,
-    a credit identifying the use of the Work in the Adaptation (e.g.,
-    "French translation of the Work by Original Author," or "Screenplay
-    based on original Work by Original Author"). The credit required by
-    this Section 4 (b) may be implemented in any reasonable manner;
-    provided, however, that in the case of a Adaptation or Collection, at
-    a minimum such credit will appear, if a credit for all contributing
-    authors of the Adaptation or Collection appears, then as part of these
-    credits and in a manner at least as prominent as the credits for the
-    other contributing authors. For the avoidance of doubt, You may only
-    use the credit required by this Section for the purpose of attribution
-    in the manner set out above and, by exercising Your rights under this
-    License, You may not implicitly or explicitly assert or imply any
-    connection with, sponsorship or endorsement by the Original Author,
-    Licensor and/or Attribution Parties, as appropriate, of You or Your
-    use of the Work, without the separate, express prior written
-    permission of the Original Author, Licensor and/or Attribution
-    Parties.
- c. Except as otherwise agreed in writing by the Licensor or as may be
-    otherwise permitted by applicable law, if You Reproduce, Distribute or
-    Publicly Perform the Work either by itself or as part of any
-    Adaptations or Collections, You must not distort, mutilate, modify or
-    take other derogatory action in relation to the Work which would be
-    prejudicial to the Original Author's honor or reputation. Licensor
-    agrees that in those jurisdictions (e.g. Japan), in which any exercise
-    of the right granted in Section 3(b) of this License (the right to
-    make Adaptations) would be deemed to be a distortion, mutilation,
-    modification or other derogatory action prejudicial to the Original
-    Author's honor and reputation, the Licensor will waive or not assert,
-    as appropriate, this Section, to the fullest extent permitted by the
-    applicable national law, to enable You to reasonably exercise Your
-    right under Section 3(b) of this License (right to make Adaptations)
-    but not otherwise.
-
-5. Representations, Warranties and Disclaimer
-
-UNLESS OTHERWISE MUTUALLY AGREED TO BY THE PARTIES IN WRITING, LICENSOR
-OFFERS THE WORK AS-IS AND MAKES NO REPRESENTATIONS OR WARRANTIES OF ANY
-KIND CONCERNING THE WORK, EXPRESS, IMPLIED, STATUTORY OR OTHERWISE,
-INCLUDING, WITHOUT LIMITATION, WARRANTIES OF TITLE, MERCHANTIBILITY,
-FITNESS FOR A PARTICULAR PURPOSE, NONINFRINGEMENT, OR THE ABSENCE OF
-LATENT OR OTHER DEFECTS, ACCURACY, OR THE PRESENCE OF ABSENCE OF ERRORS,
-WHETHER OR NOT DISCOVERABLE. SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION
-OF IMPLIED WARRANTIES, SO SUCH EXCLUSION MAY NOT APPLY TO YOU.
-
-6. Limitation on Liability. EXCEPT TO THE EXTENT REQUIRED BY APPLICABLE
-LAW, IN NO EVENT WILL LICENSOR BE LIABLE TO YOU ON ANY LEGAL THEORY FOR
-ANY SPECIAL, INCIDENTAL, CONSEQUENTIAL, PUNITIVE OR EXEMPLARY DAMAGES
-ARISING OUT OF THIS LICENSE OR THE USE OF THE WORK, EVEN IF LICENSOR HAS
-BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-
-7. Termination
-
- a. This License and the rights granted hereunder will terminate
-    automatically upon any breach by You of the terms of this License.
-    Individuals or entities who have received Adaptations or Collections
-    from You under this License, however, will not have their licenses
-    terminated provided such individuals or entities remain in full
-    compliance with those licenses. Sections 1, 2, 5, 6, 7, and 8 will
-    survive any termination of this License.
- b. Subject to the above terms and conditions, the license granted here is
-    perpetual (for the duration of the applicable copyright in the Work).
-    Notwithstanding the above, Licensor reserves the right to release the
-    Work under different license terms or to stop distributing the Work at
-    any time; provided, however that any such election will not serve to
-    withdraw this License (or any other license that has been, or is
-    required to be, granted under the terms of this License), and this
-    License will continue in full force and effect unless terminated as
-    stated above.
-
-8. Miscellaneous
-
- a. Each time You Distribute or Publicly Perform the Work or a Collection,
-    the Licensor offers to the recipient a license to the Work on the same
-    terms and conditions as the license granted to You under this License.
- b. Each time You Distribute or Publicly Perform an Adaptation, Licensor
-    offers to the recipient a license to the original Work on the same
-    terms and conditions as the license granted to You under this License.
- c. If any provision of this License is invalid or unenforceable under
-    applicable law, it shall not affect the validity or enforceability of
-    the remainder of the terms of this License, and without further action
-    by the parties to this agreement, such provision shall be reformed to
-    the minimum extent necessary to make such provision valid and
-    enforceable.
- d. No term or provision of this License shall be deemed waived and no
-    breach consented to unless such waiver or consent shall be in writing
-    and signed by the party to be charged with such waiver or consent.
- e. This License constitutes the entire agreement between the parties with
-    respect to the Work licensed here. There are no understandings,
-    agreements or representations with respect to the Work not specified
-    here. Licensor shall not be bound by any additional provisions that
-    may appear in any communication from You. This License may not be
-    modified without the mutual written agreement of the Licensor and You.
- f. The rights granted under, and the subject matter referenced, in this
-    License were drafted utilizing the terminology of the Berne Convention
-    for the Protection of Literary and Artistic Works (as amended on
-    September 28, 1979), the Rome Convention of 1961, the WIPO Copyright
-    Treaty of 1996, the WIPO Performances and Phonograms Treaty of 1996
-    and the Universal Copyright Convention (as revised on July 24, 1971).
-    These rights and subject matter take effect in the relevant
-    jurisdiction in which the License terms are sought to be enforced
-    according to the corresponding provisions of the implementation of
-    those treaty provisions in the applicable national law. If the
-    standard suite of rights granted under applicable copyright law
-    includes additional rights not granted under this License, such
-    additional rights are deemed to be included in the License; this
-    License is not intended to restrict the license of any rights under
-    applicable law.
-
-
-Creative Commons Notice
-
-    Creative Commons is not a party to this License, and makes no warranty
-    whatsoever in connection with the Work. Creative Commons will not be
-    liable to You or any party on any legal theory for any damages
-    whatsoever, including without limitation any general, special,
-    incidental or consequential damages arising in connection to this
-    license. Notwithstanding the foregoing two (2) sentences, if Creative
-    Commons has expressly identified itself as the Licensor hereunder, it
-    shall have all rights and obligations of Licensor.
-
-    Except for the limited purpose of indicating to the public that the
-    Work is licensed under the CCPL, Creative Commons does not authorize
-    the use by either party of the trademark "Creative Commons" or any
-    related trademark or logo of Creative Commons without the prior
-    written consent of Creative Commons. Any permitted use will be in
-    compliance with Creative Commons' then-current trademark usage
-    guidelines, as may be published on its website or otherwise made
-    available upon request from time to time. For the avoidance of doubt,
-    this trademark restriction does not form part of this License.
-
-    Creative Commons may be contacted at https://creativecommons.org/.
-```
-
-### JAV-0285 — MIT
-
-Applies to 1 component: spdx-expression-parse 3.0.1.
-
-```text
-The MIT License
-
-Copyright (c) 2015 Kyle E. Mitchell & other authors listed in AUTHORS
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-"Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0286 — CC0-1.0 — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: spdx-license-ids 3.0.23.
-
-```text
-Copyright (c) Shinnosuke Watanabe (https://github.com/shinnn)
-
-Creative Commons Legal Code
-
-CC0 1.0 Universal
-
-    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
-    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
-    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
-    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
-    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
-    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
-    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
-    HEREUNDER.
-
-Statement of Purpose
-
-The laws of most jurisdictions throughout the world automatically confer
-exclusive Copyright and Related Rights (defined below) upon the creator
-and subsequent owner(s) (each and all, an "owner") of an original work of
-authorship and/or a database (each, a "Work").
-
-Certain owners wish to permanently relinquish those rights to a Work for
-the purpose of contributing to a commons of creative, cultural and
-scientific works ("Commons") that the public can reliably and without fear
-of later claims of infringement build upon, modify, incorporate in other
-works, reuse and redistribute as freely as possible in any form whatsoever
-and for any purposes, including without limitation commercial purposes.
-These owners may contribute to the Commons to promote the ideal of a free
-culture and the further production of creative, cultural and scientific
-works, or to gain reputation or greater distribution for their Work in
-part through the use and efforts of others.
-
-For these and/or other purposes and motivations, and without any
-expectation of additional consideration or compensation, the person
-associating CC0 with a Work (the "Affirmer"), to the extent that he or she
-is an owner of Copyright and Related Rights in the Work, voluntarily
-elects to apply CC0 to the Work and publicly distribute the Work under its
-terms, with knowledge of his or her Copyright and Related Rights in the
-Work and the meaning and intended legal effect of CC0 on those rights.
-
-1. Copyright and Related Rights. A Work made available under CC0 may be
-protected by copyright and related or neighboring rights ("Copyright and
-Related Rights"). Copyright and Related Rights include, but are not
-limited to, the following:
-
-  i. the right to reproduce, adapt, distribute, perform, display,
-     communicate, and translate a Work;
- ii. moral rights retained by the original author(s) and/or performer(s);
-iii. publicity and privacy rights pertaining to a person's image or
-     likeness depicted in a Work;
- iv. rights protecting against unfair competition in regards to a Work,
-     subject to the limitations in paragraph 4(a), below;
-  v. rights protecting the extraction, dissemination, use and reuse of data
-     in a Work;
- vi. database rights (such as those arising under Directive 96/9/EC of the
-     European Parliament and of the Council of 11 March 1996 on the legal
-     protection of databases, and under any national implementation
-     thereof, including any amended or successor version of such
-     directive); and
-vii. other similar, equivalent or corresponding rights throughout the
-     world based on applicable law or treaty, and any national
-     implementations thereof.
-
-2. Waiver. To the greatest extent permitted by, but not in contravention
-of, applicable law, Affirmer hereby overtly, fully, permanently,
-irrevocably and unconditionally waives, abandons, and surrenders all of
-Affirmer's Copyright and Related Rights and associated claims and causes
-of action, whether now known or unknown (including existing as well as
-future claims and causes of action), in the Work (i) in all territories
-worldwide, (ii) for the maximum duration provided by applicable law or
-treaty (including future time extensions), (iii) in any current or future
-medium and for any number of copies, and (iv) for any purpose whatsoever,
-including without limitation commercial, advertising or promotional
-purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
-member of the public at large and to the detriment of Affirmer's heirs and
-successors, fully intending that such Waiver shall not be subject to
-revocation, rescission, cancellation, termination, or any other legal or
-equitable action to disrupt the quiet enjoyment of the Work by the public
-as contemplated by Affirmer's express Statement of Purpose.
-
-3. Public License Fallback. Should any part of the Waiver for any reason
-be judged legally invalid or ineffective under applicable law, then the
-Waiver shall be preserved to the maximum extent permitted taking into
-account Affirmer's express Statement of Purpose. In addition, to the
-extent the Waiver is so judged Affirmer hereby grants to each affected
-person a royalty-free, non transferable, non sublicensable, non exclusive,
-irrevocable and unconditional license to exercise Affirmer's Copyright and
-Related Rights in the Work (i) in all territories worldwide, (ii) for the
-maximum duration provided by applicable law or treaty (including future
-time extensions), (iii) in any current or future medium and for any number
-of copies, and (iv) for any purpose whatsoever, including without
-limitation commercial, advertising or promotional purposes (the
-"License"). The License shall be deemed effective as of the date CC0 was
-applied by Affirmer to the Work. Should any part of the License for any
-reason be judged legally invalid or ineffective under applicable law, such
-partial invalidity or ineffectiveness shall not invalidate the remainder
-of the License, and in such case Affirmer hereby affirms that he or she
-will not (i) exercise any of his or her remaining Copyright and Related
-Rights in the Work or (ii) assert any associated claims and causes of
-action with respect to the Work, in either case contrary to Affirmer's
-express Statement of Purpose.
-
-4. Limitations and Disclaimers.
-
- a. No trademark or patent rights held by Affirmer are waived, abandoned,
-    surrendered, licensed or otherwise affected by this document.
- b. Affirmer offers the Work as-is and makes no representations or
-    warranties of any kind concerning the Work, express, implied,
-    statutory or otherwise, including without limitation warranties of
-    title, merchantability, fitness for a particular purpose, non
-    infringement, or the absence of latent or other defects, accuracy, or
-    the present or absence of errors, whether or not discoverable, all to
-    the greatest extent permissible under applicable law.
- c. Affirmer disclaims responsibility for clearing rights of other persons
-    that may apply to the Work or any use thereof, including without
-    limitation any person's Copyright and Related Rights in the Work.
-    Further, Affirmer disclaims responsibility for obtaining any necessary
-    consents, permissions or other rights required for any use of the
-    Work.
- d. Affirmer understands and acknowledges that Creative Commons is not a
-    party to this document and has no duty or obligation with respect to
-    this CC0 or use of the Work.
-```
-
-### JAV-0287 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0218 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: standardwebhooks 1.0.0.
 
@@ -17697,7 +13328,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0288 — MIT
+### JAV-0219 — MIT
 
 Applies to 1 component: statuses 2.0.2.
 
@@ -17727,62 +13358,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0289 — MIT — text not published by this component; attribution derived from its package metadata
-
-Applies to 2 components: stream-events 1.0.5, stubs 3.0.0.
-
-```text
-Copyright (c) Stephen Sawchuk
-
-MIT License
-
-Copyright (c) <year> <copyright holders>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0290 — MIT
-
-Applies to 1 component: stream-shift 1.0.3.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2016 Mathias Buus
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0291 — MIT
+### JAV-0220 — MIT
 
 Applies to 1 component: style-mod 4.1.3.
 
@@ -17808,7 +13384,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0292 — MIT
+### JAV-0221 — MIT
 
 Applies to 1 component: style-to-js 1.1.21.
 
@@ -17837,7 +13413,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0293 — MIT
+### JAV-0222 — MIT
 
 Applies to 1 component: style-to-object 1.0.14.
 
@@ -17866,7 +13442,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0294 — MIT
+### JAV-0223 — MIT
 
 Applies to 1 component: stylis 4.4.0.
 
@@ -17894,34 +13470,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0295 — MIT
-
-Applies to 1 component: systeminformation 5.33.1.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2014-2026 Sebastian Hildebrandt
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0296 — MIT
+### JAV-0224 — MIT
 
 Applies to 1 component: tinyexec 1.2.4.
 
@@ -17949,7 +13498,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0297 — MIT
+### JAV-0225 — MIT
 
 Applies to 1 component: toidentifier 1.0.1.
 
@@ -17977,35 +13526,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0298 — MIT
-
-Applies to 1 component: tree-sitter-bash 0.25.0.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2017 Max Brunsfeld
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0299 — MIT
+### JAV-0226 — MIT
 
 Applies to 1 component: trough 2.2.0.
 
@@ -18033,7 +13554,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0300 — MIT
+### JAV-0227 — MIT
 
 Applies to 1 component: ts-dedent 2.3.0.
 
@@ -18061,7 +13582,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0301 — 0BSD
+### JAV-0228 — 0BSD
 
 Applies to 1 component: tslib 2.8.1.
 
@@ -18080,7 +13601,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0302 — MIT
+### JAV-0229 — MIT
 
 Applies to 1 component: typebox 1.1.38.
 
@@ -18110,35 +13631,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0303 — MIT
-
-Applies to 1 component: typed-query-selector 2.12.2.
-
-```text
-MIT License
-
-Copyright (c) 2020-present Pig Fang
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0304 — MIT
+### JAV-0230 — MIT
 
 Applies to 2 components: undici 7.29.0, undici-types 7.18.2.
 
@@ -18166,7 +13659,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0305 — MIT
+### JAV-0231 — MIT
 
 Applies to 2 components: unified 11.0.5, vfile 6.0.3.
 
@@ -18194,7 +13687,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0306 — MIT
+### JAV-0232 — MIT
 
 Applies to 1 component: unist-util-is 6.0.1.
 
@@ -18223,7 +13716,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0307 — MIT
+### JAV-0233 — MIT
 
 Applies to 1 component: unpipe 1.0.0.
 
@@ -18252,72 +13745,9 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0308 — BSD
+### JAV-0234 — MIT
 
-Applies to 1 component: url-template 2.0.8.
-
-```text
-Copyright (c) 2012-2014, Bram Stein
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without 
-modification, are permitted provided that the following conditions 
-are met:
- 
- 1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer. 
- 2. Redistributions in binary form must reproduce the above copyright 
-    notice, this list of conditions and the following disclaimer in the 
-    documentation and/or other materials provided with the distribution. 
- 3. The name of the author may not be used to endorse or promote products 
-    derived from this software without specific prior written permission. 
-
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR IMPLIED 
-WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
-MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO 
-EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY 
-OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, 
-EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-### JAV-0309 — MIT
-
-Applies to 1 component: util-deprecate 1.0.2.
-
-```text
-(The MIT License)
-
-Copyright (c) 2014 Nathan Rajlich <nathan@tootallnate.net>
-
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0310 — MIT
-
-Applies to 2 components: uuid 11.1.1, uuid 13.0.1.
+Applies to 1 component: uuid 11.1.1.
 
 ```text
 The MIT License (MIT)
@@ -18331,7 +13761,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0311 — MIT
+### JAV-0235 — MIT
 
 Applies to 1 component: w3c-keyname 2.2.8.
 
@@ -18357,7 +13787,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0312 — MIT
+### JAV-0236 — MIT
 
 Applies to 1 component: web-streams-polyfill 3.3.3.
 
@@ -18386,244 +13816,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0313 — MIT
-
-Applies to 1 component: web-tree-sitter 0.25.10.
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2018-2024 Max Brunsfeld
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### JAV-0314 — Apache-2.0
-
-Applies to 1 component: webdriver-bidi-protocol 0.4.2.
-
-```text
-
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright 2024 Google Inc.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-```
-
-### JAV-0315 — MIT
+### JAV-0237 — MIT
 
 Applies to 1 component: ws 8.21.3.
 
@@ -18650,27 +13843,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0316 — ISC
-
-Applies to 1 component: y18n 5.0.8.
-
-```text
-Copyright (c) 2015, Contributors
-
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
-```
-
-### JAV-0317 — ISC
+### JAV-0238 — ISC
 
 Applies to 1 component: yaml 2.9.0.
 
@@ -18690,58 +13863,9 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0318 — MIT
+### JAV-0239 — MIT
 
-Applies to 2 components: yargs 17.7.2, yargs 18.1.0.
-
-```text
-MIT License
-
-Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
-
-### JAV-0319 — ISC
-
-Applies to 2 components: yargs-parser 21.1.1, yargs-parser 22.0.0.
-
-```text
-Copyright (c) 2016, Contributors
-
-Permission to use, copy, modify, and/or distribute this software
-for any purpose with or without fee is hereby granted, provided
-that the above copyright notice and this permission notice
-appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
-OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE
-LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
-OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
-WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
-ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-```
-
-### JAV-0320 — MIT
-
-Applies to 2 components: zod 3.25.76, zod 4.4.3.
+Applies to 1 component: zod 4.4.3.
 
 ```text
 MIT License
@@ -18767,7 +13891,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0321 — ISC
+### JAV-0240 — ISC
 
 Applies to 1 component: zod-to-json-schema 3.25.1.
 
@@ -18796,7 +13920,6 @@ the package. Bundling inlines JavaScript; a package whose only payload is a nati
 reaches the package only if staging copies it by name, and these are not copied.
 
 - **@anthropic-ai/claude-agent-sdk-win32-x64 0.3.239** — Contains only claude.exe (322 MB), the Claude Code binary. The claude-code provider passes pathToClaudeCodeExecutable: CLAUDE_PATH (providers/claude-code.ts), which resolves the user's own Claude Code install from PATH, so this copy is never referenced, staged, or run.
-- **@lydell/node-pty-win32-x64 1.1.0** — Native ConPTY addons (conpty.node, conpty_console_list.node) for @lydell/node-pty. Staging copies bun-pty's rust_pty.dll for the terminal; these are not copied.
 - **@mariozechner/clipboard-win32-x64-msvc 0.3.9** — Native clipboard addon (clipboard.win32-x64-msvc.node) reached through the pi packages. Staging does not copy it.
 
 <!-- END SECTION: javascript -->

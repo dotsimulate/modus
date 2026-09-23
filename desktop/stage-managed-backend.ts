@@ -254,8 +254,6 @@ async function stage(): Promise<void> {
     join(stageDir, "svg-render-worker.js"),
     [join(harnessDir, "node_modules", "@resvg", "resvg-js")],
   );
-  await bundle(join(harnessDir, "providers", "antigravity-hook.ts"), join(stageDir, "providers", "antigravity-hook.js"));
-  await bundle(join(harnessDir, "providers", "antigravity-mcp-bridge.ts"), join(stageDir, "providers", "antigravity-mcp-bridge.js"));
 
   for (const directory of [
     // "actions" is deliberately absent: harness/actions/ is gitignored personal

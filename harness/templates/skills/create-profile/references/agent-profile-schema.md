@@ -28,7 +28,7 @@ profile's ID used everywhere in the system.
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
   // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
-  // "antigravity" | "grok-build" | "opencode" | "openai-compat" | "ollama" |
+  // "grok-build" | "opencode" | "openai-compat" | "ollama" |
   // "openrouter", plus user/plugin declarative providers discovered at runtime.
   // "litellm" remains accepted as a legacy alias of "openai-compat".
 
@@ -147,7 +147,6 @@ profile's ID used everywhere in the system.
   "providerControls": {
     "claude":      { "permissionMode": "default" },  // | acceptEdits | plan | dontAsk
     "codex":       { "sandboxMode": "workspace-write", "webSearchMode": "cached", "serviceTier": "standard" },
-    "antigravity": { "mode": "accept-edits", "sandbox": true, "printTimeout": "5m" },
     "grokBuild":   { "mode": "default", "sandbox": "workspace", "noMemory": false,
                      "noSubagents": false, "disableWebSearch": false }
   },
@@ -222,8 +221,6 @@ rejected by the backend.
 | Grok Build | append, custom | unavailable; `AGENTS.md` always loads |
 | OpenCode | append, custom | project config/instructions toggle |
 | Declarative PI providers | append, custom | PI context-files toggle |
-| Gemini CLI (hidden) | unavailable | Gemini project-memory toggle |
-| Antigravity (hidden) | unavailable | project instructions always load |
 
 Provider-specific authoring notes in this directory take precedence over the
 portable schema examples.

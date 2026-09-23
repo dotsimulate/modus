@@ -103,7 +103,7 @@ Reachable as `ctx.model` on the Harness Context, `ctx.model` on `MoveApiContext`
 (`listOneShotProviders()` in `providers/provider-names.ts`). That is structural, not a missing
 feature: PI is an in-process SDK, so `pi-ai`'s `completeSimple()` reaches the model directly,
 while every other provider is a CLI the harness spawns and converses with. A one-shot against
-`claude-code`, `codex`, `cursor`, `antigravity`, `grok-build`, `opencode` or `gemini-cli`
+`claude-code`, `codex`, `cursor`, `grok-build` or `opencode`
 **throws** and names the capable providers. It does not fall back to spawning a session — that
 would silently reintroduce the cost the primitive exists to avoid.
 

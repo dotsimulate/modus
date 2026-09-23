@@ -488,7 +488,7 @@ Providers are execution backends (Claude Code, Codex, Cursor, Grok Build, PI age
 ```typescript
 const providers = await client.listProviders();
 // ["claude-code", "claude-code-pty", "codex", "cursor", "grok-build", "opencode", ...]
-// Hidden providers (antigravity, gemini-cli) are usable by name but never listed.
+// Retired standalone Google adapters are unavailable in the distributed app.
 
 const caps = await client.getProviderCapabilities();
 // Each: { name, streaming, tools, vision, builtInToolMode, ... }

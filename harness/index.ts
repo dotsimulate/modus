@@ -4667,13 +4667,6 @@ app.get("/api/claude/usage", async (c) => {
   return c.json(await probeClaudePlanUsage());
 });
 
-app.get("/api/gemini/usage", async (c) => {
-  const params = new URL(c.req.url).searchParams;
-  const cwd = params.get("cwd") ?? process.cwd();
-  const { fetchGeminiUsageSnapshot } = await import("./gemini-usage");
-  return c.json(await fetchGeminiUsageSnapshot({ cwd }));
-});
-
 app.post("/api/prune", (c) => {
   const result = pruneAllSessionEvents();
   return c.json(result);

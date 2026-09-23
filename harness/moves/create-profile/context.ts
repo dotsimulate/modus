@@ -90,7 +90,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "  description: string;          // one-line description shown in UI",
     "  prompt: string;                // system prompt body",
     "  promptMode?: \"custom\" | \"append\"; // append = add to provider default prompt",
-    "  provider?: string;             // \"anthropic\" | \"claude-code\" | \"codex\" | \"cursor\" | \"antigravity\" | ...",
+    "  provider?: string;             // \"claude-code\" | \"codex\" | \"cursor\" | \"openai-compat\" | ...",
     "  model?: string;",
     "  effort?: \"off\" | \"low\" | \"medium\" | \"high\" | \"xhigh\" | \"max\";",
     "  maxTurns?: number;",

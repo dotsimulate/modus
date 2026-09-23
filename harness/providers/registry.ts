@@ -7,19 +7,11 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { isSecretSet } from "../secrets";
-import { createAntigravityProvider } from "./antigravity";
-import { ANTIGRAVITY_CAPABILITIES } from "./antigravity-capabilities";
-import {
-  antigravityAuthFromModelsResult,
-  resolveAntigravityExecutable,
-  runAntigravityCommand,
-} from "./antigravity-cli-runtime";
 import { createClaudeCodeProvider } from "./claude-code";
 import { createClaudeCodePtyProvider } from "./claude-code-pty";
 import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
 import { resolveCursorAgentExecutable } from "./cursor-resolve-bin";
-import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
 import { createGrokBuildProvider } from "./grok-build";
 import { GROK_BUILD_CAPABILITIES } from "./grok-build-capabilities";
 import { probeGrokBuildAuth, resolveGrokBuildCommand } from "./grok-build-runtime";
@@ -28,7 +20,7 @@ import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { createPiAgentProvider } from "./pi-agent";
 import { PROVIDER_CLI_NAMES } from "./provider-cli-names";
 import { getProviderDefinition } from "./provider-definitions";
-import { resolveProviderAlias } from "./provider-definition";
+import { removedProviderMigrationError, resolveProviderAlias } from "./provider-definition";
 import {
   isKnownProvider,
   listProviders,
@@ -54,6 +46,8 @@ export { isKnownProvider, listProviders };
 const cache = new Map<string, SessionProvider>();
 
 export function getProvider(name: string): SessionProvider {
+  const migrationError = removedProviderMigrationError(name);
+  if (migrationError) throw migrationError;
   const definition = getProviderDefinition(name);
   // Keep aliases as distinct cached adapters. The capabilities expose the
   // canonical name, but the runtime adapter must retain the requested name so
@@ -73,25 +67,8 @@ export function getProvider(name: string): SessionProvider {
     provider = createCursorProvider();
   } else if (name === "opencode") {
     provider = createOpenCodeProvider();
-  } else if (name === "antigravity") {
-    provider = createAntigravityProvider();
   } else if (name === "grok-build") {
     provider = createGrokBuildProvider();
-  } else if (name === "gemini-cli") {
-    const supportedLegacyAuth = !!process.env.GEMINI_API_KEY
-      || (process.env.GOOGLE_GENAI_USE_VERTEXAI === "true" && (
-        !!process.env.GOOGLE_API_KEY
-        || !!((process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT_ID) && process.env.GOOGLE_CLOUD_LOCATION)
-      ))
-      || process.env.CLOUD_SHELL === "true"
-      || process.env.GEMINI_CLI_USE_COMPUTE_ADC === "true";
-    if (!supportedLegacyAuth) {
-      throw new Error("The legacy `gemini-cli` provider is hidden and cannot reuse Gemini CLI OAuth. Use `antigravity`, or explicitly configure a paid Gemini API/Vertex AI/ADC deployment.");
-    }
-    // Gemini CLI core must not load while merely listing capabilities.
-    const modPath = [".", "gemini-cli"].join("/");
-    const mod = require(modPath);
-    provider = mod.createGeminiCliProvider();
   } else if (definition?.kind === "pi") {
     provider = createPiAgentProvider(name);
   } else {
@@ -107,9 +84,7 @@ export function getProvider(name: string): SessionProvider {
 
 export function getProviderCapabilities(name: string): ProviderCapabilities {
   const base =
-    name === "gemini-cli" ? GEMINI_CAPABILITIES
-    : name === "antigravity" ? ANTIGRAVITY_CAPABILITIES
-    : name === "grok-build" ? GROK_BUILD_CAPABILITIES
+    name === "grok-build" ? GROK_BUILD_CAPABILITIES
     : name === "opencode" ? OPENCODE_CAPABILITIES
     : getProvider(name).capabilities;
   return {
@@ -184,9 +159,7 @@ export async function checkProviderHealth(name: string): Promise<ProviderHealthI
     const found =
       name === "cursor"
         ? resolveCursorAgentExecutable()
-        : name === "antigravity"
-          ? resolveAntigravityExecutable()
-          : name === "grok-build"
+        : name === "grok-build"
             ? resolveGrokBuildCommand()?.executable
           : name === "opencode"
             ? resolveCli("opencode") ?? resolveCli("bunx")
@@ -212,21 +185,6 @@ export async function checkProviderHealth(name: string): Promise<ProviderHealthI
   }
 
   if (name === "codex") checks.push(checkCodexAuth());
-
-  if (name === "antigravity") {
-    const executable = resolveAntigravityExecutable();
-    if (executable) {
-      const auth = antigravityAuthFromModelsResult(
-        await runAntigravityCommand(executable, ["models"], { timeoutMs: 15_000 }),
-      );
-      checks.push({
-        type: "auth",
-        label: "google sign-in",
-        passed: auth.authenticated,
-        detail: auth.detail,
-      });
-    }
-  }
 
   if (name === "grok-build") {
     const auth = await probeGrokBuildAuth();

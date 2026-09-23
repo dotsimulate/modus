@@ -911,22 +911,6 @@ export type ClaudePlanUsageSnapshot = {
   error?: string;
 };
 
-/** Gemini API availability and quota information for the configured account. */
-export type GeminiUsageInfo = {
-  available: boolean;
-  authType: string;
-  model: string;
-  checkedAt: number;
-  quota: {
-    remaining?: number;
-    limit?: number;
-    resetTime?: string;
-  };
-  tier?: string;
-  paidTier?: string;
-  error?: string;
-};
-
 // ── Profiles ──
 
 /** MCP server connection config -- stdio (local process), SSE, or HTTP transport. */
@@ -1091,7 +1075,6 @@ export type DeclarativeProviderDefinition = {
     | "anthropic-messages"
     | "bedrock-converse-stream"
     | "google-generative-ai"
-    | "google-gemini-cli"
     | "google-vertex";
   baseUrl: string;
   apiKeyName?: string;

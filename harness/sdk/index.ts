@@ -60,7 +60,6 @@ export type {
   AccountInfo,
   ClaudePlanUsageLimit,
   ClaudePlanUsageSnapshot,
-  GeminiUsageInfo,
   // Profiles
   McpServerConfig,
   ProfileUi,

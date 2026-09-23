@@ -16,7 +16,6 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
-  HIDDEN_LEGACY_PROVIDERS,
   STANDALONE_PROVIDERS,
   listPiProviders,
   listProviders,
@@ -33,10 +32,8 @@ const IMPLEMENTATION: Record<string, string> = {
   "claude-code-pty": "claude-code-pty.ts",
   "codex": "codex.ts",
   "cursor": "cursor.ts",
-  "antigravity": "antigravity.ts",
   "grok-build": "grok-build.ts",
   "opencode": "opencode.ts",
-  "gemini-cli": "gemini-cli.ts",
   ...Object.fromEntries(PI_PROVIDERS.map((name) => [name, "pi-agent.ts"])),
 };
 
@@ -66,7 +63,7 @@ describe("provider steering capability", () => {
 
   test("providers that cannot steer are named, not merely absent", () => {
     // Guards against a new provider silently defaulting into either bucket.
-    for (const name of ["cursor", "antigravity", "grok-build", "opencode", "gemini-cli"]) {
+    for (const name of ["cursor", "grok-build", "opencode"]) {
       expect(supportsSteering(name)).toBe(false);
     }
     for (const name of ["claude-code", "claude-code-pty", "codex", ...PI_PROVIDERS]) {
@@ -75,7 +72,7 @@ describe("provider steering capability", () => {
   });
 
   test("every steerable name is a real provider name", () => {
-    const known = new Set<string>([...listProviders(), ...HIDDEN_LEGACY_PROVIDERS]);
+    const known = new Set<string>(listProviders());
     for (const name of STEERABLE_PROVIDERS) {
       expect(known.has(name)).toBe(true);
     }
@@ -84,7 +81,7 @@ describe("provider steering capability", () => {
   test("every registered provider is mapped to an implementation file", () => {
     // Keeps this suite honest as providers are added: an unmapped name would
     // otherwise be skipped by both directions of the check above.
-    for (const name of [...STANDALONE_PROVIDERS, ...PI_PROVIDERS, ...HIDDEN_LEGACY_PROVIDERS]) {
+    for (const name of [...STANDALONE_PROVIDERS, ...PI_PROVIDERS]) {
       expect(IMPLEMENTATION[name]).toBeDefined();
     }
   });

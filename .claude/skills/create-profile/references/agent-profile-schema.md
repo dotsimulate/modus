@@ -28,7 +28,7 @@ profile's ID used everywhere in the system.
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
   // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
-  // "antigravity" | "grok-build" | "opencode" | "litellm" | "ollama" | "openrouter"
+  // "grok-build" | "opencode" | "openai-compat" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
   "model": "claude-opus-4-8[1m]",
@@ -145,7 +145,6 @@ profile's ID used everywhere in the system.
   "providerControls": {
     "claude":      { "permissionMode": "default" },  // | acceptEdits | plan | dontAsk
     "codex":       { "sandboxMode": "workspace-write", "webSearchMode": "cached", "serviceTier": "standard" },
-    "antigravity": { "mode": "accept-edits", "sandbox": true, "printTimeout": "5m" },
     "grokBuild":   { "mode": "default", "sandbox": "workspace", "noMemory": false,
                      "noSubagents": false, "disableWebSearch": false }
   },

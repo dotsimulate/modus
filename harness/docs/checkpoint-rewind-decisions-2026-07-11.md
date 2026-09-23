@@ -12,6 +12,9 @@ Date: 2026-07-11
 Status: implemented foundation; provider expansion, retention, and destructive-path
 integration tests remain before release approval.
 
+This is a dated design record. Its provider availability notes reflect July 2026;
+see [Providers](providers.md) for the current distributed app.
+
 ## Outcome
 
 Modus now treats three different facts as three different systems:

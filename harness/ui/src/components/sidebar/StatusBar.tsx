@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { modus } from "../../modusClient";
-import type { GeminiUsageInfo, UserProfile } from "../../../../sdk/index";
+import type { UserProfile } from "../../../../sdk/index";
 import { BackendTargetControl } from "../BackendTargetManager";
 
 type Props = {
@@ -21,7 +20,6 @@ export function StatusBar({
   computer, projectPath,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [geminiUsage, setGeminiUsage] = useState<GeminiUsageInfo | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -34,43 +32,11 @@ export function StatusBar({
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
-  useEffect(() => {
-    let alive = true;
-
-    const load = async () => {
-      try {
-        const data = await modus.getGeminiUsage(projectPath);
-        if (alive) setGeminiUsage(data);
-      } catch {
-        if (alive) setGeminiUsage(null);
-      }
-    };
-
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(iv);
-    };
-  }, [projectPath]);
-
   const hasProfiles = userProfiles && userProfiles.length > 0 && onSwitchUserProfile;
   const activeUp = userProfiles?.find((p) => p.name === activeUserProfile);
   const label = activeUp?.displayName ?? activeUp?.name ?? "all";
 
   const folderName = projectPath ? projectPath.split("/").filter(Boolean).pop() : undefined;
-  const remaining = geminiUsage?.quota.remaining;
-  const limit = geminiUsage?.quota.limit;
-  const resetTime = geminiUsage?.quota.resetTime;
-  const showGeminiUsage = geminiUsage?.available && remaining != null && limit != null;
-  const geminiText = showGeminiUsage ? `gemini ${remaining}/${limit}` : null;
-  const geminiTitle = showGeminiUsage
-    ? [
-        geminiUsage?.tier ? `tier: ${geminiUsage.tier}` : null,
-        resetTime ? `resets: ${new Date(resetTime).toLocaleString()}` : null,
-      ].filter(Boolean).join(" | ")
-    : undefined;
-
   return (
     <div className="harness-status">
       {(computer || folderName) && (
@@ -78,11 +44,6 @@ export function StatusBar({
           {computer && <span>{computer}</span>}
           {computer && folderName && <span className="status-sep">·</span>}
           {folderName && <span className="status-path">{folderName}</span>}
-        </span>
-      )}
-      {geminiText && (
-        <span className="status-gemini-usage" title={geminiTitle}>
-          {geminiText}
         </span>
       )}
       <BackendTargetControl compact />

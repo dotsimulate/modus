@@ -129,8 +129,6 @@ describe("profile prompt delivery", () => {
       cursor: [["append"], "always"],
       "grok-build": [["append", "custom"], "always"],
       opencode: [["append", "custom"], "toggle"],
-      "gemini-cli": [[], "toggle"],
-      antigravity: [[], "always"],
     } as const;
 
     for (const [provider, [modes, control]] of Object.entries(expected)) {
@@ -142,7 +140,5 @@ describe("profile prompt delivery", () => {
 
   test("rejects unsupported prompt modes instead of fabricating a user-message channel", () => {
     expect(() => requireSupportedProfilePrompt(getProviderCapabilities("cursor"), context("custom").profile)).toThrow("cannot deliver a custom profile prompt");
-    expect(() => requireSupportedProfilePrompt(getProviderCapabilities("gemini-cli"), context("append").profile)).toThrow("Profile prompts are unavailable");
-    expect(() => requireSupportedProfilePrompt(getProviderCapabilities("antigravity"), context("append").profile)).toThrow("Profile prompts are unavailable");
   });
 });

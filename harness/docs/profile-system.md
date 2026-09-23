@@ -101,8 +101,8 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 `"grok-build"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
 `"openrouter"`. Current-Vault and plugin declarative providers extend this set at
 runtime. Legacy `"litellm"` remains accepted as an alias of
-`"openai-compat"`. `"antigravity"` and `"gemini-cli"` are also valid here but do
-not appear in any picker — see `providers.md` § Hidden providers.
+`"openai-compat"`. The standalone `"antigravity"` and `"gemini-cli"` names are
+not available in the distributed app; migrate old profiles to a supported provider.
 
 **`cwd`**: Pins the profile to a fixed working directory. Any agent profile may
 set it, not just plugin profiles — it is a plain optional string
@@ -137,8 +137,6 @@ added to a user message. Provider support is explicit:
 | Grok Build | append, custom | always loads `AGENTS.md` |
 | OpenCode | append, custom | toggleable project config and instruction files |
 | Declarative PI providers | append, custom | toggleable PI context files |
-| Gemini CLI (hidden) | unavailable | toggleable Gemini project memory |
-| Antigravity (hidden) | unavailable | always loads project instructions |
 
 An unsupported mode is disabled in the profile editor and rejected by the
 backend if it is supplied through JSON or an older saved profile. Cursor's
@@ -163,19 +161,15 @@ Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Na
 **`permissionPolicy`**: omit to inherit (the compatibility default is `"bypass"`),
 `"bypass"` to never ask, `"auto-edit"` to allow edits while asking for shell,
 `"ask"` to approve every tool call, or an object with
-`autoApprove`/`requireApproval` lists for granular control. Claude Code,
-Antigravity, and Grok Build honor the per-tool lists; Codex, Gemini CLI, and
-OpenCode flatten them to the object's default. The legacy object spelling
+`autoApprove`/`requireApproval` lists for granular control. Claude Code and
+Grok Build honor the per-tool lists; Codex and OpenCode flatten them to the
+object's default. The legacy object spelling
 `default: "allow"` is read as `"approve"` and reported once, without rewriting
 the profile.
 
 **`mcpConfig`**: Path to an external MCP JSON file, resolved relative to the
 profile file. The file uses the same `{ "mcpServers": { ... } }` shape as
 `_global.json` and can be shared by multiple profiles.
-
-**`providerControls.antigravity`**: Optional documented Antigravity headless
-flags: `{ "mode": "accept-edits" | "plan", "sandbox": boolean,
-"printTimeout": "1h" }`.
 
 **`providerControls.grokBuild`**: Optional Grok Build ACP controls. `mode` may
 be `"default"`, `"auto"`, `"plan"`, or `"always-approve"`; `sandbox` names a

@@ -6,14 +6,9 @@ import { readCodexModelsCache } from "./codex-model-cache";
 import { resolveSecret } from "../secrets";
 import { cursorAgentSpawnArgv0 } from "./cursor-resolve-bin";
 import { getGlobalConfig } from "../profiles";
-import {
-  antigravityAuthFromModelsResult,
-  parseAntigravityModels,
-  resolveAntigravityExecutable,
-  runAntigravityCommand,
-} from "./antigravity-cli-runtime";
 import { probeGrokBuildModels } from "./grok-build-runtime";
 import { getProviderDefinition } from "./provider-definitions";
+import { removedProviderMigrationError } from "./provider-definition";
 import { resolvePiApiKey, resolvePiBaseUrl } from "./pi-model";
 
 export type ProviderModelInfo = {
@@ -50,34 +45,9 @@ const CLAUDE_MODELS: ModelInfo[] = [
   { id: "claude-haiku-4-5", owned_by: "anthropic" },
 ];
 
-const GEMINI_MODELS: ModelInfo[] = [
-  { id: "auto-gemini-3", owned_by: "google" },
-  { id: "gemini-2.5-pro", owned_by: "google" },
-  { id: "gemini-2.5-flash", owned_by: "google" },
-  { id: "gemini-2.5-flash-preview", owned_by: "google" },
-  { id: "gemini-3.1-flash", owned_by: "google" },
-  { id: "gemini-3-pro-preview", owned_by: "google" },
-  { id: "gemini-3-flash-preview", owned_by: "google" },
-];
-
-const ANTIGRAVITY_FALLBACK_MODELS: ModelInfo[] = [
-  { id: "Gemini 3.5 Flash", owned_by: "google", contextSource: "provider-default" },
-  { id: "Gemini 3.1 Pro", owned_by: "google", contextSource: "provider-default" },
-];
-
 const GROK_BUILD_FALLBACK_MODELS: ModelInfo[] = [
   { id: "grok-4.5", owned_by: "xai", contextSource: "provider-default" },
 ];
-
-async function fetchAntigravityModels(): Promise<ModelInfo[]> {
-  const executable = resolveAntigravityExecutable();
-  if (!executable) return ANTIGRAVITY_FALLBACK_MODELS;
-  const result = await runAntigravityCommand(executable, ["models"], { timeoutMs: 15_000 });
-  const auth = antigravityAuthFromModelsResult(result);
-  if (!auth.authenticated) return ANTIGRAVITY_FALLBACK_MODELS;
-  const models = parseAntigravityModels(result.stdout);
-  return models.length > 0 ? models : ANTIGRAVITY_FALLBACK_MODELS;
-}
 
 /** Fetch models from cursor-agent CLI by parsing its `models` command output. */
 async function fetchCursorModels(): Promise<ModelInfo[]> {
@@ -169,6 +139,8 @@ function getBaseURL(provider: string): {
 }
 
 export async function fetchProviderModels(provider: string): Promise<ModelInfo[]> {
+  const migrationError = removedProviderMigrationError(provider);
+  if (migrationError) throw migrationError;
   // Static list for claude-code
   if (provider === "claude-code" || provider === "claude-code-pty") {
     return CLAUDE_MODELS;
@@ -177,14 +149,6 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
   // Read from Codex CLI's local cache (~/.codex/models_cache.json)
   if (provider === "codex") {
     return readCodexModelsCache();
-  }
-
-  if (provider === "gemini-cli") {
-    return GEMINI_MODELS;
-  }
-
-  if (provider === "antigravity") {
-    return fetchAntigravityModels();
   }
 
   if (provider === "grok-build") {

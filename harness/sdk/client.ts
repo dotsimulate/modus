@@ -64,7 +64,6 @@ import type {
   SessionStats,
   AccountInfo,
   ClaudePlanUsageSnapshot,
-  GeminiUsageInfo,
   ProviderUsageAnalytics,
   DeepAnalytics,
   MemoryItem,
@@ -910,7 +909,6 @@ export class ModusClient {
   /** Returns Claude subscription plan limits reported by the authenticated Claude Code CLI. */
   async getClaudePlanUsage(): Promise<ClaudePlanUsageSnapshot> { return (await this.fetch("/api/claude/usage")).json(); }
   /** Returns Gemini-specific usage info. */
-  async getGeminiUsage(cwd?: string): Promise<GeminiUsageInfo> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; return (await this.fetch(`/api/gemini/usage${q}`)).json(); }
   /** Returns provider usage breakdown over time. Defaults to 30 days. */
   async getProviderUsageAnalytics(userProfile?: string, days = 30): Promise<ProviderUsageAnalytics> {
     const p = new URLSearchParams(); if (userProfile) p.set("userProfile", userProfile); p.set("days", String(days));

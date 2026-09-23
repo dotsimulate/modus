@@ -46,8 +46,6 @@ modus/
       codex-cli-sdk.ts     # Codex CLI exec wrapper
       codex-app-server.ts  # Codex stdio turn transport with acknowledged steering
       cursor.ts            # Cursor Agent CLI provider
-      antigravity.ts       # Google Antigravity CLI provider
-      gemini-cli.ts        # Hidden legacy paid/API/Vertex provider
       opencode.ts          # OpenCode CLI provider
       grok-build.ts        # xAI Grok Build ACP provider
       grok-build-acp.ts    # newline-delimited JSON-RPC transport
@@ -141,9 +139,9 @@ Providers are execution backends. Session-manager delegates to them via the
 Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
 `grok-build`, `opencode`, `openai-compat`, `ollama`, `openrouter`,
 plus current-Vault and plugin declarative PI providers. `litellm` remains an
-accepted compatibility alias of `openai-compat`. `antigravity` and `gemini-cli`
-are hidden: reachable when a profile names one, absent from every listing (see
-`providers.md` § Hidden providers).
+accepted compatibility alias of `openai-compat`. The standalone `antigravity`
+and `gemini-cli` adapters are excluded from the distributed app; profiles using
+either name need another provider (see `providers.md`).
 
 The last three are PI agent variants — a lightweight agent loop for
 OpenAI-compatible APIs.

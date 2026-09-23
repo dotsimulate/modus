@@ -8,6 +8,7 @@ import { z } from "zod";
 // provider implementation and the database into anything that only wants to
 // validate a profile.
 import { isKnownProvider } from "./providers/provider-names";
+import { removedProviderMigrationError } from "./providers/provider-definition";
 
 // ── MCP Server Config ──
 
@@ -201,8 +202,12 @@ const UserInterfaceConfigSchema = z.object({
   motion: z.enum(["system", "reduced"]).optional(),
 });
 
-const ProviderSchema = z.string().refine(isKnownProvider, {
-  message: "unknown provider",
+const ProviderSchema = z.string().superRefine((name, ctx) => {
+  if (isKnownProvider(name)) return;
+  ctx.addIssue({
+    code: "custom",
+    message: removedProviderMigrationError(name)?.message ?? "unknown provider",
+  });
 });
 
 const EffortSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"]);
