@@ -40,7 +40,7 @@ export type AboutInfo = {
 };
 
 export const MODUS_REPOSITORY_URL = "https://github.com/dotsimulate/modus";
-export const MODUS_LICENSE = "Apache-2.0";
+export const MODUS_LICENSE = "FSL-1.1-ALv2";
 
 /**
  * The desktop shell stamps MODUS_DESKTOP_VERSION from CARGO_PKG_VERSION when it

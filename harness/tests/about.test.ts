@@ -34,6 +34,9 @@ describe("about", () => {
   test("exposes the real license and a link for each external reference", () => {
     const info = getAboutInfo();
     expect(info.license).toBe(MODUS_LICENSE);
+    expect(info.license).toBe("FSL-1.1-ALv2");
+    expect(info.links.find((link) => link.label === "License")?.description)
+      .toContain("FSL-1.1-ALv2");
     expect(info.links.length).toBeGreaterThan(0);
     for (const link of info.links) {
       expect(link.label).not.toBe("");
