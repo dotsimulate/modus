@@ -63,9 +63,10 @@ export async function executeOperation(opts: OperationOptions): Promise<{ receip
 
   async function terminate(child: ChildProcess) {
     if (child.connected) child.send({ version: 1, type: "cancel" }, () => {});
-    // Cooperative cancellation is followed by tree termination while the ownership root is alive.
+    // Give the worker a chance to cancel cooperatively, then force the owned
+    // tree down while its root still exists so Windows cannot leave descendants.
     await new Promise(r => setTimeout(r, 100));
-    await terminateProcessTree(child, false);
+    await terminateProcessTree(child, true);
     if (!await waitForClose(child, 400)) await terminateProcessTree(child, true);
     if (!await waitForClose(child, 2_000)) throw new Error("Action process tree did not exit after forced termination");
   }
