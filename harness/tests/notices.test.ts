@@ -65,6 +65,17 @@ describe("third-party notices", () => {
     expect(existsSync(INSTALLER_LICENSE_PATH)).toBe(true);
   });
 
+  test("the notices and SBOM identify Modus's current license", () => {
+    const notices = readFileSync(NOTICES_PATH, "utf-8");
+    const sbom = JSON.parse(readFileSync(SBOM_PATH, "utf-8"));
+    expect(notices).toContain("Modus itself is licensed under FSL-1.1-ALv2");
+    expect(renderNotices({ target: DEFAULT_TARGET, npm: [], cargo: [], binary: [] }))
+      .toContain("Modus itself is licensed under FSL-1.1-ALv2");
+    expect(sbom.metadata.component.licenses).toEqual([{ license: { id: "FSL-1.1-ALv2" } }]);
+    expect(JSON.parse(renderSbom({ target: DEFAULT_TARGET, components: [] })).metadata.component.licenses)
+      .toEqual(sbom.metadata.component.licenses);
+  });
+
   test("the JavaScript section matches the installed dependency graph", () => {
     const npm = installedNpmComponents();
     const rendered = renderNotices({ target: DEFAULT_TARGET, npm, cargo: [], binary: [] });

@@ -1,7 +1,7 @@
 /**
  * Build-time generation of third-party license notices and a CycloneDX SBOM.
  *
- * Modus redistributes far more than its own Apache-2.0 source. The desktop
+ * Modus redistributes far more than its own FSL-1.1-ALv2 source. The desktop
  * package ships a verbatim copy of the Bun runtime, two Rust executables, and
  * `server.js`/`cli.js`/`ui/dist` bundles that *inline the source text* of their
  * npm dependency trees. Every one of those carries an attribution obligation
@@ -856,7 +856,7 @@ export function renderNotices(input: {
     "",
     "# Third-Party Notices",
     "",
-    "Modus itself is licensed under Apache-2.0 (see `LICENSE`). The desktop package also",
+    "Modus itself is licensed under FSL-1.1-ALv2 (see `LICENSE`). The desktop package also",
     "redistributes the components below, each under its own license, and this file reproduces",
     "the notices those licenses require.",
     "",
@@ -928,7 +928,7 @@ export function renderSbom(input: { target: BuildTarget; components: Component[]
         "bom-ref": `pkg:generic/modus@${version}`,
         name: "Modus",
         version,
-        licenses: [{ license: { id: "Apache-2.0" } }],
+        licenses: [{ license: { id: "FSL-1.1-ALv2" } }],
         purl: `pkg:generic/modus@${version}`,
       },
       properties: [{ name: "modus:target", value: `${input.target.os}-${input.target.cpu}` }],
@@ -948,9 +948,8 @@ export function renderSbom(input: { target: BuildTarget; components: Component[]
 
 /**
  * What the installer shows on its license page. Pointing `bundle.licenseFile`
- * straight at `LICENSE` presented Apache-2.0 as the whole story for a package
- * that embeds a thousand third-party components — accurate about Modus, wrong
- * about the artifact.
+ * straight at `LICENSE` presents Modus's own FSL-1.1-ALv2 terms as the whole
+ * story for a package that embeds third-party components.
  */
 export function renderInstallerLicense(): string {
   return [

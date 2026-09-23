@@ -2,7 +2,7 @@
 
 # Third-Party Notices
 
-Modus itself is licensed under Apache-2.0 (see `LICENSE`). The desktop package also
+Modus itself is licensed under FSL-1.1-ALv2 (see `LICENSE`). The desktop package also
 redistributes the components below, each under its own license, and this file reproduces
 the notices those licenses require.
 
