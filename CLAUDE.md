@@ -103,8 +103,8 @@ build flow.
   the user explicitly asks.
 - Do not add credentials, tokens, personal profiles, private hostnames, machine-specific
   paths, databases, logs, crash artifacts, installer outputs, or ignored `TODO/` material.
-- Report security vulnerabilities through `SECURITY.md`; avoid public issue details until
-  maintainers have assessed disclosure risk.
+- Keep security vulnerability details out of public issues; arrange a private
+  channel with maintainers before sharing them.
 
 For contribution workflow, tests, and pull-request expectations, follow
 `CONTRIBUTING.md`. For user-facing setup and authoring, start with `README.md` and

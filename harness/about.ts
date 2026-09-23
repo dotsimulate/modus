@@ -68,11 +68,6 @@ const LINKS: AboutLink[] = [
     description: "Issues, releases, and the source for this build.",
   },
   {
-    label: "Report a security issue",
-    href: `${MODUS_REPOSITORY_URL}/blob/main/SECURITY.md`,
-    description: "Please report vulnerabilities privately rather than in a public issue.",
-  },
-  {
     label: "License",
     href: `${MODUS_REPOSITORY_URL}/blob/main/LICENSE`,
     description: `Modus is released under ${MODUS_LICENSE}.`,

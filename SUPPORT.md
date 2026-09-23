@@ -5,9 +5,8 @@ service. Community help is best-effort and has no response-time guarantee.
 
 ## Security vulnerabilities
 
-Do not open a public issue for a vulnerability or include exploit details in a
-public discussion. Follow [SECURITY.md](SECURITY.md) and use GitHub's private
-vulnerability-reporting channel.
+Do not put exploit details, credentials, or private data in a public issue.
+Arrange a private channel with a maintainer before sharing vulnerability details.
 
 ## Bugs
 

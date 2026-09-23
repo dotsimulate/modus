@@ -8,7 +8,8 @@ migration consequences explicitly.
 ## Before opening an issue or pull request
 
 - Use [SUPPORT.md](SUPPORT.md) to choose the right reporting channel.
-- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+- Keep vulnerability details out of public issues and arrange a private channel
+  with a maintainer before sharing them.
 - Remove credentials, tokens, private hostnames, Tailnet names, usernames,
   personal paths, project names, session content, and database contents from
   logs, screenshots, fixtures, and examples.

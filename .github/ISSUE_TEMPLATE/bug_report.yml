@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve Modus. Security vulnerabilities belong in a private GitHub Security Advisory, not here.
+        Thanks for helping improve Modus. Do not submit exploit details, credentials, or private data in this public form. Arrange a private channel with a maintainer before sharing vulnerability details.
 
         Remove tokens, private host or Tailnet names, usernames, personal paths, project/session content, databases, and credentials from every field, log, and screenshot.
   - type: checkboxes
