@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
+import { APP_PATHS } from "../../app-paths";
 import type { MoveApiHandler, MoveContext } from "../../move-types";
 import { startMission } from "../../mission-runner";
 
@@ -54,10 +55,11 @@ function summarizeMission(root: string, name: string): string {
 
 export async function gather(ctx: MoveContext): Promise<string> {
   const missionRoot = join(ctx.cwd, ".modus", "missions");
-  const localSkillRoot = join(ctx.cwd, ".claude", "skills", "create-mission");
-  const harnessSkillRoot = join(ctx.cwd, "harness", ".claude", "skills", "create-mission");
-  const hasLocalSkill = existsSync(join(localSkillRoot, "SKILL.md"));
-  const hasHarnessSkill = existsSync(join(harnessSkillRoot, "SKILL.md"));
+  const skillPath = [
+    join(ctx.cwd, ".claude", "skills", "create-mission", "SKILL.md"),
+    join(ctx.cwd, ".modus", "skills", "create-mission", "SKILL.md"),
+    join(APP_PATHS.resourcesDir, "templates", "skills", "create-mission", "SKILL.md"),
+  ].find((path) => Boolean(readText(path)?.trim()));
   const missionNames = listMissionDirs(missionRoot);
 
   ctx.setStore?.({
@@ -76,8 +78,10 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "Do not do the mission's actual domain work yourself. Do not pivot into product design or implementation work.",
     "",
     "## Required workflow",
-    "- Use the local `create-mission` skill first if it exists. If no project-local skill exists, use the harness `create-mission` skill. Follow the skill's workflow instead of improvising.",
-    "- Treat this as a mission-creation wrapper around that skill.",
+    skillPath
+      ? `- Read and follow the create-mission skill at \`${skillPath}\` before writing mission files.`
+      : "- No readable create-mission skill is available in this project or the packaged resources. Use the requirements below to create the mission, and do not claim to have followed a skill.",
+    "- Treat this as a mission-creation wrapper around the skill when available.",
     "- Default to creating a new mission.",
     "- If the user asks to edit an existing mission, edit it in place.",
     "- If the user asks to duplicate a mission, copy and adapt it cleanly.",
@@ -99,8 +103,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "- You may start a mission from this move only after the files are written and the user has asked to start it or clearly confirmed starting it.",
     "- When starting, use the `start-mission` operation provided by this move. Do not merely tell the user that they can start it later.",
     "",
-    `Project-local create-mission skill present: ${hasLocalSkill ? "yes" : "no"}`,
-    `Harness create-mission skill present: ${hasHarnessSkill ? "yes" : "no"}`,
+    `Create-mission skill path: ${skillPath ?? "unavailable"}`,
     ctx.apiToken
       ? [
           "",
