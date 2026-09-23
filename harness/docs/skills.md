@@ -168,7 +168,8 @@ source you do not control.
 |---|---|---|
 | claude-code, claude-code-pty | yes (`.claude/skills/`) | no — uses the skill tools |
 | Any declarative PI provider | yes (`.pi/skills/`) | yes, natively |
-| codex, cursor, antigravity, grok-build, opencode, gemini-cli | no | no — uses the skill tools |
+| codex, cursor, antigravity, grok-build, gemini-cli | no | no — uses the skill tools |
+| opencode | no | no — Modus does not inject its skill tools |
 
 The tool path depends on the provider mounting the built-in `modus` MCP server,
-which is the same thing moves depend on.
+which is the same thing moves depend on. The OpenCode adapter does not mount it.

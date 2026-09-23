@@ -13,7 +13,7 @@
 
 Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 
-Coding agents like Claude Code and Codex are execution engines. Chat apps give you one assistant in one window. Modus is the layer above both: it runs those agents as interchangeable backends and wraps them in durable, per-project structure. The goal is not just to chat with an AI. The goal is to control a system of agents shaped per project and per use case.
+Coding agents like Claude Code and Codex are execution engines. Chat apps give you one assistant in one window. Modus is the layer above both: it runs those agents as provider backends and wraps them in durable, per-project structure. Capabilities vary by provider; see the [provider guide](harness/docs/providers.md). The goal is not just to chat with an AI. The goal is to control a system of agents shaped per project and per use case.
 
 ## Primitives
 
@@ -115,7 +115,7 @@ modus remote on      # every start now serves https://<machine>.<tailnet>.ts.net
 modus start --remote # or: expose for a single run
 ```
 
-This uses `tailscale serve`, so traffic stays inside your private tailnet — nothing is exposed to the public internet. Modus only manages its own serve rule: if another service on the machine is already using `tailscale serve`, Modus leaves that config untouched and tells you. `modus remote off` removes the rule and the setting.
+This uses `tailscale serve`, so traffic stays inside your private tailnet — nothing is exposed to the public internet. Modus only manages its own serve rule: if another service on the machine is already using `tailscale serve`, Modus leaves that config untouched and tells you. `modus remote off` clears the saved remote setting and attempts to remove the Modus-owned Serve rule; it reports an error if removal fails or cannot be verified.
 
 Without a browser PIN, anyone on your tailnet can open the UI. The desktop requires an extra confirmation before enabling an unpinned Tailnet route; set a PIN first if you share your tailnet. Only an authenticated browser can remotely lock browser access, and that lock revokes all browser sessions rather than locking the host operating system.
 
@@ -200,7 +200,7 @@ See [harness/docs/providers.md](harness/docs/providers.md) for the full provider
 
 **User profiles** define who is using the system: project scope, visible agents, memory isolation, and UI state. They live in `~/.modus/profiles/users/`.
 
-Profiles compose through a cascade: session override > agent profile > user profile > default. MCP servers merge additively across all layers.
+Profiles compose through a cascade: session override > agent profile > user profile > default. MCP server settings merge additively across those layers for providers with Modus MCP integration. The OpenCode adapter does not inject them.
 
 See [harness/docs/profile-system.md](harness/docs/profile-system.md).
 

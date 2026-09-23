@@ -445,8 +445,8 @@ search entirely.
 
 ## MCP Server Composition
 
-MCP servers are merged identically for every provider. Later entries override
-same-named servers from earlier entries:
+MCP server settings follow this merge order for providers with Modus MCP
+integration. Later entries override same-named servers from earlier entries:
 
 1. Project `.claude/mcp.json` (compatibility path)
 2. Project `.mcp.json`

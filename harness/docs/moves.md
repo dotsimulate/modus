@@ -718,9 +718,11 @@ Distributing declarations to project authors is open work.
 
 ## modus_submit
 
-Built-in MCP tool injected into every session via the `modus` MCP server at
-`/api/mcp/modus`. Takes `{ token, data }`. The token ties submission to a
-specific move activation. Without a valid token, submission is rejected.
+The built-in MCP tool is injected into sessions whose provider supports Modus
+MCP integration via the `modus` server at `/api/mcp/modus`. The OpenCode
+adapter does not inject this server. The tool takes `{ token, data }`; the token
+ties submission to a specific move activation. Without a valid token,
+submission is rejected.
 
 For API contract moves, `data` must include an `op` field matching a declared op name.
 

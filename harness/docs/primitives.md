@@ -209,8 +209,9 @@ Define WHAT the user wants done right now. User-facing structured operations.
 The agent receives the token in its prompt and calls `modus_submit(token, data)`
 when done. Harness validates against schema, calls onSubmit(), and marks complete.
 
-**modus_submit**: built-in MCP tool available in every session via the modus
-MCP server. It's the bridge between agent output and harness-side effects.
+**modus_submit**: built-in MCP tool available when the provider supports Modus
+MCP integration. The OpenCode adapter does not inject it. The tool bridges
+agent output and harness-side effects.
 
 **Source**: `move-runner.ts`, `move-types.ts`, `modus-mcp.ts`.
 

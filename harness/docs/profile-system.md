@@ -278,9 +278,10 @@ readout rather than showing an estimate.
 
 ## Global Config (`<current-home>/profiles/_global.json`)
 
-Three purposes:
+Global config can set:
 
-1. **MCP servers** — merged into every session (agent profiles can add more).
+1. **MCP servers** — merged for providers with Modus MCP integration (agent
+   profiles can add more). The OpenCode adapter does not inject these servers.
 2. **Provider defaults** — per-provider fallbacks for `contextWindow`, `maxOutputTokens`,
    and `compaction`. See `docs/config-resolution.md` for the full resolution chain.
 3. **Client extensions** — `clientExtensions.paths/enabled/disabled` configures
