@@ -17,14 +17,15 @@ import { backendUrl, configureBackendTarget } from "../../ui/src/backendTarget";
  * header, and X-Whisper-Url missing from allowHeaders.
  *
  * These drive the real backendUrl() through the real target resolver, so they
- * fail if either changes. The token-appending half lives in artifactSrc /
- * resolveUrl and is asserted through the same composition the callers use.
+ * fail if either changes. The token-appending half for image/video element
+ * sources lives in artifactSrc and is asserted through the same composition.
+ * Audio fetches use an Authorization header (audioPlayer.test.ts).
  */
 
 const DESKTOP = "http://127.0.0.1:51393";
 const RELATIVE = "/api/sessions/ses-1/artifacts/3";
 
-/** The composition both media surfaces use: absolute base, then credential. */
+/** Image/video element source composition: absolute base, then credential. */
 function withToken(url: string, token: string): string {
   if (url.startsWith("data:") || url.startsWith("blob:")) return url;
   const absolute = backendUrl(url);
@@ -56,7 +57,7 @@ describe("artifact URL resolution", () => {
     expect(withToken(RELATIVE, "tok")).toBe(`${RELATIVE}?token=tok`);
   });
 
-  test("carries the token, because img and audio tags cannot set headers", () => {
+  test("carries the token, because img and video tags cannot set headers", () => {
     // Which is why the artifact route is in allowsQueryCredential server-side.
     useDesktopTarget();
     expect(withToken(RELATIVE, "tok")).toContain("token=tok");

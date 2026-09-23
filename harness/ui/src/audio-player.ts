@@ -6,7 +6,7 @@
  * subscribe to state changes and render a thin UI on top.
  */
 
-import { tokenParam } from "./modusClient";
+import { getAuthToken } from "./modusClient";
 import { backendUrl } from "./backendTarget";
 
 // ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ function ensureElement(): HTMLAudioElement {
 }
 
 /**
- * Absolute, authenticated URL for an artifact.
+ * Absolute URL for an artifact.
  *
  * Artifact urls are root-relative, so under the desktop shell they resolve
  * against tauri.localhost rather than the backend and return the SPA's
@@ -163,10 +163,7 @@ function ensureElement(): HTMLAudioElement {
  */
 export function resolveUrl(url: string): string {
   if (url.startsWith("data:") || url.startsWith("blob:")) return url;
-  const absolute = backendUrl(url);
-  const tp = tokenParam();
-  if (!tp) return absolute;
-  return absolute.includes("?") ? `${absolute}&${tp}` : `${absolute}?${tp}`;
+  return backendUrl(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,12 +194,12 @@ export function play(id: number, url: string, sessionId?: string) {
   _played.add(id);
   savePlayed(_played);
 
-  // Fetch audio as blob so auth goes through fetch() headers/params,
-  // then use a blob URL for the <audio> element. This avoids issues where
-  // the browser's <audio> element doesn't forward query-param tokens
-  // (e.g. through Tailscale proxies or mobile browsers).
+  // Fetch audio with a bearer header, then give the element a blob URL.
+  // The element cannot set headers, and a token in the request URL would
+  // also reach browser, proxy, and backend URL logs.
   revokeBlobUrl();
-  fetch(src)
+  const token = getAuthToken();
+  fetch(src, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined)
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const ct = res.headers.get("content-type") || "";
