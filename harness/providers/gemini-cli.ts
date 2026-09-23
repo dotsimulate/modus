@@ -45,6 +45,9 @@ type GeminiState = {
   model: string;
   config: Config | null;
   client: GeminiClient | null;
+  configFactory: (options: ConstructorParameters<typeof Config>[0]) => Config;
+  turnCompletion: Promise<void>;
+  disposed: boolean;
   abortController: AbortController;
   textBuffer: string;
   thinkingBuffer: string;
@@ -280,6 +283,38 @@ async function loadResumedSessionData(config: Config, sessionId: string): Promis
   return null;
 }
 
+let initializationTail: Promise<void> = Promise.resolve();
+
+export async function initializeGeminiConfig(config: Pick<Config, "initialize">): Promise<void> {
+  const previous = initializationTail;
+  let release!: () => void;
+  initializationTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  // The SDK logs initialization diagnostics through the process-wide console.
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  try {
+    console.log = (...args: any[]) => {
+      const msg = String(args[0] ?? "");
+      if (msg.includes("experimentIds") || msg.includes("Experiments loaded") ||
+          msg.includes("Hook registry") || msg.includes("Hook system") ||
+          msg.includes(".geminiignore") || msg.includes("flagId") ||
+          msg.includes("Loaded cached credentials")) return;
+      originalLog(...args);
+    };
+    console.warn = (...args: any[]) => {
+      const msg = String(args[0] ?? "");
+      if (msg.includes(".geminiignore") || msg.includes("Ignore file not found")) return;
+      originalWarn(...args);
+    };
+    await config.initialize();
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    release();
+  }
+}
+
 async function createGeminiRuntime(
   ctx: TurnContext,
   state: GeminiState,
@@ -295,7 +330,7 @@ async function createGeminiRuntime(
     toolStates: opts.toolStates,
   });
 
-  const config = new Config({
+  const config = state.configFactory({
     sessionId: session.sessionId,
     targetDir: session.cwd ?? process.cwd(),
     cwd: session.cwd ?? process.cwd(),
@@ -322,25 +357,7 @@ async function createGeminiRuntime(
   };
 
   try {
-    // Suppress gemini-cli-core experiment/hook spam during init
-    const _origLog = console.log;
-    const _origWarn = console.warn;
-    console.log = (...args: any[]) => {
-      const msg = String(args[0] ?? "");
-      if (msg.includes("experimentIds") || msg.includes("Experiments loaded") ||
-          msg.includes("Hook registry") || msg.includes("Hook system") ||
-          msg.includes(".geminiignore") || msg.includes("flagId") ||
-          msg.includes("Loaded cached credentials")) return;
-      _origLog(...args);
-    };
-    console.warn = (...args: any[]) => {
-      const msg = String(args[0] ?? "");
-      if (msg.includes(".geminiignore") || msg.includes("Ignore file not found")) return;
-      _origWarn(...args);
-    };
-    await config.initialize();
-    console.log = _origLog;
-    console.warn = _origWarn;
+    await initializeGeminiConfig(config);
 
     const policy: PermissionPolicy = opts.permissionPolicy ?? profileDef?.permissionPolicy ?? "bypass";
     const isBypass = policy === "bypass";
@@ -469,13 +486,19 @@ async function createGeminiRuntime(
       await client.initialize();
     }
 
+    const availableTools = config.getToolRegistry().getAllToolNames();
     state.config = config;
     state.client = client;
-    state.availableTools = config.getToolRegistry().getAllToolNames();
+    state.availableTools = availableTools;
 
     return { client, model, cleanup };
   } catch (error) {
     cleanup();
+    try {
+      await config.dispose();
+    } catch {
+      // Preserve the setup error while still attempting to close MCP transports.
+    }
     throw error;
   }
 }
@@ -881,16 +904,17 @@ async function runTurn(
     finalizeError(extractErrorMessage(error, "Gemini provider failed to start."));
   } finally {
     cleanupRuntimeListeners?.();
+    const config = state.config;
+    state.config = null;
+    state.client = null;
     try {
-      state.client?.dispose();
+      await config?.dispose();
     } catch {
       // Nothing to do — provider state should not survive a failed cleanup.
     }
-    state.client = null;
-    state.config = null;
   }
 
-  if (queuedNext && !isTurnAborted(session, state)) {
+  if (queuedNext && !state.disposed && !isTurnAborted(session, state)) {
     session.initialContent = queuedNext;
     session.preview = contentPreview(queuedNext);
     session.abortController = new AbortController();
@@ -898,18 +922,33 @@ async function runTurn(
     session.status = "running";
     session.turnStartedAt = Date.now();
 
-    runTurn(ctx, state, queuedNext, { isResume: true, skipPromptPersist: true }).catch((err) => {
-      console.error(`[gemini-cli] pending turn error for ${session.sessionId}:`, err);
-      session.status = "error";
-      session.error = String(err);
-      updateSessionStatus(session.sessionId, "error");
-      ctx.broadcastEvent({ type: "error", error: String(err) });
-      ctx.emitEvent({ type: "done" });
-    });
+    scheduleGeminiTurn(ctx, state, queuedNext, { isResume: true, skipPromptPersist: true });
   }
 }
 
-export function createGeminiCliProvider(): SessionProvider {
+function scheduleGeminiTurn(
+  ctx: TurnContext,
+  state: GeminiState,
+  content: MessageContent,
+  options: { isResume: boolean; skipPromptPersist: boolean },
+): void {
+  const { session } = ctx;
+  state.turnCompletion = state.turnCompletion.then(async () => {
+    if (!state.disposed) await runTurn(ctx, state, content, options);
+  }).catch((err) => {
+    if (state.disposed) return;
+    console.error(`[gemini-cli] turn error for ${session.sessionId}:`, err);
+    session.status = "error";
+    session.error = String(err);
+    updateSessionStatus(session.sessionId, "error");
+    ctx.broadcastEvent({ type: "error", error: String(err) });
+    ctx.emitEvent({ type: "done" });
+  });
+}
+
+export function createGeminiCliProvider(
+  configFactory: (options: ConstructorParameters<typeof Config>[0]) => Config = (options) => new Config(options),
+): SessionProvider {
   return {
     capabilities: GEMINI_CAPABILITIES,
 
@@ -921,6 +960,9 @@ export function createGeminiCliProvider(): SessionProvider {
         model: opts.model ?? profileDef?.model ?? "auto-gemini-3",
         config: null,
         client: null,
+        configFactory,
+        turnCompletion: Promise.resolve(),
+        disposed: false,
         abortController: session.abortController,
         textBuffer: "",
         thinkingBuffer: "",
@@ -929,19 +971,13 @@ export function createGeminiCliProvider(): SessionProvider {
       };
       session._providerState = state;
 
-      runTurn(ctx, state, session.initialContent, { isResume, skipPromptPersist: false }).catch((err) => {
-        console.error(`[gemini-cli] startTurn error for ${session.sessionId}:`, err);
-        session.status = "error";
-        session.error = String(err);
-        updateSessionStatus(session.sessionId, "error");
-        ctx.broadcastEvent({ type: "error", error: String(err) });
-        ctx.emitEvent({ type: "done" });
-      });
+      scheduleGeminiTurn(ctx, state, session.initialContent, { isResume, skipPromptPersist: false });
     },
 
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
+      if (state.disposed) return;
 
       // session-manager uses a temporary "starting" status while handing an
       // idle follow-up to the provider so SSE clients do not disconnect. Once
@@ -960,14 +996,7 @@ export function createGeminiCliProvider(): SessionProvider {
       session.turnStartedAt = Date.now();
       updateSessionStatus(session.sessionId, "running");
 
-      runTurn(ctx, state, content, { isResume: true, skipPromptPersist: true }).catch((err) => {
-        console.error(`[gemini-cli] sendMessage error for ${session.sessionId}:`, err);
-        session.status = "error";
-        session.error = String(err);
-        updateSessionStatus(session.sessionId, "error");
-        ctx.broadcastEvent({ type: "error", error: String(err) });
-        ctx.emitEvent({ type: "done" });
-      });
+      scheduleGeminiTurn(ctx, state, content, { isResume: true, skipPromptPersist: true });
     },
 
     abort(session: ActiveSession) {
@@ -986,15 +1015,11 @@ export function createGeminiCliProvider(): SessionProvider {
     },
 
     async dispose(session: ActiveSession) {
-      const state = getState(session);
+      const state = session._providerState as GeminiState | null;
+      if (!state) return;
+      state.disposed = true;
       try { state.abortController.abort(); } catch { /* AbortError from inflight operations */ }
-      try {
-        state.client?.dispose();
-      } catch {
-        // Ignore cleanup failures during session disposal.
-      }
-      state.client = null;
-      state.config = null;
+      await state.turnCompletion;
       session._providerState = null;
     },
 
