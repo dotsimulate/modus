@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
-import { clearAuthToken, getAuthToken, setAuthToken } from "../modusClient";
+import { clearAuthToken, getAuthToken, markBrowserSessionToken, setAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
 import { BackendConnectionScreen } from "../components/BackendTargetManager";
 import { ModusError } from "../../../sdk/index";
@@ -21,8 +21,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const existing = getAuthToken();
     if (existing) {
       try {
-        await modus.checkToken();
-        return;
+        const kind = await modus.checkToken();
+        if (kind === "browser") {
+          markBrowserSessionToken();
+          return;
+        }
+        clearAuthToken();
       } catch (err) {
         if (isAuthFailure(err)) clearAuthToken();
         else throw err;
@@ -49,9 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const existing = getAuthToken();
         if (existing) {
           try {
-            await modus.checkToken();
-            setAuthState("ok");
-            return;
+            const kind = await modus.checkToken();
+            if (kind === "browser") {
+              markBrowserSessionToken();
+              setAuthState("ok");
+              return;
+            }
+            clearAuthToken();
           } catch (err) {
             if (isAuthFailure(err)) {
               clearAuthToken();

@@ -13,6 +13,10 @@ export type ModusClientOptions = {
   pin?: string;
   /** If provided, used instead of PIN-based auth. For browser usage with localStorage tokens. */
   getToken?: () => string | undefined;
+  /** A token minted by browser-session auth. Only this may be placed in native resource URLs. */
+  browserSessionToken?: string;
+  /** Dynamic browser-session token, separate from a general API bearer. */
+  getBrowserSessionToken?: () => string | undefined;
 };
 
 // ── Interact ──

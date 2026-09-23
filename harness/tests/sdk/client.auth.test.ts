@@ -2,12 +2,57 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { ModusClient, ModusError } from "../../sdk/client";
 
 const originalFetch = globalThis.fetch;
+const originalEventSource = globalThis.EventSource;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  globalThis.EventSource = originalEventSource;
 });
 
 describe("ModusClient browser authentication bootstrap", () => {
+  test("keeps an arbitrary API bearer out of browser resource URLs", () => {
+    const eventUrls: string[] = [];
+    globalThis.EventSource = class {
+      constructor(url: string) { eventUrls.push(url); }
+    } as typeof EventSource;
+    const client = new ModusClient({ url: "https://modus.example", token: "supervisor-secret" });
+    expect(client.tokenParam()).toBe("");
+    expect(client.getWidgetUrl("clock", "/project")).not.toContain("supervisor-secret");
+    expect(client.getWidgetCssUrl("clock", "/project")).not.toContain("supervisor-secret");
+    expect(client.previewUrl("/api/artifacts/raw?id=1")).not.toContain("supervisor-secret");
+    client.connectFsEvents("/project");
+    expect(eventUrls[0]).not.toContain("supervisor-secret");
+    expect(client.authHeaders().Authorization).toBe("Bearer supervisor-secret");
+  });
+
+  test("uses a designated browser session only on local resource URLs", () => {
+    const eventUrls: string[] = [];
+    globalThis.EventSource = class {
+      constructor(url: string) { eventUrls.push(url); }
+    } as typeof EventSource;
+    const browserToken = "session+secret/1";
+    const client = new ModusClient({
+      url: "https://modus.example",
+      token: browserToken,
+      browserSessionToken: browserToken,
+    });
+    expect(client.tokenParam()).toBe("token=session%2Bsecret%2F1");
+    expect(new URL(client.getWidgetUrl("clock", "/project")).searchParams.get("token")).toBe(browserToken);
+    expect(new URL(client.getWidgetCssUrl("clock", "/project")).searchParams.get("token")).toBe(browserToken);
+    expect(new URL(client.previewUrl("/api/artifacts/raw?id=1")).searchParams.get("token")).toBe(browserToken);
+    client.connectFsEvents("/project");
+    expect(new URL(eventUrls[0]!).searchParams.get("token")).toBe(browserToken);
+    expect(client.previewUrl("https://external.example/file")).toBe("https://external.example/file");
+    client.setToken("new-supervisor");
+    expect(client.tokenParam()).toBe("");
+  });
+
+  test("reports the backend token kind", async () => {
+    globalThis.fetch = (async () => Response.json({ ok: true, kind: "browser" })) as typeof fetch;
+    const client = new ModusClient({ url: "https://modus.example", token: "browser-session" });
+    expect(await client.checkToken()).toBe("browser");
+  });
+
   test("discovers token requirements and creates a no-PIN browser session without a URL token", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {

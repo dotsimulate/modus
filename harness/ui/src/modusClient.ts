@@ -9,15 +9,22 @@ import { ModusClient } from "../../sdk/index";
 import { BACKEND_TARGET, backendStorageKey } from "./backendTarget";
 
 let storageKey = backendStorageKey("harness_token");
+let browserSessionKey = backendStorageKey("harness_browser_session");
 
 function getStoredToken(): string {
   return localStorage.getItem(storageKey) ?? "";
+}
+
+function getBrowserSessionToken(): string | undefined {
+  const token = getStoredToken();
+  return token && localStorage.getItem(browserSessionKey) === token ? token : undefined;
 }
 
 function createModusClient(): ModusClient {
   return new ModusClient({
     url: BACKEND_TARGET.apiBase,
     getToken: () => getStoredToken() || undefined,
+    getBrowserSessionToken,
   });
 }
 
@@ -32,6 +39,7 @@ export let API_BASE: string = BACKEND_TARGET.apiBase;
 /** Recreate immutable SDK state after the desktop selects its runtime target. */
 export function configureModusClient(): void {
   storageKey = backendStorageKey("harness_token");
+  browserSessionKey = backendStorageKey("harness_browser_session");
   API_BASE = BACKEND_TARGET.apiBase;
   modus = createModusClient();
 }
@@ -43,8 +51,8 @@ export function getAuthToken(): string {
 
 /** Returns `token=...` or `""` — for use in URL query strings. */
 export function tokenParam(): string {
-  const t = getAuthToken();
-  return t ? `token=${t}` : "";
+  const token = getBrowserSessionToken();
+  return token ? `token=${encodeURIComponent(token)}` : "";
 }
 
 /** Returns headers object with Authorization bearer if token exists. */
@@ -55,17 +63,22 @@ export function authHeaders(): Record<string, string> {
   return h;
 }
 
-/** Update the stored token (called after auth flows). */
+/** Store a browser-session token returned by an auth flow. */
 export function setAuthToken(token: string): void {
   localStorage.setItem(storageKey, token);
-  // Re-create client internals would require a new instance — for now
-  // the SDK reads the token we passed at construction. Auth flows that
-  // change the token should reload the page.
+  localStorage.setItem(browserSessionKey, token);
+}
+
+/** Mark a stored bearer after the backend confirms it is a browser session. */
+export function markBrowserSessionToken(): void {
+  const token = getStoredToken();
+  if (token) localStorage.setItem(browserSessionKey, token);
 }
 
 /** Clear stored token. */
 export function clearAuthToken(): void {
   localStorage.removeItem(storageKey);
+  localStorage.removeItem(browserSessionKey);
 }
 
 // ── Callback-based SSE (used by sessionStore) ──

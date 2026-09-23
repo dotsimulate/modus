@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { API_BASE, modus, getAuthToken } from "../modusClient";
+import { API_BASE, modus, tokenParam } from "../modusClient";
 import type { GitStatus, GitCommit, GitCommitDetail, FileDiff } from "../../../sdk/index";
 import { replaceGitRouteState, useGitRouteState } from "../git-route";
 import { DiffView } from "./DiffView";
@@ -40,8 +40,8 @@ function extractRepoName(status: GitStatus, cwd: string): string {
 
 function rewriteImagePaths(md: string, cwd: string): string {
   const base = `${API_BASE}/api/git/raw/`;
-  const token = getAuthToken();
-  const params = `?cwd=${encodeURIComponent(cwd)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+  const token = tokenParam();
+  const params = `?cwd=${encodeURIComponent(cwd)}${token ? `&${token}` : ""}`;
   md = md.replace(/(<img\s[^>]*?src=["'])(?!https?:\/\/|\/)(.*?)(["'])/gi,
     (_, pre, path, post) => `${pre}${base}${path}${params}${post}`);
   md = md.replace(/(!\[[^\]]*\]\()(?!https?:\/\/|\/)([^)]+)(\))/g,

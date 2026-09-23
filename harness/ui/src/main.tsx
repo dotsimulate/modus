@@ -272,7 +272,9 @@ async function bootstrap() {
         || modus.baseUrl !== managedDesktop.apiBase) {
         throw new Error('the UI client did not bind to the supervisor-provided backend')
       }
-      await modus.checkToken()
+      if (await modus.checkToken() !== 'browser') {
+        throw new Error('the managed backend did not confirm a browser session')
+      }
       await acknowledgeManagedDesktopTarget(managedDesktop)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)

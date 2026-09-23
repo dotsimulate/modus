@@ -2,8 +2,7 @@ import { memo, useState, useEffect, useRef, useCallback, type ReactNode } from "
 import { ThinkingBlock } from "./ThinkingBlock";
 import type { Message, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
 import { mimeToPreviewKind } from "../../../sdk/index";
-import { tokenParam } from "../modusClient";
-import { backendUrl } from "../backendTarget";
+import { modus } from "../modusClient";
 import { ToolCallView } from "./ToolCall";
 import { ToolCallGroup, TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
 import { ImageLightbox } from "./ImageLightbox";
@@ -27,13 +26,11 @@ import { isTodoTool } from "../tool-names";
  * served from tauri.localhost and talks to the backend on 127.0.0.1, so a
  * relative url there hits Tauri's asset server and comes back as the SPA's
  * index.html — a broken image, or "bad content-type: text/html" from the audio
- * player. backendUrl() is a no-op for same-origin browsers, where apiBase is "".
+ * player. previewUrl() keeps same-origin browser paths relative and adds only a
+ * browser-session token to backend-owned paths.
  */
 function artifactSrc(url: string): string {
-  const absolute = backendUrl(url);
-  const tp = tokenParam();
-  if (!tp) return absolute;
-  return `${absolute}${absolute.includes("?") ? "&" : "?"}${tp}`;
+  return modus.previewUrl(url);
 }
 
 /** Count all tool calls recursively, including sub-agent nested tools */

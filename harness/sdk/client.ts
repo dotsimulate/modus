@@ -120,16 +120,20 @@ export class ModusError extends Error {
 export class ModusClient {
   private url: string;
   private _token: string | undefined;
+  private _browserSessionToken: string | undefined;
   private pin: string | undefined;
   private getTokenFn: (() => string | undefined) | undefined;
+  private getBrowserSessionTokenFn: (() => string | undefined) | undefined;
   private authPromise: Promise<void> | null = null;
 
   /** Creates a client targeting the given harness URL, with optional token, PIN, or dynamic token callback for auth. */
   constructor(opts: ModusClientOptions) {
     this.url = opts.url.replace(/\/+$/, "");
     this._token = opts.token;
+    this._browserSessionToken = opts.browserSessionToken;
     this.pin = opts.pin;
     this.getTokenFn = opts.getToken;
+    this.getBrowserSessionTokenFn = opts.getBrowserSessionToken;
   }
 
   /** Returns the current auth token, preferring the dynamic getToken callback over the stored token. */
@@ -138,9 +142,9 @@ export class ModusClient {
   }
 
   /** Sets the stored bearer token directly. */
-  setToken(token: string) { this._token = token; }
+  setToken(token: string) { this._token = token; this._browserSessionToken = undefined; }
   /** Clears the stored bearer token. */
-  clearToken() { this._token = undefined; }
+  clearToken() { this._token = undefined; this._browserSessionToken = undefined; }
   /** Returns the base harness URL (trailing slashes stripped). */
   get baseUrl(): string { return this.url; }
 
@@ -152,10 +156,16 @@ export class ModusClient {
     return h;
   }
 
-  /** Returns a `token=xxx` query string fragment, or empty string if no token is set. */
+  /** Returns only an explicitly designated browser-session token for native resource URLs. */
+  private get browserSessionToken(): string | undefined {
+    const token = this.getBrowserSessionTokenFn?.() ?? this._browserSessionToken;
+    return token && token === this.token ? token : undefined;
+  }
+
+  /** Returns a `token=xxx` query string fragment, or empty string without a browser session. */
   tokenParam(): string {
-    const t = this.token;
-    return t ? `token=${t}` : "";
+    const token = this.browserSessionToken;
+    return token ? `token=${encodeURIComponent(token)}` : "";
   }
 
   private async ensureAuth(): Promise<void> {
@@ -170,6 +180,7 @@ export class ModusClient {
       const data = await res.json() as { ok?: boolean; token?: string; error?: string };
       if (!res.ok || !data.token) throw new Error(`PIN auth failed: ${data.error ?? res.statusText}`);
       this._token = data.token;
+      this._browserSessionToken = data.token;
     })();
     return this.authPromise;
   }
@@ -243,11 +254,13 @@ export class ModusClient {
   /** Revokes all active tokens (locks all sessions). */
   async lockAll(): Promise<void> { await this.fetch("/api/auth/lock", { method: "POST" }); }
   /** Lightweight token validity check. Throws ModusError on explicit unauthorized. */
-  async checkToken(): Promise<void> {
+  async checkToken(): Promise<"agent" | "browser" | undefined> {
     const r = await this.fetch("/api/auth/check");
     if (!r.ok) {
       throw new ModusError(r.status, r.statusText || "auth check failed", "/api/auth/check");
     }
+    const data = await r.json() as { kind?: "agent" | "browser" };
+    return data.kind;
   }
   /** Changes the auth PIN. Throws if the old PIN is wrong. */
   async changePin(oldPin: string, newPin: string): Promise<void> {
@@ -627,9 +640,9 @@ export class ModusClient {
   /** Lists available moves for a project. Returns empty array on error. */
   async listMoves(cwd: string): Promise<MoveListItem[]> { const r = await this.fetch(`/api/moves?cwd=${encodeURIComponent(cwd)}`); if (!r.ok) return []; return r.json(); }
   /** Constructs the URL for a move's widget HTML. */
-  getWidgetUrl(moveName: string, cwd: string): string { const tp = this.tokenParam(); const q = new URLSearchParams({ cwd }); if (tp) q.set("token", tp.replace(/^token=/, "")); return `${this.url}/api/moves/${encodeURIComponent(moveName)}/widget?${q}`; }
+  getWidgetUrl(moveName: string, cwd: string): string { const q = new URLSearchParams({ cwd }); const token = this.browserSessionToken; if (token) q.set("token", token); return `${this.url}/api/moves/${encodeURIComponent(moveName)}/widget?${q}`; }
   /** Constructs the URL for a move's widget CSS. */
-  getWidgetCssUrl(moveName: string, cwd: string): string { const tp = this.tokenParam(); const q = new URLSearchParams({ cwd }); if (tp) q.set("token", tp.replace(/^token=/, "")); return `${this.url}/api/moves/${encodeURIComponent(moveName)}/widget.css?${q}`; }
+  getWidgetCssUrl(moveName: string, cwd: string): string { const q = new URLSearchParams({ cwd }); const token = this.browserSessionToken; if (token) q.set("token", token); return `${this.url}/api/moves/${encodeURIComponent(moveName)}/widget.css?${q}`; }
   /**
    * Activate a move within an existing session. The session must already exist
    * and have a running provider. Use this when you have an active session and
@@ -852,9 +865,11 @@ export class ModusClient {
   /** Builds a browser-loadable preview URL from a manifest raw URL, adding query-token auth when needed. */
   previewUrl(rawUrl: string): string {
     if (!rawUrl) return "";
-    const sep = rawUrl.includes("?") ? "&" : "?";
-    const tp = this.tokenParam();
-    return `${this.url}${rawUrl}${tp ? `${sep}${tp}` : ""}`;
+    if (!rawUrl.startsWith("/") || rawUrl.startsWith("//")) return rawUrl;
+    const resource = new URL(rawUrl, "http://modus.invalid");
+    const token = this.browserSessionToken;
+    if (token) resource.searchParams.set("token", token);
+    return `${this.url}${resource.pathname}${resource.search}${resource.hash}`;
   }
   /** Lists recent previewable project/session outputs for the artifact shelf. */
   async artifactShelf(opts?: { cwd?: string; sessionId?: string; userProfile?: string; limit?: number }): Promise<ArtifactShelfResponse> {
@@ -1168,7 +1183,8 @@ export class ModusClient {
   /** Creates an EventSource for filesystem change notifications under the given root. */
   connectFsEvents(root: string): EventSource {
     const p = new URLSearchParams(); p.set("root", root);
-    const tp = this.tokenParam(); if (tp) p.set("token", tp.split("=")[1]);
+    const token = this.browserSessionToken;
+    if (token) p.set("token", token);
     return new EventSource(`${this.url}/api/events/fs?${p}`);
   }
 

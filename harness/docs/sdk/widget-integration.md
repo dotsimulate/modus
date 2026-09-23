@@ -30,6 +30,10 @@ string on every route: a URL reaches history, copied links, and proxy logs, and
 that credential authenticates every API and cannot be revoked without a restart.
 A client holding the supervisor bearer trades it for a session token via
 `POST /api/auth/exchange` (header-authenticated) and uses that in URLs.
+When constructing URLs with `ModusClient`, pass that token as
+`browserSessionToken` (or `getBrowserSessionToken` for a changing token). The
+general `token` and `getToken` options authenticate API requests but never put
+their bearer into a URL.
 
 The JS output uses JSX runtime imports (`jsx`, `jsxs`, `jsxDEV`) rather than
 `React.createElement` — this is important for the shimming approach below.

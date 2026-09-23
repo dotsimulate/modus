@@ -207,6 +207,9 @@ export async function bindManagedDesktopTarget(response: DesktopBootstrapRespons
     throw new Error("Managed backend bootstrap returned an incomplete identity or credential");
   }
   const storageKey = `harness_token:${encodeURIComponent(response.targetId)}`;
+  const sessionKey = `harness_browser_session:${encodeURIComponent(response.targetId)}`;
+  localStorage.removeItem(storageKey);
+  localStorage.removeItem(sessionKey);
   const verification = await fetch(`${response.apiBase}/api/auth/check`, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${response.token}` },
@@ -214,27 +217,22 @@ export async function bindManagedDesktopTarget(response: DesktopBootstrapRespons
   if (!verification.ok) {
     throw new Error(`Managed backend rejected its desktop credential (${verification.status})`);
   }
+  if ((await verification.json())?.kind !== "agent") {
+    throw new Error("Managed backend did not confirm its desktop credential");
+  }
 
-  let stored = response.token;
-  try {
-    const exchange = await fetch(`${response.apiBase}/api/auth/exchange`, {
-      method: "POST",
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${response.token}` },
-    });
-    if (exchange.ok) {
-      const minted = (await exchange.json())?.token;
-      if (typeof minted === "string" && minted) stored = minted;
-    }
-  } catch {
-    // Fall through to the supervisor credential below.
+  const exchange = await fetch(`${response.apiBase}/api/auth/exchange`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${response.token}` },
+  });
+  if (!exchange.ok) throw new Error(`Managed backend session-token exchange failed (${exchange.status})`);
+  const minted = (await exchange.json())?.token;
+  if (typeof minted !== "string" || !minted || minted === response.token) {
+    throw new Error("Managed backend did not mint a distinct browser-session token");
   }
-  if (stored === response.token) {
-    // Availability is preserved, but URL-carried resources will not authenticate
-    // because a supervisor bearer is not accepted from a query string.
-    console.warn("[desktop] session-token exchange unavailable; media and event URLs may not authenticate");
-  }
-  localStorage.setItem(storageKey, stored);
+  localStorage.setItem(storageKey, minted);
+  localStorage.setItem(sessionKey, minted);
 }
 
 /** Acknowledge only after the configured SDK has independently authenticated. */

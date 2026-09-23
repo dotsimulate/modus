@@ -35,7 +35,7 @@ export function PreviewRenderer({
 
   // Both text and html render from content fetched over an authenticated
   // request. html deliberately does not use manifest.urls.raw: previewUrl()
-  // appends the operator bearer token as a query parameter, and an html frame
+  // appends the browser-session token as a query parameter, and an html frame
   // runs scripts, which can always read their own document URL.
   useEffect(() => {
     if (content != null || (manifest.kind !== "text" && manifest.kind !== "html")) return;
@@ -119,8 +119,8 @@ export function PreviewRenderer({
             than a preference. Scripts are allowed here where the PDF frame above
             blocks them, because an HTML page that draws itself with JavaScript
             is the common case. But a frame that runs scripts can always read its
-            own document URL, and manifest.urls.raw carries the operator bearer
-            token in its query string (previewUrl -> tokenParam;
+            own document URL, and manifest.urls.raw carries a browser-session
+            token in its query string (previewUrl;
             /api/preview/file/:id is in allowsQueryCredential). Pointing src at
             it would therefore hand
             that token to the previewed file, which could beacon it anywhere —

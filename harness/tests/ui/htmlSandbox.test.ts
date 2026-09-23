@@ -49,7 +49,7 @@ describe("html preview sandbox policy", () => {
 
 describe("html preview frames carry no credential", () => {
   // A frame that runs scripts can read its own document URL no matter what the
-  // sandbox says. modus.previewUrl() appends the operator bearer token as a
+  // sandbox says. modus.previewUrl() appends the browser-session token as a
   // query parameter, so a script-enabled frame pointed at one of those URLs
   // hands the token to the previewed file, which can beacon it out. srcDoc has
   // no URL, so there is nothing to read. Neither half of that is visible to the

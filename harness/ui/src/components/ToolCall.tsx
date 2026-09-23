@@ -4,8 +4,7 @@ import { EditHunk } from "./FileChanges";
 import { useFileViewer } from "../providers/FileViewerContext";
 import { AttachmentImage } from "./AttachmentImage";
 import { ImageLightbox } from "./ImageLightbox";
-import { modus, tokenParam } from "../modusClient";
-import { backendUrl } from "../backendTarget";
+import { modus } from "../modusClient";
 import { onUiEvent } from "../sessionStore";
 import { parseMoveApiResultText } from "../../../move-api-result";
 import {
@@ -681,11 +680,9 @@ export const ToolCallView = memo(function ToolCallView({
     ? parseMoveApiResultText(tool.result, tool.status !== "error")
     : undefined;
   const resolvedArtifacts = artifacts?.map((artifact) => {
-    const url = backendUrl(artifact.url);
-    const token = tokenParam();
     return {
       ...artifact,
-      url: token ? `${url}${url.includes("?") ? "&" : "?"}${token}` : url,
+      url: modus.previewUrl(artifact.url),
     };
   });
   const authoredView = ToolViewComponent && toolViewResolution && apiToken && op && sessionId && latestMoveToolCallIds
