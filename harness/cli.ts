@@ -1061,7 +1061,37 @@ async function cmdRemote(args: string[]): Promise<void> {
   if (sub === "off") {
     try { unlinkSync(REMOTE_FILE); } catch { /* was not set */ }
     const cleared = clearTailscaleServe(true);
-    console.log(`Remote access disabled.${cleared ? " Removed tailscale serve rule." : ""}`);
+    if (existsSync(REMOTE_FILE)) {
+      console.error("Could not disable the saved remote access preference.");
+      process.exitCode = 1;
+      return;
+    }
+    if (cleared) {
+      console.log("Remote access disabled. Removed Tailscale Serve rule.");
+      return;
+    }
+    const rawConfig = serveConfigJson();
+    if (rawConfig == null) {
+      console.error("Remote access preference disabled, but could not verify the Tailscale Serve rule.");
+      process.exitCode = 1;
+      return;
+    }
+    try { JSON.parse(rawConfig); } catch {
+      console.error("Remote access preference disabled, but could not verify the Tailscale Serve rule.");
+      process.exitCode = 1;
+      return;
+    }
+    const owner = classifyHttps443(rawConfig, readTailscaleOwnership());
+    if (owner === "modus") {
+      console.error("Remote access preference disabled, but the Modus Tailscale Serve rule is still active.");
+      process.exitCode = 1;
+      return;
+    }
+    if (owner === "foreign") {
+      console.log("Remote access preference disabled. Existing Tailscale Serve rule was left untouched.");
+      return;
+    }
+    console.log("Remote access disabled. No Tailscale Serve rule was active.");
     return;
   }
 
