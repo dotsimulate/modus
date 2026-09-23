@@ -10,6 +10,7 @@ import { PluginSettingsPanel } from "./PluginSettingsPanel";
 import { useFolderChooser } from "../hooks/usePathChooser";
 import { CustomSelect } from "./CustomSelect";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
+import { SessionLimitSettings } from "./SessionLimitSettings";
 import {
   applyInterfaceSettings,
   CORE_CONVERSATION_LENSES,
@@ -647,6 +648,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                 </select>
               </div>
               <div className="us-row-hint">used when opening files from the UI</div>
+              <SessionLimitSettings />
             </div>
           )}
 

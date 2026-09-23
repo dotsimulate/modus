@@ -7,9 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { estimateMessageHeight, clearMeasureCache } from "./textMeasure";
-import { calculateScrollTarget } from "../scroll-navigation";
+import { calculateScrollTarget, glideStep } from "../scroll-navigation";
 import { createScrollBottomTracker } from "../scroll-bottom-tracker";
-import { recordVirtualHeight } from "../virtual-message-measurement";
+import { recordVirtualHeight, resetVirtualHeights } from "../virtual-message-measurement";
 
 export type VirtualItem<T> = {
   data: T;
@@ -26,6 +26,10 @@ export type HeightEstimator<T> = (item: T, containerWidth: number) => number;
  */
 export type VirtualListControls = {
   scrollToKey(key: string, opts?: { offset?: number; behavior?: ScrollBehavior; within?: number }): void;
+  /** Glide by a distance. Calls made mid-glide add to the distance left. */
+  scrollBy(px: number): void;
+  /** Glide to an absolute offset, replacing any distance still left to travel. */
+  scrollTo(top: number): void;
 };
 
 /**
@@ -171,8 +175,12 @@ export function VirtualMessageList<T>({
   const afterHeight = Math.max(0, totalHeight - getOffsetForIndex(endIndex + 1));
 
   const invalidateAllHeights = useCallback(() => {
-    heightMapRef.current.clear();
-    measuredSetRef.current.clear();
+    const mounted = contentRef.current?.querySelectorAll<HTMLElement>(":scope > [data-virtual-item]");
+    resetVirtualHeights(
+      heightMapRef.current,
+      measuredSetRef.current,
+      Array.from(mounted ?? [], (el) => [el.dataset.virtualItem!, el.offsetHeight] as const),
+    );
     setHeightVersion(n => n + 1);
   }, []);
 
@@ -183,12 +191,32 @@ export function VirtualMessageList<T>({
     bottom.measure(el);
   }, [bottom]);
 
+  // A glide started by `scrollBy`/`scrollTo`. It tracks the distance left to
+  // travel rather than an absolute target, so a measurement that shifts content
+  // mid-glide carries the reader with it instead of being fought — the same way
+  // a wheel scroll behaves.
+  const glideRef = useRef<{ remaining: number; frame: number | null; last: number; release: (() => void) | null }>({
+    remaining: 0,
+    frame: null,
+    last: 0,
+    release: null,
+  });
+  const stopGlide = useCallback(() => {
+    const glide = glideRef.current;
+    if (glide.frame !== null) cancelAnimationFrame(glide.frame);
+    glide.frame = null;
+    glide.remaining = 0;
+    glide.release?.();
+    glide.release = null;
+  }, []);
+
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    stopGlide();
     bottom.follow();
     el.scrollTop = el.scrollHeight;
-  }, [bottom]);
+  }, [bottom, stopGlide]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -253,10 +281,66 @@ export function VirtualMessageList<T>({
       for (const id of settleTimersRef.current) clearTimeout(id);
       settleTimersRef.current = [];
     };
+
+    const glide = (px: number, replace: boolean) => {
+      const el = scrollRef.current;
+      if (!el || !Number.isFinite(px)) return;
+      const state = glideRef.current;
+      const remaining = replace ? px : state.remaining + px;
+      if (Math.abs(remaining) < 0.5) { stopGlide(); return; }
+
+      // A glide supersedes a pending scrollToKey landing. Moving toward the
+      // start leaves the live edge, so detach before the first frame or an
+      // arriving measurement pulls the reader straight back down.
+      settleAbortedRef.current = true;
+      clearSettles();
+      if (remaining < 0) bottom.detach();
+      state.remaining = remaining;
+      if (state.frame !== null) return;
+
+      // The reader taking over ends the glide, as it does a scrollToKey settle.
+      const onUserInput = () => stopGlide();
+      el.addEventListener("wheel", onUserInput, { passive: true });
+      el.addEventListener("touchstart", onUserInput, { passive: true });
+      el.addEventListener("keydown", onUserInput);
+      state.release = () => {
+        el.removeEventListener("wheel", onUserInput);
+        el.removeEventListener("touchstart", onUserInput);
+        el.removeEventListener("keydown", onUserInput);
+      };
+
+      // Every frame writes scrollTop, and each write emits a scroll event, so
+      // the bottom tracker and the rendered range stay current without any
+      // bookkeeping here.
+      const tick = (now: number) => {
+        state.frame = null;
+        const step = glideStep(state.remaining, now - state.last);
+        state.last = now;
+        el.scrollTop += step;
+        state.remaining -= step;
+        const max = el.scrollHeight - el.clientHeight;
+        const atEdge = (step < 0 && el.scrollTop <= 0) || (step > 0 && el.scrollTop >= max - 0.5);
+        if (atEdge || Math.abs(state.remaining) < 0.5) { stopGlide(); return; }
+        state.frame = requestAnimationFrame(tick);
+      };
+      state.last = performance.now();
+      state.frame = requestAnimationFrame(tick);
+    };
+
     controlsRef.current = {
+      scrollBy(px) {
+        glide(px, false);
+      },
+      scrollTo(top) {
+        const el = scrollRef.current;
+        if (!el) return;
+        const max = Math.max(0, el.scrollHeight - el.clientHeight);
+        glide(Math.max(0, Math.min(max, top)) - el.scrollTop, true);
+      },
       scrollToKey(key, opts) {
         const el = scrollRef.current;
         if (!el) return;
+        stopGlide();
 
         // Walk items + heightMap to find live target offset for `key`.
         const computeTarget = (): number | null => {
@@ -345,11 +429,12 @@ export function VirtualMessageList<T>({
     };
     return () => {
       clearSettles();
+      stopGlide();
       if (controlsRef.current) controlsRef.current = null;
     };
     // controlsRef identity is owned by the parent and assumed stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bottom, controlsRef]);
+  }, [bottom, controlsRef, stopGlide]);
 
   // Publish a measured layout snapshot to the consumer's ref. Mutates
   // a ref (no setState) so measurement updates don't cascade re-renders
@@ -384,6 +469,48 @@ export function VirtualMessageList<T>({
     const frame = requestAnimationFrame(invalidateAllHeights);
     return () => cancelAnimationFrame(frame);
   }, [estimateHeight, invalidateAllHeights]);
+
+  // The rendered slice must cover the viewport. When it does not, the reader is
+  // looking at a spacer — blank until something clears the height cache, which
+  // only a width change used to do. First resync scroll state that drifted
+  // from the DOM; if that was not it, the cached geometry is stale: drop it,
+  // at most once a second, and say so with enough numbers to find the cause.
+  const lastCoverageHealRef = useRef(0);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!el || !content || items.length === 0 || el.clientHeight === 0) return;
+    if (Math.abs(el.scrollTop - scrollTop) > 1 || el.clientHeight !== viewportHeight) {
+      setScrollTop(el.scrollTop);
+      setViewportHeight(el.clientHeight);
+      return;
+    }
+    const rendered = content.querySelectorAll<HTMLElement>(":scope > [data-virtual-item]");
+    const first = rendered[0];
+    const last = rendered[rendered.length - 1];
+    if (!first || !last) return;
+    const viewTop = el.scrollTop;
+    const viewBottom = viewTop + el.clientHeight;
+    const renderedTop = content.offsetTop + first.offsetTop;
+    const renderedBottom = content.offsetTop + last.offsetTop + last.offsetHeight;
+    const gapAbove = startIndex > 0 && renderedTop > viewTop + 1;
+    const gapBelow = endIndex < items.length - 1 && renderedBottom < viewBottom - 1;
+    if (!gapAbove && !gapBelow) return;
+    const now = performance.now();
+    if (now - lastCoverageHealRef.current < 1000) return;
+    lastCoverageHealRef.current = now;
+    console.warn("[virtual-list] rendered range does not cover the viewport; clearing cached heights", {
+      session: scrollSessionId ?? null,
+      items: items.length,
+      range: [startIndex, endIndex],
+      viewport: [Math.round(viewTop), Math.round(viewBottom)],
+      rendered: [Math.round(renderedTop), Math.round(renderedBottom)],
+      cachedTotal: Math.round(totalHeight),
+      scrollHeight: el.scrollHeight,
+      measured: measuredSetRef.current.size,
+    });
+    invalidateAllHeights();
+  });
 
   const scheduleMeasurementRender = useCallback(() => {
     if (measurementFrameRef.current !== null) return;
@@ -460,7 +587,7 @@ function MeasuredItem({
   }, [itemKey, onMeasured]);
 
   return (
-    <div ref={ref} style={{ display: "flow-root" }}>
+    <div ref={ref} data-virtual-item={itemKey} style={{ display: "flow-root" }}>
       {children}
     </div>
   );

@@ -151,6 +151,57 @@ describe("isolated browser authentication bootstrap", () => {
     }
   });
 
+  // One connection per tab carries lifecycle, control and fs events. Like
+  // `/api/events/control` it takes a header credential only, and a hub that did
+  // not ask for `control` must not count as a listener to the publisher.
+  test("the event hub carries only the channels a tab asked for", async () => {
+    const { token } = await (await fetch(`${baseUrl}/api/auth/session`, { method: "POST" })).json() as { token: string };
+    const queryCredential = await fetch(`${baseUrl}/api/events/hub?channels=control&token=${encodeURIComponent(token)}`);
+    expect(queryCredential.status).toBe(401);
+
+    const decoder = new TextDecoder();
+    const open = async (channels: string) => {
+      const controller = new AbortController();
+      const response = await fetch(`${baseUrl}/api/events/hub?channels=${channels}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      return {
+        next: async () => decoder.decode((await reader.read()).value),
+        close: () => controller.abort(),
+      };
+    };
+    const publish = async () => {
+      const response = await fetch(`${baseUrl}/api/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${agentToken}` },
+        body: JSON.stringify({ intent: "transcript.follow" }),
+      });
+      return (await response.json() as { delivered: number }).delivered;
+    };
+
+    const sessionOnly = await open("session");
+    expect(await sessionOnly.next()).toContain("event: ready");
+    expect(await publish()).toBe(0);
+
+    const control = await open("control");
+    expect(await control.next()).toContain("event: ready");
+    expect(await publish()).toBe(1);
+    expect(await control.next()).toContain('"intent":"transcript.follow"');
+
+    // A closed hub releases its subscription instead of lingering as a listener.
+    control.close();
+    let delivered = await publish();
+    for (let attempt = 0; delivered !== 0 && attempt < 20; attempt++) {
+      await Bun.sleep(50);
+      delivered = await publish();
+    }
+    expect(delivered).toBe(0);
+    sessionOnly.close();
+  });
+
   // The affordance the query credential used to provide: a URL an <img>, a new
   // tab, or a share sheet can use. It must work, and it must carry no authority
   // beyond the one file it names.

@@ -2117,6 +2117,8 @@ export function getRunsByExecution(executionId: number): RunMeta[] {
 // ── Action Run Functions ──
 
 import type { ActionCompletionMetadata, RunSummary, RunMeta } from "./action-types";
+import type { ActionAnswerer } from "./action-answerer-types";
+import type { OperationReceipt } from "./action-operation-types";
 
 function parseActionCompletionMetadata(value: unknown): ActionCompletionMetadata | undefined {
   if (typeof value !== "string" || !value) return undefined;
@@ -2146,8 +2148,9 @@ function mapRunRow(r: any): RunMeta {
     verifyError: r.verify_error ?? null,
     warning: r.warning ?? null,
     executionId: r.execution_id ?? null,
-    answerer: r.answerer === "completion" ? "completion" : "session",
-    completion: parseActionCompletionMetadata(r.answerer_metadata),
+    answerer: ["completion", "command", "code"].includes(r.answerer) ? r.answerer : "session",
+    completion: r.answerer === "completion" ? parseActionCompletionMetadata(r.answerer_metadata) : undefined,
+    operation: ["command", "code"].includes(r.answerer) ? parseActionCompletionMetadata(r.answerer_metadata) as unknown as OperationReceipt : undefined,
   };
 }
 
@@ -2161,7 +2164,7 @@ export function insertActionRun(
   triggerTypeOrUserProfile?: string | null,
   userProfileOrExecutionId?: string | null | number,
   executionIdArg?: number,
-  answererArg: "session" | "completion" = "session",
+  answererArg: ActionAnswerer = "session",
 ): number {
   const scopedCall = typeof actionScopeOrRunNumber !== "number";
   const actionScope = scopedCall ? actionScopeOrRunNumber : null;
@@ -2202,8 +2205,9 @@ export function updateActionRun(id: number, updates: {
   attempts?: number;
   verifyError?: string;
   warning?: string;
-  answerer?: "session" | "completion";
+  answerer?: ActionAnswerer;
   answererMetadata?: ActionCompletionMetadata;
+  operation?: OperationReceipt;
 }) {
   stmts.updateActionRun.run({
     $id: id,
@@ -2218,7 +2222,7 @@ export function updateActionRun(id: number, updates: {
     $verify_error: updates.verifyError ?? null,
     $warning: updates.warning ?? null,
     $answerer: updates.answerer ?? null,
-    $answerer_metadata: updates.answererMetadata ? JSON.stringify(updates.answererMetadata) : null,
+    $answerer_metadata: updates.operation ? JSON.stringify(updates.operation) : updates.answererMetadata ? JSON.stringify(updates.answererMetadata) : null,
   });
 }
 
@@ -4079,7 +4083,10 @@ if (runStartupMaintenance) {
         );
         // Mark orphaned action runs as error (harness crashed mid-run)
         const staleRuns = db.run(
-          `UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`,
+          `UPDATE action_runs SET status = 'error', error = 'harness interrupted during run', completed_at = ${Date.now()},
+            answerer_metadata = CASE WHEN answerer IN ('command', 'code') AND json_valid(answerer_metadata)
+              THEN json_set(answerer_metadata, '$.outcome', 'interrupted') ELSE answerer_metadata END
+            WHERE status = 'running'`,
         );
         if (staleRuns.changes > 0) {
           console.log(`[db] Cleaned up ${staleRuns.changes} orphaned action run(s) from previous crash`);

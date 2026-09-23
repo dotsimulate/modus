@@ -3,16 +3,17 @@
  *
  * Actions are the automation primitive in MO:
  *   - Agent profiles define HOW an agent behaves (model, tools, prompt)
- *   - Actions define WHEN, WHY, and WITH WHAT CONTEXT an agent runs
+ *   - Actions name operations, their triggers, inputs, and recorded results
  *
  * Each action is a directory: actions/<name>/ containing:
  *   - action.json  → ActionConfig
- *   - context.ts   → ActionModule (gather + optional afterRun)
+ *   - context.ts   → AI gather/verify/afterRun, or Code run (not needed for Command)
  */
 
 import type { MoveCapabilities } from "./move-types";
 import type { HarnessSessions, HarnessChannels, HarnessContext } from "./harness-context";
 import type { ActionAnswerer, ActionCompletionMetadata } from "./action-answerer-types";
+import type { ActionOperation, ActionInputSchema, OperationReceipt } from "./action-operation-types";
 
 export type { ActionAnswerer, ActionCompletionMetadata } from "./action-answerer-types";
 
@@ -87,7 +88,14 @@ export interface ActionConfig {
   pluginPath?: string;
 
   // ── What to run ──
-  agentProfile: string;
+  agentProfile?: string;
+  /** Finite Command/Code execution. Absent preserves the AI pipeline. */
+  execution?: ActionOperation;
+  inputSchema?: ActionInputSchema;
+  /** Whole operation deadline, including managed children. Default 5 minutes. */
+  timeoutMs?: number;
+  /** Resolve named secrets at execution time; values are never stored in inputs. */
+  env?: Record<string, { secret: string }>;
   /** How gather() is answered. Absent preserves the historic session path. */
   answerer?: ActionAnswerer;
 
@@ -201,6 +209,9 @@ export type TriggerInfo = {
   type: "interval" | "webhook" | "manual" | "action" | "session";
   payload?: unknown;                   // webhook body, source RunResult, or SessionTriggerPayload
   source?: string;                     // source action name (for action chains)
+  inputs?: Record<string, unknown>;
+  caller?: string;
+  parentRunId?: number;
   /** Tag to apply to the session created by this webhook (for session routing) */
   webhookSessionTag?: string;
 };
@@ -340,6 +351,7 @@ export interface RunResult {
   error: string | null;
   answerer: ActionAnswerer;
   completion?: ActionCompletionMetadata;
+  operation?: OperationReceipt;
 }
 
 /** Content blocks for multipart messages (text + images/files) */
@@ -425,6 +437,7 @@ export interface RunMeta {
   executionId: number | null;
   answerer: ActionAnswerer;
   completion?: ActionCompletionMetadata;
+  operation?: OperationReceipt;
 }
 
 export interface SessionInfo {

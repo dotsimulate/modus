@@ -42,7 +42,8 @@ export function segmentContentBlocks(msgId: string, blocks: MessageContentBlock[
   let run: ToolCall[] = [];
   const flushRun = (index: number) => {
     if (run.length === 0) return;
-    segments.push({ kind: "tools", key: `${msgId}:run:${index}`, tools: run });
+    // Appending calls must not change the parent key and remount existing rows.
+    segments.push({ kind: "tools", key: `${msgId}:run:${index - run.length}`, tools: run });
     run = [];
   };
 
@@ -98,6 +99,40 @@ export function segmentMessage(msg: Message): RenderSegment[] {
     segments.push({ kind: "tools", key: `${msg.id}:run:flat`, tools: msg.toolCalls });
   }
   return segments;
+}
+
+/**
+ * The part of a streaming round that no finalized block holds yet.
+ *
+ * Deltas write the flat `thinking` and `content` fields as the finalized blocks
+ * plus the round in progress; the round only becomes blocks once the provider
+ * confirms it. A bubble that already has blocks renders from them alone, so a
+ * later round's reasoning and prose stayed invisible until it was confirmed.
+ * Only a flat field that extends its blocks has a tail — anything else is left
+ * to the blocks.
+ */
+export function streamingTailSegments(msg: Message): RenderSegment[] {
+  if (!msg.contentBlocks?.length) return [];
+  const segments: RenderSegment[] = [];
+  const thinking = unconfirmedTail(msg.thinking, msg.contentBlocks, "thinking");
+  if (thinking) segments.push({ kind: "thinking", key: `${msg.id}:thinking:tail`, thinking });
+  const text = unconfirmedTail(msg.content, msg.contentBlocks, "text");
+  if (text) segments.push({ kind: "text", key: `${msg.id}:text:tail`, text });
+  return segments;
+}
+
+function unconfirmedTail(
+  flat: string | undefined,
+  blocks: MessageContentBlock[],
+  type: "text" | "thinking",
+): string {
+  if (!flat) return "";
+  let confirmed = "";
+  for (const block of blocks) {
+    if (type === "text" && block.type === "text") confirmed += block.text;
+    if (type === "thinking" && block.type === "thinking") confirmed += block.thinking;
+  }
+  return flat.length > confirmed.length && flat.startsWith(confirmed) ? flat.slice(confirmed.length) : "";
 }
 
 /** Tally a loaded run so its header reads the same as a deferred one's. */

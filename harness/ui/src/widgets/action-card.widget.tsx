@@ -13,6 +13,7 @@ import type { ActionInfo, ActionRun } from "../../../sdk/index";
 import { describeActionCycleLimit, describeActionRunLimit } from "../action-limit-display";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
+import { ActionOperationControls, ActionOperationDetails } from "../components/ActionOperation";
 
 type ActionCardConfig = WidgetBase & {
   type: "action-card";
@@ -122,7 +123,7 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
       )}
 
       <div className="action-card-meta">
-        <span className="action-card-tag">{action.agentProfile}</span>
+        <span className="action-card-tag">{action.execution?.type ?? action.agentProfile}</span>
         <span className="action-card-stat">{runLimit.label}</span>
         {hasCycles && <span className="action-card-stat">{cycleLimit.label}</span>}
       </div>
@@ -142,6 +143,8 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
         </div>
       )}
 
+      {action.execution && <ActionOperationControls action={action} scope={actionScope} />}
+      {lastRun?.operation && <ActionOperationDetails run={lastRun} actionName={action.name} scope={actionScope} />}
       <div className="action-card-controls">
         <button
           className={`action-card-toggle ${action.enabled ? "action-card-toggle--on" : ""}`}
@@ -149,13 +152,13 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
         >
           {action.enabled ? "enabled" : "disabled"}
         </button>
-        <button
+        {!action.execution && <button
           className="action-card-trigger"
           onClick={handleTrigger}
           disabled={activeSessions >= concurrency}
         >
           run
-        </button>
+        </button>}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { basename, timeAgo } from "../utils/format";
 import { parentDir } from "../folderPath";
 import { CustomSelect } from "./CustomSelect";
 import { useFileChooser } from "../hooks/usePathChooser";
+import { loadMoveProfileNames } from "../profile-visibility";
 
 type Values = Record<string, string>;
 type Variant = "prompt-picker" | "moves-widget";
@@ -293,14 +294,37 @@ export function useMoveInputResolver(args: {
   allowedProjectPaths?: string[];
 }) {
   const data = useDynamicMoveInputData(args.inputs, args.userProfile);
+  const needsProfiles = !!args.projectCwd && (args.inputs ?? []).some(input => sourceType(input) === "agentProfiles");
+  const profileScope = JSON.stringify([args.projectCwd, args.userProfile]);
+  const [profileResult, setProfileResult] = useState<{ scope: string; names: string[]; error?: string } | null>(null);
+  useEffect(() => {
+    if (!needsProfiles || !args.projectCwd) {
+      setProfileResult(null);
+      return;
+    }
+    let cancelled = false;
+    setProfileResult(null);
+    loadMoveProfileNames(modus, args.projectCwd, args.userProfile).then(names => {
+      if (!cancelled) setProfileResult({ scope: profileScope, names });
+    }).catch(error => {
+      if (!cancelled) setProfileResult({ scope: profileScope, names: [], error: `Could not load agent profiles: ${String(error)}` });
+    });
+    return () => { cancelled = true; };
+  }, [needsProfiles, args.projectCwd, args.userProfile, profileScope]);
+  const currentProfiles = profileResult?.scope === profileScope ? profileResult : null;
+  const profilesLoading = needsProfiles && !currentProfiles;
   const resolveInputOptions = (input: MoveInput) => resolveOptions(input, {
     values: args.values,
-    profileNames: args.profileNames,
+    profileNames: needsProfiles ? currentProfiles?.names ?? [] : args.profileNames,
     projectCwd: args.projectCwd,
     allowedProjectPaths: args.allowedProjectPaths,
     data,
   });
-  return { resolveInputOptions, dynamicLoading: data.loading };
+  return {
+    resolveInputOptions,
+    dynamicLoading: data.loading || profilesLoading,
+    dynamicError: needsProfiles ? currentProfiles?.error : undefined,
+  };
 }
 
 /**
@@ -412,7 +436,7 @@ export function MoveInputFields({
   autoFocusFirst?: boolean;
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
 }) {
-  const { resolveInputOptions } = useMoveInputResolver({
+  const { resolveInputOptions, dynamicLoading, dynamicError } = useMoveInputResolver({
     inputs,
     values,
     profileNames,
@@ -427,16 +451,18 @@ export function MoveInputFields({
     const updates: Array<{ name: string; value: string }> = [];
     for (const input of visibleInputs) {
       if (input.type !== "select") continue;
+      if (dynamicLoading && sourceType(input)) continue;
       const nextValue = preferredSelectValue(input, resolveInputOptions(input), values[input.name] ?? "", projectCwd);
       if ((values[input.name] ?? "") !== nextValue) {
         updates.push({ name: input.name, value: nextValue });
       }
     }
     for (const update of updates) onChange(update.name, update.value);
-  }, [onChange, projectCwd, resolveInputOptions, values, visibleInputs]);
+  }, [onChange, projectCwd, resolveInputOptions, values, visibleInputs, dynamicLoading]);
 
   return (
     <>
+      {dynamicError && <div role="alert">{dynamicError}</div>}
       {visibleInputs.map((input, index) => {
         const label = input.label ?? input.name;
         const currentValue = values[input.name] ?? "";

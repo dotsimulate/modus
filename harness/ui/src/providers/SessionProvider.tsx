@@ -33,6 +33,7 @@ import {
   type SessionIndexConnectionState,
 } from "../sessionIndexSync";
 import { subscribeBrowserResume } from "../browser-resume";
+import { resumeEventHub } from "../eventHub";
 import {
   ActiveSessionIdContext,
   SessionActionsContext,
@@ -44,6 +45,13 @@ import {
   type SendOpts,
   type SessionActionsContextValue,
 } from "./SessionContext";
+
+/** One line for the queued strip when a mid-turn send is rejected. */
+function describeSendFailure(err: unknown): string {
+  const detail = (err as { detail?: unknown })?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  return err instanceof Error ? err.message : String(err);
+}
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -169,6 +177,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => subscribeBrowserResume(() => {
     resumeSessionIndex();
     resumeSessionEventStreams();
+    resumeEventHub();
   }), []);
 
   useEffect(() => {
@@ -496,9 +505,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const { sessionId: realId } = await modus.createSession(opts);
 
         rekeySession(tempId, realId);
-        // Rekey move registry — mountOnAttach moves registered with empty sessionId
-        // need an explicit rekey from "" since prevSessionId/tempId won't match them
-        modus.rekeyMoveSession("", realId).catch(() => {});
+        // Moves mounted before the session existed are rebound by their api
+        // token (App.tsx, rekeyMoveByToken). Never rekey from "": that would
+        // claim every unbound registration, from any tab, for this session.
         const linkedOldIds = new Set<string>();
         if (prevSessionId) linkedOldIds.add(prevSessionId);
         linkedOldIds.add(tempId);
@@ -546,7 +555,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
                 });
               }
             })
-            .catch(() => {});
+            .catch((err) => setQueuedMessage({ text: prompt, attachments: sendAttachments, failed: describeSendFailure(err) }));
           return;
         }
         // Commit to backend queue immediately — survives page navigation
@@ -559,7 +568,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
               dispatchId: result.dispatchId,
             });
           })
-          .catch(() => {});
+          .catch((err) => setQueuedMessage({ text: prompt, attachments: sendAttachments, failed: describeSendFailure(err) }));
         return;
       }
 
@@ -658,6 +667,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!queuedMessage) return;
     if (!activeSession) return;
+    if (queuedMessage.failed) return;
     const status = activeSession.status;
     if (status === "running" || status === "starting" || status === "interrupting") return;
     if (queuedMessage.serverQueued) {

@@ -146,6 +146,7 @@ unload or profile/project switches.
 The frontend runtime exposes a narrow API to extensions:
 
 - `registerShortcut(binding, handler)`
+- `registerControlIntent(name, handler)` — answer an intent from `/api/control` (a desk knob, a pedal, a script); no window focus needed, last registration wins. Both dictation extensions use it for `dictation.toggle`.
 - `registerComposerAction(config)`
 - `registerComposerToggle(config)`
 - `registerSetting(name, config)`

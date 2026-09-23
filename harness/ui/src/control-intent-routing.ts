@@ -24,11 +24,28 @@
  * when no surface has claimed the intent — however the two happen to mount.
  */
 
-import type { ControlIntent, ControlIntentName } from "../../control-intents";
+import type { ControlIntent, ControlIntentName, TranscriptScrollUnit } from "../../control-intents";
 
 export type ControlIntentHandler = (intent: ControlIntent) => void;
 
 // ── Navigation arithmetic ──
+
+/**
+ * Resolve a scroll distance to pixels. A page keeps two lines of the previous
+ * screen in view, as Page Down does, so the reader does not lose their place.
+ */
+export function scrollIntentPixels(
+  unit: TranscriptScrollUnit,
+  delta: number,
+  metrics: { viewportHeight: number; lineHeight: number },
+): number {
+  const line = Math.max(1, metrics.lineHeight);
+  switch (unit) {
+    case "px": return delta;
+    case "line": return delta * line;
+    case "page": return delta * Math.max(line, metrics.viewportHeight - 2 * line);
+  }
+}
 
 /**
  * Step through turn anchors, clamped at both ends.

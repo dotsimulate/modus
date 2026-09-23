@@ -36,7 +36,8 @@ test("read API validates input, preserves other sessions and broadcasts authorit
   recordSessionReply(other, 15);
   const events: unknown[] = [];
   const app = new Hono();
-  registerSessionReadRoute(app, (...event) => events.push(event));
+  const oldId = `old-${id}`;
+  registerSessionReadRoute(app, (...event) => events.push(event), (target) => target === oldId ? id : target);
   const request = (target: string, body: unknown) => app.request(`/api/sessions/${target}/read`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
@@ -48,5 +49,8 @@ test("read API validates input, preserves other sessions and broadcasts authorit
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ last_reply_seq: 12, read_reply_seq: 12 });
   expect(events).toEqual([[id, 12, 12]]);
+  expect((await request(oldId, { seq: 12 })).status).toBe(200);
+  expect(events.at(-1)).toEqual([id, 12, 12]);
+  expect(getSession(oldId)).toBeNull();
   expect(getSession(other)).toMatchObject({ last_reply_seq: 15, read_reply_seq: 0 });
 });

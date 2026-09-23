@@ -194,7 +194,7 @@ export interface HarnessMoves {
 }
 
 export interface HarnessActions {
-  trigger(name: string): Promise<void>;
+  trigger(name: string, inputs?: Record<string, unknown>): Promise<void>;
 }
 
 export type HarnessModelResult = {
@@ -322,6 +322,11 @@ function makeGate(self: HarnessSelf, eng: HarnessEngines): Gate {
       });
     }
   };
+}
+
+/** Apply the same trust policy to supervised operation execution. */
+export function assertHarnessCapability(self: HarnessSelf, capability: keyof HarnessCapabilities): void {
+  makeGate(self, liveEngines())(capability);
 }
 
 // ── Capability module factories (each takes the injected engine bundle) ──
@@ -455,9 +460,10 @@ function createMoves(self: HarnessSelf, eng: HarnessEngines): HarnessMoves {
 
 function createActions(self: HarnessSelf, gate: Gate, eng: HarnessEngines): HarnessActions {
   return {
-    async trigger(name) {
+    async trigger(name, inputs) {
       gate("actionTrigger", `action: ${name}`);
-      await eng.triggerAction(name, { userProfile: self.userProfile, cwd: self.cwd });
+      const accepted = await eng.triggerAction(name, { userProfile: self.userProfile, cwd: self.cwd, inputs, caller: `${self.kind}:${self.name}` });
+      if (!accepted) throw new Error(`Action "${name}" was not accepted`);
       eng.logActivity({
         eventType: "harness_trigger_action",
         sessionId: self.sessionId ?? undefined,

@@ -1,44 +1,66 @@
 ---
 name: create-action
 description: >
-  Create automated agent actions in MO (modus operandi). Use when someone wants to:
-  (1) run an agent on a timer or interval (monitoring, reports, maintenance),
-  (2) trigger an agent from a webhook (GitHub, home automation, external services),
-  (3) chain agents so one fires after another completes,
-  (4) set up recurring automated tasks with dynamic context gathering,
-  (5) build automation that acts on agent responses (notifications, API calls, hardware),
-  (6) configure cycle-based execution (batches of runs with limits),
-  (7) create any automated agent workflow. Each action is a directory containing an
-  action.json config and a context.ts module for dynamic prompts and post-run actions.
-  TRIGGER on: "create an action", "automate", "run every", "scheduled task",
-  "recurring agent", "cron", "monitor", "heartbeat", "periodic", "webhook trigger",
-  "chain actions", "run after", "on completion".
+  Create or update Modus Actions: finite commands, custom code, model completions,
+  or agent sessions with manual, interval, webhook, session-event, or chain triggers.
+  Use for build/test buttons, scheduled tasks, webhook automation, and named jobs
+  with run history.
 ---
 
 # Create Action
 
-Actions are the automation primitive in MO:
-**trigger -> gather() -> session -> verify() -> finalize -> notify -> chain**
+Actions are named operations with triggers and recorded results. Author them under
+`<project>/.modus/actions/<name>/`. Choose execution independently of the trigger.
 
-Each action is a directory:
+## Choose the execution path
 
-```
-actions/<name>/
-  action.json    <- trigger, agent profile ref, execution config
-  context.ts     <- dynamic prompt builder + optional verify + optional afterRun hook
-```
+| Work | Configuration | Files and entry point |
+|------|---------------|-----------------------|
+| Finite executable, such as build or test | `execution: { type: "command", executable, args? }` | `action.json` only; never loads `context.ts` |
+| Custom logic, structured output, artifacts, or handoff | `execution: { type: "code" }` | `action.json` + `context.ts` exporting `run(ctx)` |
+| Tool-less model response | Omit `execution`; set `answerer: "completion"` and `agentProfile` | `action.json` + string-returning `gather(ctx)` in `context.ts` |
+| Agent session with tools | Omit `execution`; `answerer: "session"` is the default; set `agentProfile` | `action.json` + `gather(ctx)` in `context.ts` |
+
+Command and Code create no sessions and reject AI profile, model/session, moves,
+skills, steps, and retry settings. Code does not call `gather`, `verify`, or
+`afterRun`. Read [references/action-schema.md](references/action-schema.md) for
+inputs, Code context/results, limits, and invocation. The AI patterns below and
+in [references/context-patterns.md](references/context-patterns.md) use a separate
+`ActionContext`; they do not describe `CodeActionContext`.
 
 ## Workflow
 
-1. Determine what to automate and which trigger type fits
-2. Identify or create the agent profile (see `create-profile` skill)
-3. Design the trigger config and execution limits
-4. Decide if verify/retry is needed (file-producing actions, quality checks)
-5. Write `action.json` (including artifacts, notify, retry config if needed)
-6. Write `context.ts` (gather + optional verify + optional afterRun)
-7. Output both files with paths
+1. Inspect existing project actions and identify the work, trigger, inputs, and output.
+2. Choose Command, Code, Completion, or Session. Reuse a suitable profile only for AI.
+3. Define the working directory, limits, and any `inputSchema`.
+4. Write only the files needed by the selected path. Preserve existing activation
+   choices. `trigger` defaults to `manual`, `enabled` to `true`. Use `enabled: false`
+   when automatic triggers should remain parked; explicit Run still works for
+   disabled manual/interval actions.
+5. Validate against the current contract. For an authorized smoke run, inspect the
+   receipt, logs, and expected output. Trigger acknowledgement is not completion.
+   Report the files written and what was actually verified.
 
-## Four Trigger Types
+Commands run on the connected backend machine, with project root as the default
+`cwd` for project actions. Verify executable availability and script arguments on
+that target. Finite jobs use Run, logs, results, and cancellation in the Actions
+manager or `action-card` page widget; they do not open a PTY.
+
+## Minimal Command
+
+`<project>/.modus/actions/build/action.json`:
+
+```json
+{
+  "name": "build",
+  "execution": { "type": "command", "executable": "bun", "args": ["run", "build"] }
+}
+```
+
+This assumes the project defines a `build` script. No profile or context module
+is needed. See the schema reference for parameterized commands and Code examples.
+
+## Five Trigger Types
 
 | Type | When it fires | Key config |
 |------|--------------|------------|
@@ -46,8 +68,15 @@ actions/<name>/
 | `webhook` | HTTP POST to `/api/actions/<name>/hook?token=...` | `token` (auto-generated) |
 | `manual` | UI button or API call | (none) |
 | `action` | After another action completes | `source`, `condition` |
+| `session` | Matching session event | `on`, `excludeTags` |
 
-## Quick Examples
+## AI examples and execution guidance
+
+The remaining examples and pipeline guidance apply when `execution` is omitted:
+`gather -> session/completion -> verify -> afterRun -> notify -> chain`.
+Session features such as `moves` and `steps` require the Session answerer.
+Completion requires string gather output and rejects session-only fields; check
+the schema reference before adapting a Session example.
 
 ### Interval: heartbeat every 30s, 3 runs then stop
 
@@ -243,17 +272,19 @@ Steps run in the same session. `gather()` provides the initial prompt for the
 first profile (`agentProfile`), then each step either uses a static `prompt`
 or calls `gather()` again with `ctx.stepIndex` set.
 
-## Key Rules
+## AI authoring rules
 
 - **context.ts is portable** — it can live in ANY project's `.modus/actions/` directory.
-  The only import you need is the type import: `import type { ... } from "../../action-types"`.
+  Type imports in reference examples are relative to built-in source locations;
+  resolve a real declaration in the target project or omit those annotations.
+  Do not copy an unresolved `../../action-types` import into a project action.
   Everything else is on `ctx`: run history via `ctx.db.getRunSummaries()`, SVG rendering
   via `ctx.svgToPngBase64()`, logging via `ctx.log()`. Use `fs` for reading project files.
 - **For project-local context** — read files from the project directory using `fs` and
   `ctx.actionDir`. For structured context gathering, use `moves` on the action to attach
   companion moves that read memory and build prompts.
-- Every action MUST reference an `agentProfile` in `<cwd>/.modus/profiles/agents/`
-- Actions start `enabled: false` — user enables them deliberately
+- AI actions reference a resolvable project, Vault, or plugin `agentProfile`.
+  Create a new project profile only when needed.
 - Interval format: `"30s"`, `"5m"`, `"1h"`, `"4h"`, `"1d"`
 - Concurrency controlled by `concurrency` config (default 1)
 - Chain depth limit: max 8 levels of action→action chaining
@@ -264,9 +295,9 @@ or calls `gather()` again with `ctx.stepIndex` set.
 - Action can override: `model`, `effort`, `maxTurns`, `tools`, `cwd`, `provider`,
   `disallowedTools`, `loadProjectSettings`
 - Action CANNOT override: prompt, MCP servers, permission policies
-- Cost awareness: retry Haiku freely (cheap), cap Opus retries at 1-2
+- Set AI retry budgets to suit the task and model cost; Command/Code have no automatic retry.
 
-## Creating the Full Stack
+## Creating an AI action
 
 1. **Agent profile** — the agent's identity (`create-profile` skill)
 2. **Action config** — trigger, execution, verify, artifacts, notifications

@@ -232,6 +232,15 @@ describe("Grok Build ACP provider", () => {
     expect(events.some((event) => event.message?.content?.[0]?.type === "thinking")).toBe(true);
     expect(events.some((event) => event.message?.content?.[0]?.type === "tool_use")).toBe(true);
     expect(events.some((event) => event.subtype === "tool_result")).toBe(true);
+    // Each round is finalized in place: the thought that led to the tool call
+    // lands before it, not bundled with the closing thought at turn end.
+    const durableKinds = events
+      .filter((event) => event.type === "assistant")
+      .map((event) => {
+        const block = event.message.content[0];
+        return block.type === "thinking" ? `thinking:${block.thinking}` : block.type === "text" ? `text:${block.text}` : block.type;
+      });
+    expect(durableKinds).toEqual(["thinking:fixture thought", "tool_use", "thinking:second thought", "text:hello world"]);
     const result = events.find((event) => event.type === "result" && event.subtype === "success");
     expect(result).toMatchObject({ result: "hello world", input_tokens: 11, output_tokens: 7, total_tokens: 18, total_cost_usd: 0.001 });
     expect(events.some((event) => event.type === "done")).toBe(true);

@@ -129,9 +129,10 @@ describe("markdownUrlTransform", () => {
     expect(markdownUrlTransform("C:\\src\\main.ts", "href")).toBe("C:\\src\\main.ts");
   });
 
-  it("keeps unsupported schemes and image sources behind the default sanitizer", () => {
+  it("preserves Windows images for ticketed rendering but rejects unsupported schemes", () => {
     expect(markdownUrlTransform("javascript:alert(1)", "href")).toBe("");
-    expect(markdownUrlTransform("D:/secrets/image.png", "src")).toBe("");
+    expect(markdownUrlTransform("D:/example/image.png", "src")).toBe("D:/example/image.png");
+    expect(markdownUrlTransform("javascript:alert(1)", "src")).toBe("");
   });
 
   it("leaves ordinary web and relative links unchanged", () => {

@@ -1,5 +1,6 @@
 import { useSyncExternalStore, useMemo } from "react";
 import { API_BASE, authHeaders } from "./modusClient";
+import { onControlIntent, type ControlIntent, type ControlIntentName } from "./control-intents";
 import type { ClientExtensionManifestItem, MoveListItem } from "../../sdk/index";
 
 type ComposerSnapshot = {
@@ -27,6 +28,12 @@ type ComposerTarget = Omit<ComposerHandle, "id">;
 
 type ShortcutHandler = (ctx: {
   event: KeyboardEvent;
+  getComposer: () => ComposerTarget | null;
+}) => void | Promise<void>;
+
+/** Same composer lookup as a shortcut, but arrives from /api/control, so it needs no focus. */
+type ControlIntentExtensionHandler = (ctx: {
+  intent: ControlIntent;
   getComposer: () => ComposerTarget | null;
 }) => void | Promise<void>;
 
@@ -105,6 +112,11 @@ type RegisteredSetting = {
 
 type ClientExtensionApi = {
   registerShortcut: (binding: string, handler: ShortcutHandler) => () => void;
+  /**
+   * Answer a control intent published to /api/control — a desk knob, a pedal, a
+   * script. Unlike a shortcut it needs no window focus. Last registration wins.
+   */
+  registerControlIntent: (name: ControlIntentName, handler: ControlIntentExtensionHandler) => () => void;
   registerComposerAction: (config: ComposerActionConfig) => RegisteredComposerAction;
   registerComposerToggle: (config: ComposerToggleConfig) => RegisteredComposerToggle;
   /**
@@ -185,6 +197,7 @@ const pendingAttaches = new Map<string, PendingAttach>();
 const pendingDrafts = new Map<string, string>();
 let activeComposerId: string | null = null;
 const shortcuts: ShortcutRegistration[] = [];
+const controlIntentReleases = new Set<() => void>();
 const composerActions = new Map<string, ComposerActionRegistration>();
 const composerToggles = new Map<string, ComposerToggleRegistration>();
 /** Live setting options, keyed `${extensionId}:${settingName}`. */
@@ -451,6 +464,17 @@ function createApi(extensionId: string, settings: Record<string, unknown> = {}):
         if (idx !== -1) shortcuts.splice(idx, 1);
       };
     },
+    registerControlIntent(name, handler) {
+      const release = onControlIntent(name, (intent) => {
+        void Promise.resolve()
+          .then(() => handler({ intent, getComposer: getActiveComposerHandle }))
+          .catch((err) => console.error(`[extension:${extensionId}] ${name} failed:`, err));
+      });
+      controlIntentReleases.add(release);
+      return () => {
+        if (controlIntentReleases.delete(release)) release();
+      };
+    },
     registerComposerAction(config) {
       const actionKey = `${extensionId}:${config.id ?? "default"}`;
       const registration: ComposerActionRegistration = {
@@ -597,6 +621,8 @@ export async function unloadClientExtensions(): Promise<void> {
     }
   }
   shortcuts.splice(0, shortcuts.length);
+  for (const release of controlIntentReleases) release();
+  controlIntentReleases.clear();
   composerActions.clear();
   composerToggles.clear();
   settingOptions.clear();

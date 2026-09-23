@@ -112,6 +112,22 @@ becomes a normal nav page that can embed the widget via a
 
 ## Actions — `.modus/actions/<name>/`
 
+Actions are named operations. `execution: { type: "command", executable, args? }`
+runs a finite command with no context file or agent profile. `{ type: "code" }`
+calls `run(ctx)` in a supervised worker process. Omit `execution` to retain the
+AI pipeline below. `trigger` defaults to manual. `inputSchema` defines a small
+typed object schema shared by Run forms, webhook bodies, SDK invocation inputs,
+and `ctx.actions.trigger(name, inputs)`.
+
+Command/Code runs have no session. Their `operation` receipt records outcome,
+definition hash, caller/parent, backend cwd, inputs, exit status, bounded logs,
+and structured results/artifacts. Defaults: 5-minute timeout, concurrency 1,
+4 operation runs globally, no automatic retries. Cancellation owns process-tree
+cleanup; restart marks unfinished receipts interrupted. Code's narrow context
+provides managed processes (nonzero throws unless `check: false`), logging,
+artifacts, secrets, and explicit action/session handoff. See `actions` for the
+exact input, result, process ownership, and limit contracts.
+
 Files: `action.json` (ActionConfig) + `context.ts` (ActionModule).
 
 **Triggers**: `interval` (`every`, `from: completion|start`, `activeHours`

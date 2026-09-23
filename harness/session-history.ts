@@ -107,6 +107,20 @@ export function shouldRecoverSessionHistory(
 }
 
 /**
+ * Subtype of the user event written when a message is queued, before any
+ * provider has seen it. It exists so the text survives a backend death between
+ * persistence and dispatch.
+ *
+ * Deliberately not `"prompt"`: every provider emits a real `user/prompt` event
+ * when the message is actually delivered, so a `"prompt"` row here means two
+ * durable rows per message. Anything rebuilt from the event stream then shows
+ * every follow-up twice — and for a message queued mid-turn the queue-time copy
+ * also lands at the wrong point in the transcript, because it is ordered by
+ * when the user hit send rather than by when the agent received it.
+ */
+export const QUEUED_PROMPT_SUBTYPE = "prompt_pending";
+
+/**
  * Rebuild user/assistant turns from durable non-stream events.
  *
  * `result` events close a turn *and* carry its usage. Reading only the boundary
@@ -139,6 +153,9 @@ export function reconstructSessionTurns(
     try { d = JSON.parse(evt.data); } catch { continue; }
 
     if (evt.type === "user") {
+      // Queue-time durability row, not a transcript turn — the dispatch-time
+      // copy is the one that carries the moment the agent actually received it.
+      if (evt.subtype === QUEUED_PROMPT_SUBTYPE || d.subtype === QUEUED_PROMPT_SUBTYPE) continue;
       if (evt.subtype === "prompt" || d.subtype === "prompt") {
         if (current) {
           turns.push(materializeAssistantTurn(current, current.seq));

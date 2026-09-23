@@ -4,11 +4,66 @@ import {
   dispatchControlIntent,
   registerControlIntentHandler,
   resetControlIntentHandlers,
+  scrollIntentPixels,
   stepSessionId,
   stepTurnKey,
 } from "../../ui/src/control-intent-routing";
+import { glideStep } from "../../ui/src/scroll-navigation";
 
 afterEach(() => resetControlIntentHandlers());
+
+describe("scrollIntentPixels", () => {
+  const metrics = { viewportHeight: 600, lineHeight: 24 };
+
+  test("resolves each unit against the client's metrics", () => {
+    expect(scrollIntentPixels("px", -120, metrics)).toBe(-120);
+    expect(scrollIntentPixels("line", 3, metrics)).toBe(72);
+    expect(scrollIntentPixels("line", -0.5, metrics)).toBe(-12);
+  });
+
+  test("a page keeps two lines of overlap", () => {
+    expect(scrollIntentPixels("page", 1, metrics)).toBe(552);
+    expect(scrollIntentPixels("page", -2, metrics)).toBe(-1104);
+  });
+
+  test("a viewport shorter than the overlap still moves at least a line", () => {
+    expect(scrollIntentPixels("page", 1, { viewportHeight: 30, lineHeight: 24 })).toBe(24);
+    expect(scrollIntentPixels("line", 2, { viewportHeight: 600, lineHeight: 0 })).toBe(2);
+  });
+});
+
+describe("glideStep", () => {
+  test("covers most of the distance in a few frames and never overshoots", () => {
+    let remaining = 300;
+    const run = (frames: number) => {
+      for (let frame = 0; frame < frames; frame++) {
+        const step = glideStep(remaining, 16);
+        expect(Math.abs(step)).toBeLessThanOrEqual(Math.abs(remaining));
+        remaining -= step;
+      }
+    };
+    // Three time constants (~200ms at 60fps) covers about 95% of the way.
+    run(13);
+    expect(Math.abs(remaining)).toBeLessThan(300 * 0.06);
+    // And by ~400ms it is within a pixel or so of landing.
+    run(12);
+    expect(Math.abs(remaining)).toBeLessThan(1.5);
+  });
+
+  test("works the same in both directions", () => {
+    expect(glideStep(-300, 16)).toBeCloseTo(-glideStep(300, 16));
+  });
+
+  test("snaps the last half pixel so a glide finishes", () => {
+    expect(glideStep(0.4, 16)).toBe(0.4);
+    expect(glideStep(-0.4, 16)).toBe(-0.4);
+  });
+
+  test("a stalled frame clock moves nothing rather than jumping", () => {
+    expect(glideStep(300, 0)).toBe(0);
+    expect(glideStep(300, -50)).toBe(0);
+  });
+});
 
 describe("stepTurnKey", () => {
   const turns = ["t1", "t2", "t3", "t4"];

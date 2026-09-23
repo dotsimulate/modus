@@ -106,7 +106,7 @@ MO has five primitives. They compose but don't overlap.
 | **Session** | A single agent conversation with full event log | `harness.db` |
 | **Agent Profile** | HOW an agent behaves: model, tools, prompt, permissions | `<current-home>/profiles/agents/*.json` or `.modus/profiles/agents/*.json` |
 | **User Profile** | WHO is using the system: project scope, visible agents, memory isolation | `<current-home>/profiles/users/*.json` |
-| **Action** | WHEN automation runs: triggers, context gathering, verify, side effects | `.modus/actions/<name>/` |
+| **Action** | Named operation: command, code, completion, or agent; triggers and run history | `.modus/actions/<name>/` |
 | **Move** | WHAT the user wants done now: structured submission with token-gated validation | `.modus/moves/<name>/` |
 
 A **skill** is not one of these. It is packaged text an agent can load —
@@ -266,9 +266,23 @@ React app served by Vite in dev, static build in production. Key architectural
 decisions:
 - URL routing via `#userProfile/sessionId` hash
 - External session store (`Map<sessionId, SessionState>`) with `useSyncExternalStore`
-- SSE subscription per active session for real-time events
-- One elected browser tab owns the global session-index stream and fallback poll;
-  sibling tabs receive snapshots and patches through `BroadcastChannel`.
+- Two long-lived connections per tab. Chromium and WebView2 allow six HTTP/1.1
+  connections per host, and every other request in the UI — including speech
+  uploads — shares what is left. Transcripts for every subscribed session ride
+  `/api/events/multi`; session lifecycle, control intents and filesystem changes
+  ride `/api/events/hub` (`ui/src/eventHub.ts`), which carries only the channels
+  that have listeners. Add a channel there rather than opening a new stream.
+- One elected browser tab applies session-lifecycle events to the index and owns
+  the fallback poll; sibling tabs receive snapshots and patches through
+  `BroadcastChannel`.
+- A provider that renames its session (`ctx.rekeySession`) announces it: a
+  live-only `system`/`session_rekeyed` event on the session stream, a
+  `session:rekeyed` lifecycle event, and an alias so requests and subscriptions
+  under the old id still reach the session until restart (the latest 1,000
+  aliases are retained). History reads and follow-up sends resolve the alias
+  even after the active provider process has been reclaimed. The
+  store follows the rename for any id; it never follows a provider-native id
+  from an `init` event.
 - The index returns session metadata and prompt/response previews of up to 320
   characters, excluding drafts and saved UI state. Full session list/detail
   reads retain their existing text fields. Visible-session ordering and legacy
@@ -278,7 +292,7 @@ decisions:
   refresh immediately; unknown activity targets use the fallback poll interval.
 - Returning from browser suspension (`visibilitychange`, page restore, focus, or
   network recovery) forces an authoritative session-index refresh and reopens
-  both the global lifecycle stream and active transcript stream. This is required
+  both the event hub and the transcript stream. This is required
   on mobile, where backgrounding can freeze stale timers and dead fetches for hours.
 - Event reducer transforms raw SDK events into renderable message structure
 - ProfileProvider manages user profile selection and scoped visibility
@@ -345,6 +359,13 @@ Local file links open in the file viewer; relative links in a Markdown preview
 resolve beside the displayed file. URL-encoded paths are decoded before being
 handed to the file API, and line references are retained. Arbitrary URI schemes
 remain subject to sanitization.
+
+Markdown images with local paths are fetched from the backend using per-file
+tickets, so they also render in remote browsers. Windows drive paths (with or
+without a leading slash) and Unix absolute paths are supported. Relative images
+resolve beside the file in Markdown previews, or against the owning session's
+working directory in chat. HTTP(S) images retain their external URLs; unsupported
+schemes remain blocked. A failed image displays an unavailable notice.
 
 ### Session Web
 

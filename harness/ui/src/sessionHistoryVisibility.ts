@@ -110,3 +110,20 @@ export function selectVisibleProjectSessions<T extends ProjectSessionLike>(
 
   return fillToReveal(sessions, visibleIds, options.revealCount ?? 0);
 }
+
+/**
+ * The session.cycle ring for the grouped list: pinned rows, then the visible rows
+ * of open groups, in render order. A knob walks what is on screen, so rows behind
+ * "show N more" and inside collapsed groups are not in it. With every group
+ * collapsed and nothing pinned, the visible rows of all groups stand in, so the
+ * knob still moves and landing opens that group.
+ */
+export function selectCycleSessionIds(
+  pinned: readonly { id: string }[],
+  groups: readonly { key: string; visibleSessions: readonly { id: string }[] }[],
+  expanded: ReadonlySet<string>,
+): string[] {
+  const open = groups.filter((group) => expanded.has(group.key));
+  const rows = [...pinned, ...(open.length || pinned.length ? open : groups).flatMap((group) => group.visibleSessions)];
+  return rows.map((row) => row.id).filter((id) => !id.startsWith("pending-"));
+}

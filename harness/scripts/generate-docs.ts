@@ -132,6 +132,10 @@ const CONTEXTS: SurfaceEntry[] = [
 ];
 
 const SUPPORTING: SurfaceEntry[] = [
+  { name: "CodeActionContext", file: "action-operation-types.ts", when: "passed to an isolated Code action's run(ctx)" },
+  { name: "CodeActionModule", file: "action-operation-types.ts", when: "the Code action execution export" },
+  { name: "ActionInputSchema", file: "action-operation-types.ts", when: "shared invocation input validation and forms" },
+  { name: "OperationReceipt", file: "action-operation-types.ts", when: "durable Command/Code run metadata" },
   { name: "MoveApiHandler", file: "move-types.ts", when: "the handler signature" },
   { name: "MoveToolViewDeclaration", file: "move-types.ts", when: "the `toolView` field in move.json" },
   { name: "MoveToolViewProps", file: "ui/src/move-tool-view.ts", when: "passed to a move's transcript tool-view component" },

@@ -12,6 +12,9 @@ export type QueuedMessage = {
   /** Set when the user asked to interject but the provider could only queue —
    *  lets the strip say so rather than silently behaving like an ordinary send. */
   steerDeclined?: boolean;
+  /** Set when delivery failed. The text is held here rather than lost, and is
+   *  never resent automatically — the session may no longer accept it. */
+  failed?: string;
 };
 
 /** How a send should be delivered when a turn is already running.

@@ -1,7 +1,7 @@
 ---
 title: Authoring Contracts (generated)
 audience: dev
-covers: harness/harness-context.ts harness/move-types.ts harness/ui/src/move-tool-view.ts
+covers: harness/action-operation-types.ts harness/harness-context.ts harness/move-types.ts harness/ui/src/move-tool-view.ts
 ---
 
 <!-- GENERATED FILE — do not edit. Run `bun run docs:generate` from harness/. Drift fails docs-generated.test.ts. -->
@@ -259,6 +259,79 @@ export interface HarnessContext {
 ```
 
 ## Supporting types
+
+### `CodeActionContext` — passed to an isolated Code action's run(ctx)
+
+`harness/action-operation-types.ts`
+
+```ts
+/** Only these operations cross the worker boundary; no harness internals are imported. */
+export interface CodeActionContext {
+  runId: number;
+  actionName: string;
+  inputs: Record<string, unknown>;
+  trigger: { type: string; payload?: unknown; source?: string };
+  cwd: string;
+  signal: AbortSignal;
+  log(message: string): void;
+  process: {
+    run(options: { executable: string; args?: string[]; cwd?: string; check?: boolean }): Promise<ProcessResult>;
+  };
+  artifacts: { path(filename: string): string };
+  secrets: { resolve(reference: string): Promise<string | undefined> };
+  actions: { trigger(name: string, inputs?: Record<string, unknown>): Promise<void> };
+  sessions: { create(options: { profile: string; prompt: string }): Promise<unknown> };
+}
+```
+
+### `CodeActionModule` — the Code action execution export
+
+`harness/action-operation-types.ts`
+
+```ts
+export interface CodeActionModule {
+  run(ctx: CodeActionContext): Promise<OperationResult | void>;
+}
+```
+
+### `ActionInputSchema` — shared invocation input validation and forms
+
+`harness/action-operation-types.ts`
+
+```ts
+/** Deliberately small JSON Schema subset shared by all invocation surfaces. */
+export type ActionInputSchema = {
+  type: "object";
+  properties: Record<string, ActionInputField>;
+  required?: string[];
+  additionalProperties?: false;
+};
+```
+
+### `OperationReceipt` — durable Command/Code run metadata
+
+`harness/action-operation-types.ts`
+
+```ts
+export type OperationReceipt = {
+  version: 1;
+  runId: number;
+  parentRunId?: number;
+  caller: string;
+  fingerprint: string;
+  target: "backend";
+  cwd: string;
+  inputs: Record<string, unknown>;
+  command?: { executable: string; args: string[]; shell: boolean };
+  outcome: "running" | "succeeded" | "failed" | "could-not-start" | "timed-out" | "cancelled" | "interrupted" | "skipped";
+  exitCode?: number | null;
+  signal?: string | null;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+  result?: OperationResult;
+};
+```
 
 ### `MoveApiHandler` — the handler signature
 
@@ -528,7 +601,7 @@ export interface HarnessMoves {
 
 ```ts
 export interface HarnessActions {
-  trigger(name: string): Promise<void>;
+  trigger(name: string, inputs?: Record<string, unknown>): Promise<void>;
 }
 ```
 

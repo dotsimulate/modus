@@ -16,7 +16,7 @@ import { AudioArtifact } from "./AudioArtifact";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { addPrompt } from "../promptCache";
 import { partitionToolRun } from "../move-tool-view";
-import { segmentContentBlocks, tallyToolNames } from "../turn-segments";
+import { segmentContentBlocks, streamingTailSegments, tallyToolNames } from "../turn-segments";
 import { isTodoTool } from "../tool-names";
 
 /**
@@ -247,15 +247,16 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
     partitionToolRun(tools).map((partition, index) => {
       const partitionKey = `${keyPrefix}:partition:${index}`;
       const rows = renderToolRun(partition.tools, partitionKey);
-      return !partition.moveApi && partition.tools.length >= TOOL_RUN_GROUP_MIN ? (
+      return (
         <ToolCallGroup
           key={partitionKey}
+          inline={!groupRuns || partition.moveApi || partition.tools.length < TOOL_RUN_GROUP_MIN}
           count={partition.tools.length}
           toolNames={tallyToolNames(partition.tools)}
         >
           {rows}
         </ToolCallGroup>
-      ) : rows;
+      );
     })
   );
 
@@ -285,7 +286,10 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
 
       {msg.contentBlocks?.length ? (
         <>
-          {segmentContentBlocks(msg.id, msg.contentBlocks).map((segment) => {
+          {[
+            ...segmentContentBlocks(msg.id, msg.contentBlocks),
+            ...(isStreaming ? streamingTailSegments(msg) : []),
+          ].map((segment) => {
             if (segment.kind === "text") {
               return (
                 <MessageText
@@ -293,6 +297,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
                   messageId={segment.key}
                   role={msg.role}
                   text={segment.text}
+                  cwd={cwd}
                   isNew={isNew}
                   onContextMenu={handleContextMenu}
                 />
@@ -311,8 +316,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             }
             if (segment.kind === "tools") {
               if (!showToolCalls) return null;
-              const rows = renderToolRun(segment.tools, segment.key);
-              return groupRuns ? renderGroupedToolRun(segment.tools, segment.key) : rows;
+              return renderGroupedToolRun(segment.tools, segment.key);
             }
             const visibleToolCount = showToolCalls ? segment.count : 0;
             return onLoadDetails && (showThinking && segment.hasThinking || visibleToolCount > 0) ? (
@@ -355,14 +359,13 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
               messageId={msg.id}
               role={msg.role}
               text={msg.content}
+              cwd={cwd}
               isNew={isNew}
               onContextMenu={handleContextMenu}
             />
           )}
           {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
-            groupRuns
-              ? renderGroupedToolRun(msg.toolCalls, `${msg.id}:flat`)
-              : renderToolRun(msg.toolCalls, `${msg.id}:flat`)
+            renderGroupedToolRun(msg.toolCalls, `${msg.id}:flat`)
           )}
         </>
       )}

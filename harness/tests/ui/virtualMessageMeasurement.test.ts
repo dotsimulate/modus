@@ -1,9 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { recordVirtualHeight } from "../../ui/src/virtual-message-measurement";
+import { recordVirtualHeight, resetVirtualHeights } from "../../ui/src/virtual-message-measurement";
 
 describe("virtual message measurements", () => {
+  it("cache invalidation retains current mounted geometry without waiting for a resize", () => {
+    const heights = new Map([["offscreen", 500], ["visible", 900], ["hidden", 300]]);
+    const measuredKeys = new Set(heights.keys());
+    resetVirtualHeights(heights, measuredKeys, [["visible", 240], ["hidden", 0]]);
+
+    expect([...heights]).toEqual([["visible", 240]]);
+    expect([...measuredKeys]).toEqual(["visible"]);
+    // The row did not resize after invalidation. Its measurement remains usable
+    // even when ResizeObserver has no reason to report it again.
+    expect(recordVirtualHeight(heights, measuredKeys, "visible", 240).changed).toBe(false);
+  });
+
   it("preserves measured geometry when an unmount reports zero", () => {
     const heights = new Map([["m1", 713]]);
     const measuredKeys = new Set(["m1"]);

@@ -106,12 +106,13 @@ never emitting again.
 
 ## Configuration
 
-All values are environment variables read at startup.
+Environment variables set the startup values. The concurrency limit can also be
+changed while the backend is running, as described below.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `MG_MAX_HEAP_MB` | `4096` | Memory ceiling for one agent runtime. Also the reaper's `cliRssLimitBytes`. |
-| `MG_MAX_CONCURRENT` | `6` | Concurrent sessions allowed to spawn. |
+| `MG_MAX_CONCURRENT` | `10` | Initial concurrent-session limit; invalid, nonpositive, or noninteger values fall back to 10. |
 | `MG_PRESSURE_THRESHOLD` | `0.90` | System memory ratio that blocks new spawns and enables pressure reclamation. |
 | `MG_BLOCK_ON_PRESSURE` | `1` (`0` on macOS) | Whether pressure gates spawning and reclamation. |
 | `MG_REAP_PRESSURE_FLOOR_MB` | `512` | Smallest tree worth reclaiming under pressure. |
@@ -125,8 +126,9 @@ machine, lower `MG_MAX_HEAP_MB` and `MG_REAP_PRESSURE_FLOOR_MB`.
 
 ### Where to set them
 
-These are read from `process.env` when the module loads, so they must be present
-in the backend's environment before it starts. There is no in-app setting and no
+These are read from `process.env` when the module loads, so startup overrides must be present
+in the backend's environment before it starts. The concurrency limit additionally has
+an in-app control; the other values have no in-app setting. There is no
 config file for them, and the Modus secrets file does not work — `loadSecrets()`
 parses it into its own store and never writes to `process.env`.
 
@@ -138,6 +140,24 @@ parses it into its own store and never writes to `process.env`.
   Windows a newly added variable does not reach an already-running Explorer, so
   a launch from the Start menu may need a sign-out first; launching the app from
   a terminal that already has the variable avoids that.
+
+### Changing session capacity without interrupting agents
+
+Open **Settings → Environment → Backend session capacity** and apply a positive
+integer. This changes admission for new sessions immediately across the connected
+backend. It never stops, restarts, or reclaims existing sessions. Lowering the
+limit below the current active count only blocks further starts until enough
+sessions finish. Memory-pressure checks remain in effect. Pilot/orchestrator
+limits are separate and may still cap the number of workers.
+
+The authenticated API is `PUT /api/system/memory` with exactly
+`{ "maxConcurrentSessions": 10 }`. It returns the same memory status as
+`GET /api/system/memory`; invalid payloads return 400 without changing the limit.
+SDK callers use `getMemoryStatus()` and `setMaxConcurrentSessions(10)`.
+Changes last until backend restart; startup then uses `MG_MAX_CONCURRENT` or 10.
+The response advertises `concurrencyLimitMutable: true`. Older running backends
+without that field cannot apply a live update; installing this code does not
+change their already-loaded startup constant.
 
 ## How the memory ceiling is enforced
 

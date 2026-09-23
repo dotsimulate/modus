@@ -161,6 +161,37 @@ describe("additionalDirectories", () => {
     expect(capturedUserMessage.message.content).toBe("hello");
   });
 
+  test("starts a fresh Claude Code conversation under the Modus session id", async () => {
+    // Claude Code's own id used to arrive in init and rekey the session after
+    // the create call may already have returned the Modus id to the UI.
+    const modusId = crypto.randomUUID();
+    let capturedOptions: any;
+
+    mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+      query({ prompt, options }: any) {
+        capturedOptions = options;
+        return (async function* () {
+          await prompt[Symbol.asyncIterator]().next();
+          yield { type: "system", subtype: "init", session_id: options.sessionId ?? "claude-minted", model: "claude-sonnet" };
+          yield { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, num_turns: 1 };
+        })();
+      },
+    }));
+
+    const { createClaudeCodeProvider } = await import("../../providers/claude-code");
+    const session = makeSession([]);
+    session.sessionId = modusId;
+    session.tempId = modusId;
+    const provider = createClaudeCodeProvider({ which: () => "test-claude" });
+    provider.startTurn(makeTurnContext(session));
+
+    for (let i = 0; i < 100 && session.status === "starting"; i++) await Bun.sleep(10);
+
+    expect(capturedOptions.sessionId).toBe(modusId);
+    expect(capturedOptions.resume).toBeUndefined();
+    expect(session.sessionId).toBe(modusId);
+  });
+
   test("passes additional directories to Codex thread options", async () => {
     let capturedThreadOptions: any;
 

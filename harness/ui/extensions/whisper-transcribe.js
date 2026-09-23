@@ -299,6 +299,43 @@ export function failure(label, detail) {
   return error;
 }
 
+/**
+ * How long one chunk upload may take before it is abandoned. A 30 s chunk
+ * transcribes in a few seconds; a request still open at this point may be
+ * stalled in the browser or upstream, with every later chunk queued behind it.
+ */
+export const UPLOAD_TIMEOUT_MS = 45000;
+
+/**
+ * Send one request and read its body, giving up after `timeoutMs`. Uploads are
+ * strictly serial, so a request that never settles would otherwise hold every
+ * later chunk — and the "finishing" chip — until a reload.
+ * Resolves `{ response, raw }`; rejects with a `timed out` failure.
+ */
+export async function requestText(request, path, init, timeoutMs) {
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(failure("timed out", `no response from the harness after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+  });
+  const work = (async () => {
+    const response = await request(path, { ...init, signal: controller.signal });
+    // Read as text first: an error response is not always JSON, and .json()
+    // throwing would have discarded the status along with the body.
+    const raw = await response.text().catch(() => "");
+    return { response, raw };
+  })();
+  work.catch(() => { /* settled by the race below; an abort after timeout is expected */ });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function describeCaptureError(error, env = {}) {
   const name = error?.name ?? "";
   const raw = error instanceof Error ? error.message : String(error ?? "");
@@ -1001,20 +1038,24 @@ export default function whisperTranscribeExtension(api) {
     const suffix = query.toString();
 
     const path = `/api/whisper/transcribe${suffix ? `?${suffix}` : ""}`;
-    let response;
-    try {
-      response = await api.request(path, { method: "POST", body });
-    } catch (cause) {
-      // The request never left the browser: CORS, offline, or the backend
-      // moved. Distinguished from an HTTP error because there is no status —
-      // and because nothing is logged server-side, so the chip is the only
-      // place this can ever be seen.
-      throw failure("no connection", `the request never reached the harness (${cause?.message ?? cause})`);
+    let result;
+    for (let attempt = 1; !result; attempt++) {
+      try {
+        result = await requestText(api.request, path, { method: "POST", body }, UPLOAD_TIMEOUT_MS);
+      } catch (cause) {
+        // One retry after a timeout: the usual cause is a browser connection
+        // pool that was briefly exhausted, and giving up drops the user's speech.
+        if (cause?.label === "timed out" && attempt < 2) continue;
+        if (cause?.label) throw cause;
+        // The request never left the browser: CORS, offline, or the backend
+        // moved. Distinguished from an HTTP error because there is no status —
+        // and because nothing is logged server-side, so the chip is the only
+        // place this can ever be seen.
+        throw failure("no connection", `the request never reached the harness (${cause?.message ?? cause})`);
+      }
     }
 
-    // Read as text first: an error response is not always JSON, and .json()
-    // throwing would have discarded the status along with the body.
-    const raw = await response.text().catch(() => "");
+    const { response, raw } = result;
     let payload = null;
     try { payload = raw ? JSON.parse(raw) : null; } catch { /* non-JSON body */ }
 
@@ -1110,6 +1151,10 @@ export default function whisperTranscribeExtension(api) {
   const unregister = api.registerShortcut(SHORTCUT, async ({ getComposer }) => {
     await toggleRecording(getComposer());
   });
+  // The same toggle from /api/control, so a desk control works while Modus is unfocused.
+  const unregisterIntent = api.registerControlIntent?.("dictation.toggle", async ({ getComposer }) => {
+    await toggleRecording(getComposer());
+  });
 
   // Audio devices only exist in the browser, so the sidecar manifest cannot
   // list them. Publish them live instead, and refresh when hardware changes.
@@ -1150,6 +1195,7 @@ export default function whisperTranscribeExtension(api) {
     clearChunkTimer();
     cancelTyping();
     unregister();
+    unregisterIntent?.();
     action.unregister();
     micSetting?.unregister();
     navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);

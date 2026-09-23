@@ -20,6 +20,7 @@ function finishPrompt(): void {
     status: "completed",
     rawOutput: { text: "fixture output" },
   });
+  update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "second thought" } });
   update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hello " } });
   update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "world" } });
   send({

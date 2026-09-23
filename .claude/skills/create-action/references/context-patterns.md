@@ -1,14 +1,15 @@
 # Context Patterns
 
-The `context.ts` module builds dynamic prompts, verifies results, and can act on them.
+These patterns apply to **AI actions with `execution` omitted**: `context.ts`
+builds prompts, verifies results, and acts on model responses. Command actions
+need no context module. Code actions export `run(ctx)` with `CodeActionContext`;
+see [action-schema.md](action-schema.md) for that separate contract.
 
-**IMPORTANT:** context.ts lives in `.modus/actions/<name>/` which can be in ANY project
-directory. Everything you need is on `ctx` — the `ActionContext` object passed to every
-function. The only import you need is the type import (erased at compile time):
-
-```typescript
-import type { ActionContext, RunResult, VerifyResult } from "../../action-types";
-```
+AI context modules can live in any project's `.modus/actions/<name>/` directory.
+Use the supplied `ActionContext` and ordinary file APIs. The type-only imports
+below illustrate built-in source locations; `../../action-types` does not resolve
+from an arbitrary project action. Resolve an actual declaration in the target
+project or omit type imports/annotations; do not import harness runtime modules.
 
 Use `fs` for reading project files. Use `moves` on the action for structured context
 gathering (memory, status, etc.).
@@ -22,7 +23,7 @@ import type { ActionContext, ActionContent, RunResult, VerifyResult } from "../.
 export async function gather(ctx: ActionContext): Promise<string | ActionContent>;
 
 // Optional: inspect output and decide whether to accept, reject, or retry
-// Only called when maxRetries > 0
+// Runs even with maxRetries: 0; maxRetries controls additional attempts
 export async function verify(ctx: ActionContext, result: RunResult): Promise<VerifyResult>;
 
 // Optional: run side effects after the agent session completes successfully

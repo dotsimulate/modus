@@ -44,6 +44,7 @@ import {
 import {
   interactWithSession, startSession, getActiveSession, switchProfile,
   attachArtifactToSession, watchSession, deliverToSession, type ActiveSession,
+  emitGlobalSessionEvent,
 } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
@@ -62,6 +63,9 @@ import type {
   ActionTerminalHandle,
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
+import { executeOperation, operationCapacityAvailable, stopOperations } from "./action-operation";
+import { operationConfigError, validateActionInputs } from "./action-operation-config";
+import { assertHarnessCapability } from "./harness-context";
 import { sendNotifications, sendActionNotification } from "./notify";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
@@ -138,10 +142,24 @@ export function safeArtifactFilename(filename: string): string {
 
 const actionStates = new Map<string, ActionState>();
 let tickInterval: ReturnType<typeof setInterval> | null = null;
+const actionLoadErrors: Array<{ name: string; error: string; projectCwd?: string; pluginId?: string }> = [];
+
+export function getActionLoadErrors(opts: ActionResolveOpts = {}) {
+  return actionLoadErrors.filter(entry => {
+    if (entry.pluginId && !isPluginAllowed(entry.pluginId)) return false;
+    if (!entry.projectCwd) return true;
+    if (!isProjectAutomationAllowed(entry.projectCwd)) return false;
+    if (opts.cwd && normalizeCwd(opts.cwd) !== normalizeCwd(entry.projectCwd)) return false;
+    return !opts.userProfile || userProfileProjectCwds(opts.userProfile).includes(normalizeCwd(entry.projectCwd));
+  });
+}
 
 type ActionResolveOpts = {
   userProfile?: string | null;
   cwd?: string | null;
+  inputs?: Record<string, unknown>;
+  caller?: string;
+  parentRunId?: number;
 };
 
 type ActionInfo = ActionConfig & {
@@ -278,7 +296,7 @@ function actionToInfo(s: ActionState): ActionInfo {
     ...(s.pluginPath ? { pluginPath: s.pluginPath } : {}),
     nextRunAt: s.nextRunAt,
     lastRunAt: s.lastRunAt,
-    lastStatus: exec?.lastStatus ?? null,
+    lastStatus: exec?.lastStatus ?? (s.config.execution ? dbGetActionRuns(s.config.name, 1, s.scopeKey)[0]?.status ?? null : null),
     running: activeSessions > 0,
     activeSessions,
     cycleNumber: exec?.cycleNumber ?? 1,
@@ -390,7 +408,7 @@ function handleOnExhausted(state: ActionState): void {
   // Notify on exhaustion
   if (state.config.notify?.length) {
     sendActionNotification(state.config.notify, "exhausted", {
-      actionName: state.config.name, profile: state.config.agentProfile,
+      actionName: state.config.name, profile: state.config.agentProfile ?? "",
     }).catch(err => console.error(`[actions] Exhaustion notification error:`, err));
   }
 
@@ -496,6 +514,9 @@ function loadActionsFromDir(
     if (!existsSync(configPath)) continue;
     try {
       const authoredConfig = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
+      authoredConfig.trigger ??= { type: "manual" };
+      authoredConfig.enabled ??= true;
+      authoredConfig.description ??= "";
       if (authoredConfig.trigger.type === "webhook" && !authoredConfig.trigger.token) {
         authoredConfig.trigger.token = crypto.randomUUID();
         writeFileSync(configPath, JSON.stringify(authoredConfig, null, 2) + "\n", "utf-8");
@@ -506,6 +527,8 @@ function loadActionsFromDir(
       // into the authored action file (especially as machine-specific paths).
       const config = structuredClone(authoredConfig);
       config.name = name;
+      const configError = operationConfigError(config);
+      if (configError) throw new Error(configError);
       config.origin = source?.origin ?? "harness";
       if (plugin) {
         config.pluginId = plugin.id;
@@ -588,12 +611,14 @@ function loadActionsFromDir(
         }
       }
     } catch (err) {
+      actionLoadErrors.push({ name, error: String((err as Error).message ?? err), projectCwd, pluginId: plugin?.id });
       console.error(`[actions] Failed to load action "${name}":`, err);
     }
   }
 }
 
 function loadActions(): void {
+  actionLoadErrors.length = 0;
   const seen = new Set<string>();
   loadActionsFromDir(CORE_ACTIONS_DIR, seen);
   loadActionsFromDir(ACTIONS_DIR, seen);
@@ -740,7 +765,12 @@ function buildActionDB(
     searchSessions: (query, limit = 20) => searchSessions(query, limit, cwdScope).map(mapSearchHit),
     getEvents: (sessionId, afterSeq = 0) => getEvents(sessionId, afterSeq).map(mapEvent),
     getSessionMessages: (sessionId) => dbGetSessionMessages(sessionId),
-    updateSessionTitle,
+    // Written after the session settled, so the index refresh that followed
+    // the turn has already happened — only an event reaches open clients.
+    updateSessionTitle: (sessionId, title) => {
+      updateSessionTitle(sessionId, title);
+      emitGlobalSessionEvent({ type: "session:title", sessionId, title });
+    },
     addSessionTag,
     removeSessionTag,
     getActivityLog,
@@ -784,12 +814,111 @@ function resolveActionProfileReference(
 
 // ── Core: Fire an Action ──
 
+const operationControllers = new Map<number, AbortController>();
+
+async function fireOperationAction(state: ActionState, trigger: TriggerInfo, chainDepth: number, overrides?: ActionResolveOpts): Promise<void> {
+  if (!actionAllowedByVaultPolicy(state) || chainDepth >= MAX_CHAIN_DEPTH) return;
+  const cfg = structuredClone(state.config);
+  const busy = [...state.activeExecutions.values()].filter(e => e.runStartedAt !== null).length;
+  if (busy >= (cfg.concurrency ?? 1)) return;
+  const exec = findActiveExecution(state) ?? createExecution(cfg.name, state.scopeKey, cfg);
+  state.activeExecutions.set(exec.id, exec);
+  exec.runStartedAt = Date.now();
+  exec.currentSessionId = "pending";
+  exec.cycleStartedAt ??= Date.now();
+  exec.runNumber++;
+  const controller = new AbortController();
+  operationControllers.set(exec.id, controller);
+  const userProfile = overrides?.userProfile ?? cfg.userProfile ?? undefined;
+  const runNumber = getNextRunNumber(cfg.name, state.scopeKey);
+  const answerer = actionAnswerer(cfg);
+  const runId = insertActionRun(cfg.name, state.scopeKey, runNumber, null, Date.now(), exec.cycleNumber, trigger.type, userProfile, exec.id, answerer);
+  if (cfg.trigger.type === "interval" && cfg.trigger.from === "start") state.nextRunAt = cfg.enabled ? Date.now() + parseInterval(cfg.trigger.every) : null;
+  let result: RunResult = { status: "error", response: null, summary: null, costUsd: 0, durationMs: 0, sessionId: null, error: null, answerer };
+  try {
+    const error = operationConfigError(cfg);
+    if (error) throw new Error(error);
+    const inputs = validateActionInputs(cfg.inputSchema, trigger.inputs ?? overrides?.inputs ?? {});
+    const self = {
+      kind: "action" as const, name: cfg.name, sessionId: null, caller: "system" as const,
+      cwd: cfg.cwd ?? state.projectCwd ?? process.cwd(), userProfile,
+      pluginId: state.pluginId ?? (state.origin === "harness" ? CORE_PLUGIN_ID : undefined),
+      trust: cfg.trust ?? (state.origin === "harness" ? "builtin" as const : "reviewed" as const), capabilities: cfg.capabilities ?? {},
+    };
+    const hctx = buildHarnessContext(self);
+    const outcome = await executeOperation({
+      config: { ...cfg, cwd: self.cwd }, actionDir: state.actionDir, runId, inputs, trigger, controller,
+      artifactDir: join(APP_PATHS.dataDir, "action-artifacts", String(runId)),
+      assertShell: () => { if (!actionAllowedByVaultPolicy(state)) throw new Error("Action denied by Vault policy"); assertHarnessCapability(self, "shell"); },
+      onUpdate: operation => updateActionRun(runId, { operation }),
+      async request(op, args) {
+        controller.signal.throwIfAborted();
+        if (!actionAllowedByVaultPolicy(state)) throw new Error("Action denied by Vault policy");
+        switch (op) {
+          case "secrets.resolve":
+            if (typeof args !== "string") throw new Error("Secret reference must be a string");
+            return hctx.secrets.resolve(args);
+          case "sessions.create":
+            if (!args || typeof args.profile !== "string" || typeof args.prompt !== "string") throw new Error("Session handoff requires profile and prompt");
+            return hctx.sessions.create({ profile: args.profile, prompt: args.prompt });
+          case "actions.trigger": {
+            assertHarnessCapability(self, "actionTrigger");
+            if (!args || typeof args.name !== "string") throw new Error("Action handoff requires name");
+            const target = resolveActionState(args.name, { cwd: self.cwd, userProfile });
+            if (!target || !actionAllowedByVaultPolicy(target)) throw new Error("Action handoff target unavailable");
+            if (chainDepth + 1 >= MAX_CHAIN_DEPTH) throw new Error("Action handoff depth exceeded");
+            if (!["manual", "interval"].includes(target.config.trigger.type)) throw new Error("Action handoff requires manual or interval target");
+            validateActionInputs(target.config.inputSchema, args.inputs ?? {});
+            if ([...target.activeExecutions.values()].filter(e => e.currentSessionId !== null).length >= (target.config.concurrency ?? 1) || (target.config.execution && !operationCapacityAvailable())) throw new Error("Action handoff target is busy");
+            void fireAction(target, { type: "manual", inputs: args.inputs, parentRunId: runId, caller: `action:${cfg.name}` }, chainDepth + 1, { userProfile }).catch(err => console.error("[actions] Handoff failed", err));
+            return;
+          }
+          default: throw new Error(`Unknown code action capability: ${op}`);
+        }
+      },
+    });
+    result = {
+      ...result, operation: outcome.receipt,
+      status: outcome.receipt.outcome === "succeeded" ? "done" : outcome.receipt.outcome === "skipped" ? "skipped" : "error",
+      summary: outcome.receipt.result?.summary ?? null,
+      error: outcome.error ?? null,
+    };
+  } catch (error) { result.error = String((error as Error).message ?? error); }
+  finally {
+    result.durationMs = Date.now() - (exec.runStartedAt ?? Date.now());
+    try {
+      updateActionRun(runId, { status: result.status, completedAt: Date.now(), summary: result.summary ?? undefined, error: result.error ?? undefined, operation: result.operation });
+    } catch (error) { console.error(`[actions] Unable to finalize run ${runId}:`, error); }
+    operationControllers.delete(exec.id);
+    exec.currentSessionId = null;
+    exec.runStartedAt = null;
+    exec.lastStatus = result.status;
+    exec.cycleRunCount++;
+    state.lastRunAt = Date.now();
+    if (result.operation?.outcome === "cancelled" || result.operation?.outcome === "timed-out") {
+      exec.status = "cancelled";
+      dbUpdateExecution(exec.id, { status: "cancelled", completedAt: Date.now() });
+      state.activeExecutions.delete(exec.id);
+    } else if (isExecutionExhausted(exec, cfg)) { closeExecution(exec, state); handleOnExhausted(state); }
+    else if (cfg.trigger.type !== "interval" && cfg.trigger.type !== "action") closeExecution(exec, state);
+    if (state.config.trigger.type === "interval" && state.config.trigger.from !== "start") state.nextRunAt = state.config.enabled ? Date.now() + parseInterval(state.config.trigger.every) : null;
+    logActivity({ eventType: "action_complete", actionName: cfg.name, userProfile, summary: `Action "${cfg.name}" run #${runNumber}: ${result.operation?.outcome ?? result.status}`, metadata: { runId, executionId: exec.id, durationMs: result.durationMs } });
+  }
+  if (cfg.notify?.length) void sendNotifications(cfg.notify, result, { actionName: cfg.name, runNumber, profile: cfg.agentProfile ?? "" }).catch(err => updateActionRun(runId, { afterRunError: String(err) }));
+  for (const watcher of actionStates.values()) {
+    const watch = watcher.config.trigger;
+    if (watch.type !== "action" || watch.source !== cfg.name || !watcher.config.enabled || !chainScopeMatches(state, watcher)) continue;
+    if (watch.condition === "any" || watch.condition === result.status) void fireAction(watcher, { type: "action", source: cfg.name, payload: result, parentRunId: runId }, chainDepth + 1).catch(err => console.error("[actions] Chain failed", err));
+  }
+}
+
 async function fireAction(
   state: ActionState,
   triggerInfo: TriggerInfo,
   chainDepth: number = 0,
   overrides?: ActionResolveOpts,
 ): Promise<void> {
+  if (state.config.execution) return fireOperationAction(state, triggerInfo, chainDepth, overrides);
   const name = state.config.name;
   if (!actionAllowedByVaultPolicy(state)) {
     console.log(`[actions] "${name}" is disabled by Vault policy — dropping ${triggerInfo.type} trigger`);
@@ -896,7 +1025,7 @@ async function fireAction(
     if (answererConfigError) throw new Error(answererConfigError);
     const profileWarnings: string[] = [];
     const initialProfile = resolveActionProfileReference(
-      cfg.agentProfile,
+      cfg.agentProfile ?? "",
       state,
       runId,
       profileWarnings,
@@ -943,7 +1072,7 @@ async function fireAction(
         trigger: triggerInfo,
         actionDir,
         cwd: cfg.cwd,
-        inputs: cfg.inputs ?? {},
+        inputs: { ...cfg.inputs, ...validateActionInputs(cfg.inputSchema, triggerInfo.inputs ?? overrides?.inputs ?? {}) },
         stepIndex: 0,
         totalSteps,
         previousStepResult: null,
@@ -1366,7 +1495,7 @@ async function fireAction(
     // Notifications (after afterRun, before chain triggers)
     if (cfg.notify?.length) {
       sendNotifications(cfg.notify, runResult!, {
-        actionName: name, runNumber, profile: cfg.agentProfile,
+        actionName: name, runNumber, profile: cfg.agentProfile ?? "",
       }).catch(err => console.error(`[actions] Notification error for "${name}":`, err));
     }
 
@@ -1418,7 +1547,7 @@ async function fireAction(
     // Notifications for errors (non-transient-retry — those already returned above)
     if (cfg.notify?.length && runResult) {
       sendNotifications(cfg.notify, runResult, {
-        actionName: name, runNumber, profile: cfg.agentProfile,
+        actionName: name, runNumber, profile: cfg.agentProfile ?? "",
       }).catch(err2 => console.error(`[actions] Notification error for "${name}":`, err2));
     }
   } finally {
@@ -1516,7 +1645,7 @@ function tick(): void {
     // by 15 min the agent has committed to a directory, safe to reuse the slot)
     const STUCK_TIMEOUT_MS = 15 * 60_000;
     for (const e of state.activeExecutions.values()) {
-      if (e.currentSessionId !== null && e.runStartedAt && now - e.runStartedAt > STUCK_TIMEOUT_MS) {
+      if (!state.config.execution && e.currentSessionId !== null && e.runStartedAt && now - e.runStartedAt > STUCK_TIMEOUT_MS) {
         console.log(`[actions] "${name}" session ${e.currentSessionId} stuck for ${Math.round((now - e.runStartedAt) / 1000)}s — force-clearing`);
         e.currentSessionId = null;
         e.runStartedAt = null;
@@ -1592,6 +1721,7 @@ export function initActions(): void {
 }
 
 export function stopActions(): void {
+  stopOperations();
   if (tickInterval) {
     clearInterval(tickInterval);
     tickInterval = null;
@@ -1617,6 +1747,11 @@ export function getActionScopeKey(name: string, opts: ActionResolveOpts = {}): s
 export async function triggerAction(name: string, opts: ActionResolveOpts = {}): Promise<boolean> {
   const state = resolveActionState(name, opts);
   if (!state) return false;
+  if (!actionAllowedByVaultPolicy(state)) return false;
+  const configError = operationConfigError(state.config);
+  if (configError) throw new Error(configError);
+  validateActionInputs(state.config.inputSchema, opts.inputs ?? {});
+  if (state.config.execution && !operationCapacityAvailable()) return false;
   // Only manual and interval actions can be manually triggered — session/action/webhook
   // actions depend on payloads constructed by their trigger path and will crash without them.
   const triggerType = state.config.trigger.type;
@@ -1628,7 +1763,7 @@ export async function triggerAction(name: string, opts: ActionResolveOpts = {}):
   // Match fireAction's concurrency check: count running sessions, not total executions
   const activeSessions = [...state.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
   if (activeSessions >= maxConcurrency) return false;
-  const triggerInfo: TriggerInfo = { type: "manual" };
+  const triggerInfo: TriggerInfo = { type: "manual", inputs: opts.inputs, caller: opts.caller, parentRunId: opts.parentRunId };
   fireAction(state, triggerInfo, 0, opts).catch(err => {
     console.error(`[actions] Manual trigger error for "${name}":`, err);
   });
@@ -1650,6 +1785,12 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
   if (state.config.trigger.type !== "webhook") return { ok: false, error: "action is not webhook-triggered" };
   if (!state.config.enabled) return { ok: false, error: "action is disabled" };
   if (!actionAllowedByVaultPolicy(state)) return { ok: false, error: "action is disabled by Vault policy" };
+  let invocationInputs: Record<string, unknown> | undefined;
+  if (state.config.execution || state.config.inputSchema) {
+    try { invocationInputs = validateActionInputs(state.config.inputSchema, payload ?? {}); }
+    catch (error) { return { ok: false, error: String((error as Error).message) }; }
+  }
+  if (state.config.execution && !operationCapacityAvailable()) return { ok: false, error: "Global operation capacity reached" };
 
   // ── Session routing: if sessionKey is configured, try to continue an existing session ──
   const sessionKey = state.config.trigger.sessionKey;
@@ -1687,7 +1828,7 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
     webhookSessionTag = `${name}:${sessionKey}:${String((payload as any)[sessionKey])}`;
   }
 
-  const triggerInfo: TriggerInfo = { type: "webhook", payload, webhookSessionTag };
+  const triggerInfo: TriggerInfo = { type: "webhook", payload, webhookSessionTag, inputs: invocationInputs };
   fireAction(state, triggerInfo).catch(err => {
     console.error(`[actions] Webhook trigger error for "${name}":`, err);
   });
@@ -1770,6 +1911,7 @@ export function resetAction(name: string, opts: ActionResolveOpts = {}): boolean
   if (!state) return false;
 
   // Close all active executions as "reset" (data preserved in DB)
+  if ([...state.activeExecutions.keys()].some(id => operationControllers.has(id))) return false;
   for (const [id, exec] of state.activeExecutions) {
     exec.status = "reset";
     dbUpdateExecution(id, { status: "reset", completedAt: Date.now() });
@@ -1840,6 +1982,11 @@ export function cancelExecution(actionName: string, executionId: number, opts: A
   if (!state) return false;
   const exec = state.activeExecutions.get(executionId);
   if (!exec) return false;
+  const operation = operationControllers.get(executionId);
+  if (operation) {
+    operation.abort();
+    return true;
+  }
   exec.status = "cancelled";
   dbUpdateExecution(executionId, { status: "cancelled", completedAt: Date.now() });
   state.activeExecutions.delete(executionId);

@@ -140,7 +140,7 @@ test("a provider event shares one receipt time across semantic and raw persisten
 
   expect(body).toContain("const receivedAt = Date.now()");
   expect(body).toContain("persistSemanticMessage(session, event, receivedAt)");
-  expect(body).toContain("JSON.stringify(event),\n    receivedAt,");
+  expect(body).toMatch(/JSON\.stringify\(event\),\r?\n    receivedAt,/);
 });
 
 function methodBody(source: string, name: string): string {

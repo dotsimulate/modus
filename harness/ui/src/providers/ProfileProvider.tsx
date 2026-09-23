@@ -11,6 +11,7 @@ import { loadAndApplyProjectUiState } from "../project-ui-theme";
 import { applyInterfaceSettings, resolveEffectiveInterfaceSettings } from "../interface-settings";
 import { ProfileContext } from "./ProfileContext";
 import { backendStorageKey } from "../backendTarget";
+import { visibleAgentProfiles } from "../profile-visibility";
 
 const USER_PROFILE_KEY = backendStorageKey("harness:active-user-profile");
 
@@ -82,14 +83,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   //     rest in their original order.
   const visibleProfiles = useMemo(() => {
     const lastProfile = activeUP ? uiState.lastAgentProfile : undefined;
-    const hiddenPluginProfiles = new Set(activeUP?.hiddenPluginProfiles ?? []);
-    let result = activeUP?.agentProfiles?.length
-      ? profiles.filter((p) =>
-          p.origin === "project"
-          || (p.origin === "plugin" && !hiddenPluginProfiles.has(p.name))
-          || activeUP.agentProfiles!.includes(p.name)
-          || (!!p.displayName && activeUP.agentProfiles!.includes(p.displayName)))
-      : profiles.filter((p) => p.origin !== "plugin" || !hiddenPluginProfiles.has(p.name));
+    let result = visibleAgentProfiles(profiles, activeUP);
     if (lastProfile) {
       const lastIdx = result.findIndex((p) => p.name === lastProfile || p.displayName === lastProfile);
       if (lastIdx >= 0) {

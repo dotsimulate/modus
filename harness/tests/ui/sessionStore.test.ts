@@ -11,6 +11,7 @@ import {
   loadOlderSessionHistory,
   loadSessionMessageDetails,
   removeSession,
+  rekeySession,
   setSessionState,
   subscribeStore,
   shouldRefetchEmptyResolvedHistory,
@@ -648,5 +649,51 @@ describe("sessionStore init rekey", () => {
     expect(getSessionState("pending-draft")).toBeNull();
     expect(getSessionState("11111111-1111-4111-8111-111111111111")?.sessionId)
       .toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  // The backend already renamed the row; staying on the old id strands the chat
+  // (status and steer 404, typed messages vanish). Unlike init, this is honoured
+  // for a durable id — and it adds nothing to the transcript.
+  test("follows a backend rename of a durable session id", () => {
+    const oldId = "22222222-2222-4222-8222-222222222222";
+    const newId = "33333333-3333-4333-8333-333333333333";
+    setSessionState(oldId, createInitialState(oldId));
+    const before = getSessionState(oldId)!.messages.length;
+    applyEvent(oldId, { type: "system", subtype: "session_rekeyed", from: oldId, to: newId }, 0);
+    expect(getSessionState(oldId)).toBeNull();
+    expect(getSessionState(newId)?.sessionId).toBe(newId);
+    expect(getSessionState(newId)!.messages.length).toBe(before);
+
+    // Events still tagged with the old id land on the renamed session.
+    applyEvent(oldId, { type: "system", subtype: "switch", toProfile: "p" }, 1);
+    expect(getStoreSessionIds()).not.toContain(oldId);
+  });
+});
+
+describe("sessionStore empty-id rejection", () => {
+  // A create that failed returns a body with no `sessionId`. The id used to
+  // reach the store anyway, become a key, and break every later traversal of
+  // the map — eviction and selection included — until the page was reloaded.
+  afterEach(() => {
+    unsubscribeAll();
+    for (const id of getStoreSessionIds()) removeSession(id);
+  });
+
+  test("rekeySession refuses an empty new id and keeps the original entry", () => {
+    setSessionState("pending-empty", createInitialState("pending-empty"));
+
+    rekeySession("pending-empty", "" as unknown as string);
+
+    expect(getStoreSessionIds()).toContain("pending-empty");
+    expect(getStoreSessionIds().every((id) => !!id)).toBe(true);
+  });
+
+  test("ensureSubscribed refuses an empty id, so eviction still traverses", async () => {
+    setSessionState("ses-keep", createInitialState("ses-keep"));
+
+    await ensureSubscribed(undefined as unknown as string);
+
+    expect(getStoreSessionIds()).toEqual(["ses-keep"]);
+    expect(() => evictInactiveSessions("ses-keep")).not.toThrow();
   });
 });

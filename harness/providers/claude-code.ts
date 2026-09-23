@@ -223,6 +223,12 @@ function normalizeClaudeEffort(effort?: string): string | undefined {
   return effort;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 function resolveClaudeResumeTarget(sessionId?: string): ResumeTargetSelection {
   if (!sessionId) return { target: null, source: "none" };
   const row = getSession(sessionId);
@@ -714,11 +720,20 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       providerLog(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} resumeSource=${resumeSelection.source} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
 
       // Fork options are one-shot — only used for the initial query(), never stored
+      // A fresh conversation runs under the Modus session id (`--session-id`), so
+      // init reports the id the caller already holds and no rekey happens. A
+      // rekey after startSessionWithMoves() stopped waiting stranded the UI on a
+      // deleted id: the store deliberately ignores init ids on UUID keys.
+      const freshSessionId = !isBranch && !resumeTarget
+        && isUuid(session.sessionId)
+        && !claudeNativeHistoryExists(session.sessionId)
+        ? session.sessionId
+        : undefined;
       const forkOpts = isBranch ? {
         forkSession: true,
         sessionId: opts.sessionId,
         resumeSessionAt: opts.branchMessageUUID ?? undefined,
-      } : {};
+      } : freshSessionId ? { sessionId: freshSessionId } : {};
 
       _timing("pre-sdk-options");
       const resolvedMcp = hasMcp ? resolveEnvVars(mergedMcp) : {};

@@ -14,6 +14,7 @@ import {
   findTurnBySeq,
   segmentContentBlocks,
   segmentMessage,
+  streamingTailSegments,
   tallyToolNames,
   turnProseWeight,
   turnToolCalls,
@@ -29,6 +30,27 @@ function msg(partial: Partial<Message> & Pick<Message, "role">): Message {
 }
 
 describe("segmentContentBlocks", () => {
+  test("a growing tool run keeps its identity across calls, output updates, and trailing prose", () => {
+    const blocks: MessageContentBlock[] = [
+      { type: "text", text: "checking" },
+      { type: "tool_call", toolCall: { ...tool("Read", "a"), status: "running" } },
+    ];
+    const runKey = () => segmentContentBlocks("m1", blocks).find((s) => s.kind === "tools")!.key;
+    const initialKey = runKey();
+    blocks[1] = { type: "tool_call", toolCall: { ...tool("Read", "a"), result: "done" } };
+    expect(runKey()).toBe(initialKey);
+    for (let i = 0; i < 6; i++) {
+      blocks.push({ type: "tool_call", toolCall: tool("Read", `next-${i}`) });
+      expect(runKey()).toBe(initialKey);
+    }
+    blocks.push({ type: "text", text: "finished" });
+    expect(runKey()).toBe(initialKey);
+    blocks.push({ type: "tool_call", toolCall: tool("Read", "another-run") });
+    const runs = segmentContentBlocks("m1", blocks).filter((s) => s.kind === "tools");
+    expect(runs[0]!.key).toBe(initialKey);
+    expect(runs[1]!.key).not.toBe(initialKey);
+  });
+
   test("folds consecutive tool calls into one run", () => {
     const blocks: MessageContentBlock[] = [
       { type: "text", text: "looking" },
@@ -128,6 +150,51 @@ describe("segmentMessage", () => {
     const segments = segmentMessage(message);
     expect(segments).toHaveLength(1);
     expect(segments[0]!.kind === "deferred" && segments[0]!.count).toBe(12);
+  });
+});
+
+describe("streamingTailSegments", () => {
+  test("a round still streaming after a tool shows past the finalized blocks", () => {
+    const message = msg({
+      role: "assistant",
+      thinking: "let me looknow edit",
+      content: "checkingand",
+      contentBlocks: [
+        { type: "thinking", thinking: "let me look" },
+        { type: "text", text: "checking" },
+        { type: "tool_call", toolCall: tool("Read") },
+      ],
+    });
+    const tail = streamingTailSegments(message);
+    expect(tail.map((s) => s.kind)).toEqual(["thinking", "text"]);
+    expect(tail[0]!.kind === "thinking" && tail[0]!.thinking).toBe("now edit");
+    expect(tail[1]!.kind === "text" && tail[1]!.text).toBe("and");
+  });
+
+  test("a confirmed round has no tail, so nothing renders twice", () => {
+    const message = msg({
+      role: "assistant",
+      thinking: "let me look",
+      content: "checking",
+      contentBlocks: [
+        { type: "thinking", thinking: "let me look" },
+        { type: "text", text: "checking" },
+      ],
+    });
+    expect(streamingTailSegments(message)).toEqual([]);
+  });
+
+  test("a flat field that does not extend its blocks is not a tail", () => {
+    const message = msg({
+      role: "assistant",
+      content: "ignored",
+      contentBlocks: [{ type: "text", text: "after" }],
+    });
+    expect(streamingTailSegments(message)).toEqual([]);
+  });
+
+  test("a message without blocks renders from its flat fields instead", () => {
+    expect(streamingTailSegments(msg({ role: "assistant", thinking: "hmm", content: "ok" }))).toEqual([]);
   });
 });
 

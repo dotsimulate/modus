@@ -219,6 +219,7 @@ export type {
   // Process Registry
   ProcessInfo,
   ProcessSnapshot,
+  MemoryStatus,
   // Web positions
   WebPosition,
   // Filesystem events

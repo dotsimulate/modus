@@ -26,12 +26,51 @@ describe("control intent parsing", () => {
       .toEqual({ intent: "transcript.scrollByTurns", delta: -3 });
     expect(parseControlIntent({ intent: "session.cycle", delta: 1 }))
       .toEqual({ intent: "session.cycle", delta: 1 });
+    expect(parseControlIntent({ intent: "dictation.toggle" }))
+      .toEqual({ intent: "dictation.toggle" });
   });
 
   test("the vocabulary list matches what parses", () => {
     for (const name of CONTROL_INTENT_NAMES) {
-      expect(parseControlIntent({ intent: name, delta: 1 })).not.toBeNull();
+      expect(parseControlIntent({ intent: name, delta: 1, unit: "line", fraction: 0.5 })).not.toBeNull();
     }
+  });
+
+  test("a distance scroll takes a unit and a finite, non-zero amount", () => {
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "line", delta: -3 }))
+      .toEqual({ intent: "transcript.scroll", unit: "line", delta: -3 });
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "px", delta: 120 }))
+      .toEqual({ intent: "transcript.scroll", unit: "px", delta: 120 });
+    // Half a page is a real request, unlike half a turn.
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "page", delta: 0.5 }))
+      .toEqual({ intent: "transcript.scroll", unit: "page", delta: 0.5 });
+
+    expect(parseControlIntent({ intent: "transcript.scroll", delta: 3 })).toBeNull();
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "em", delta: 3 })).toBeNull();
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "toString", delta: 3 })).toBeNull();
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "line", delta: 0 })).toBeNull();
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "line", delta: Infinity })).toBeNull();
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "line", delta: "3" })).toBeNull();
+  });
+
+  test("a distance scroll is clamped per unit", () => {
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "line", delta: 5_000 }))
+      .toEqual({ intent: "transcript.scroll", unit: "line", delta: 999 });
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "page", delta: -500 }))
+      .toEqual({ intent: "transcript.scroll", unit: "page", delta: -99 });
+    expect(parseControlIntent({ intent: "transcript.scroll", unit: "px", delta: 1e9 }))
+      .toEqual({ intent: "transcript.scroll", unit: "px", delta: 100_000 });
+  });
+
+  test("an absolute scroll clamps its fraction into the transcript", () => {
+    expect(parseControlIntent({ intent: "transcript.scrollTo", fraction: 0.25 }))
+      .toEqual({ intent: "transcript.scrollTo", fraction: 0.25 });
+    expect(parseControlIntent({ intent: "transcript.scrollTo", fraction: 1.5 }))
+      .toEqual({ intent: "transcript.scrollTo", fraction: 1 });
+    expect(parseControlIntent({ intent: "transcript.scrollTo", fraction: -1 }))
+      .toEqual({ intent: "transcript.scrollTo", fraction: 0 });
+    expect(parseControlIntent({ intent: "transcript.scrollTo" })).toBeNull();
+    expect(parseControlIntent({ intent: "transcript.scrollTo", fraction: NaN })).toBeNull();
   });
 
   test("rejects anything outside the allowlist", () => {

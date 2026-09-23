@@ -2,6 +2,7 @@
 
 import type { TurnMeta } from "../turn-meta";
 import type { ActionAnswerer, ActionCompletionMetadata } from "../action-answerer-types";
+import type { ActionOperation, ActionInputSchema, OperationReceipt } from "../action-operation-types";
 
 export type { TurnMeta, ActionAnswerer, ActionCompletionMetadata };
 
@@ -775,10 +776,21 @@ export type SSESystemEvent = {
   seq: number;
 };
 
-/** Replayed user messages during catch-up. */
+/**
+ * Replayed user messages during catch-up.
+ *
+ * `"prompt"` is a delivered turn. `"prompt_pending"` is the queue-time record of
+ * a message the harness accepted but no provider had yet received; it replays so
+ * nothing is lost across a reconnect, and it is not a transcript turn — a client
+ * that renders both shows the same message twice.
+ */
 export type SSEUserEvent = {
   event: "user";
-  data: { type: "user"; subtype: "prompt"; message: { role: "user"; content: string } };
+  data: {
+    type: "user";
+    subtype: "prompt" | "prompt_pending";
+    message: { role: "user"; content: string };
+  };
   seq: number;
 };
 
@@ -1415,7 +1427,7 @@ export type ActionSummary = ActionInfo;
 export type ActionDetail = ActionInfo;
 
 /**
- * An automated agent workflow that spawns sessions on triggers. Actions define what agent profile
+ * A named operation that runs commands, code, completions, or sessions on triggers. AI actions define what agent profile
  * to use, how to trigger, retry/cycle limits, and notification channels.
  */
 export type ActionInfo = {
@@ -1429,7 +1441,11 @@ export type ActionInfo = {
   scopeKey?: string;
   /** Project root for project-local actions. */
   projectCwd?: string;
-  agentProfile: string;
+  agentProfile?: string;
+  execution?: ActionOperation;
+  inputSchema?: ActionInputSchema;
+  timeoutMs?: number;
+  cwd?: string;
   /** Absent is the historic session-spawning path. */
   answerer?: ActionAnswerer;
   trigger: ActionTrigger;
@@ -1489,6 +1505,7 @@ export type ActionRun = {
   /** Persisted execution path; old rows normalize to session. */
   answerer: ActionAnswerer;
   completion?: ActionCompletionMetadata;
+  operation?: OperationReceipt;
 };
 
 export type ActionExecution = {
@@ -2492,6 +2509,21 @@ export type ProcessInfo = {
   activeMoves: string[];
   subscribers: number;
   canKill: boolean;
+};
+
+/** System memory and backend session admission limits. */
+export type MemoryStatus = {
+  totalGB: number;
+  freeGB: number;
+  usedGB: number;
+  usagePercent: number;
+  pressureThreshold: number;
+  pressureBlockingEnabled: boolean;
+  maxHeapPerProcessMB: number;
+  maxConcurrentSessions: number;
+  /** Absent on backends that only support startup configuration. */
+  concurrencyLimitMutable?: boolean;
+  watchdogRunning: boolean;
 };
 
 /** Snapshot of all managed processes at a point in time. */

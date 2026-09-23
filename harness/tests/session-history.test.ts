@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { reconstructSessionTurns, shouldRecoverSessionHistory, summarizeContentBlocks } from "../session-history";
+import {
+  QUEUED_PROMPT_SUBTYPE,
+  reconstructSessionTurns,
+  shouldRecoverSessionHistory,
+  summarizeContentBlocks,
+} from "../session-history";
 
 function event(seq: number, type: string, subtype: string | null, data: unknown) {
   return { seq, type, subtype, data: JSON.stringify(data), created_at: 1_000 + seq };
@@ -120,5 +125,49 @@ describe("incomplete semantic history recovery", () => {
       name: "modus_submit",
       input: { token: "mapi-html-1", data: { op: "show" } },
     }]);
+  });
+});
+
+describe("queued prompt rows", () => {
+  /**
+   * Every send writes twice: once when the harness accepts the message, once
+   * when the provider echoes it back on delivery. Only the second is a turn.
+   */
+  test("renders one user turn per message despite the queue-time row", () => {
+    const turns = reconstructSessionTurns([
+      event(1, "user", QUEUED_PROMPT_SUBTYPE, { subtype: QUEUED_PROMPT_SUBTYPE, message: { content: "explain jev" } }),
+      event(2, "user", "prompt", { subtype: "prompt", message: { content: "explain jev" } }),
+      event(3, "assistant", null, { message: { content: [{ type: "text", text: "it decides" }] } }),
+    ]);
+
+    expect(turns.filter((turn) => turn.role === "user")).toHaveLength(1);
+    expect(turns[0]).toMatchObject({ role: "user", seq: 2, text: "explain jev" });
+  });
+
+  test("keeps a message queued mid-turn out of the turn it was queued during", () => {
+    const turns = reconstructSessionTurns([
+      event(1, "user", "prompt", { subtype: "prompt", message: { content: "first" } }),
+      event(2, "assistant", null, { message: { content: [{ type: "text", text: "thinking" }] } }),
+      // Sent while the assistant was still streaming, so it persists here.
+      event(3, "user", QUEUED_PROMPT_SUBTYPE, { subtype: QUEUED_PROMPT_SUBTYPE, message: { content: "second" } }),
+      event(4, "assistant", null, { message: { content: [{ type: "text", text: " done" }] } }),
+      // Delivered only once the turn ended.
+      event(5, "user", "prompt", { subtype: "prompt", message: { content: "second" } }),
+    ]);
+
+    expect(turns.map((turn) => turn.role)).toEqual(["user", "assistant", "user"]);
+    expect(turns[1]).toMatchObject({ text: "thinking done" });
+    expect(turns[2]).toMatchObject({ role: "user", seq: 5, text: "second" });
+  });
+
+  test("still renders two turns when the same text is genuinely sent twice", () => {
+    const turns = reconstructSessionTurns([
+      event(1, "user", QUEUED_PROMPT_SUBTYPE, { subtype: QUEUED_PROMPT_SUBTYPE, message: { content: "again" } }),
+      event(2, "user", "prompt", { subtype: "prompt", message: { content: "again" } }),
+      event(3, "user", QUEUED_PROMPT_SUBTYPE, { subtype: QUEUED_PROMPT_SUBTYPE, message: { content: "again" } }),
+      event(4, "user", "prompt", { subtype: "prompt", message: { content: "again" } }),
+    ]);
+
+    expect(turns.filter((turn) => turn.role === "user")).toHaveLength(2);
   });
 });

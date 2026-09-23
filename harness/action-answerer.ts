@@ -13,7 +13,8 @@ const COMPLETION_UNSUPPORTED_FIELDS: Array<keyof ActionConfig> = [
   "skills",
 ];
 
-export function actionAnswerer(config: Pick<ActionConfig, "answerer">): "session" | "completion" {
+export function actionAnswerer(config: Pick<ActionConfig, "answerer" | "execution">): "session" | "completion" | "command" | "code" {
+  if (config.execution) return config.execution.type;
   return config.answerer === "completion" ? "completion" : "session";
 }
 

@@ -980,3 +980,27 @@
     padding-right: 0;
   }
 }
+.action-operation-controls, .action-operation-details {
+  min-width: 0;
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+.action-operation-controls form, .action-operation-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.action-operation-controls input, .action-operation-controls select {
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  background: transparent;
+}
+.action-operation-details pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: calc(11px * var(--font-scale, 1));
+}
+.action-operation-details summary { cursor: pointer; }

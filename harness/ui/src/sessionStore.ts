@@ -471,6 +471,9 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
       continue;
     }
 
+    // The entry object moves to the new key; the rest of the batch still applies to it.
+    if (maybeRekeyFromBackend(resolveId(id), event)) continue;
+
     const prevStatus = entry.state.status;
     entry.state = reduceEvent(entry.state, event, seq);
     if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting" || entry.state.status === "interrupting")) {
@@ -524,6 +527,7 @@ export function applyEvent(id: string, event: any, seq: number) {
 
   const entry = sessions.get(resolvedId);
   if (!entry) return;
+  if (maybeRekeyFromBackend(resolvedId, event)) return; // rekeySession already calls notify()
   const prevStatus = entry.state.status;
   entry.state = reduceEvent(entry.state, event, seq);
   markHistoryReadyFromEvents(entry);
@@ -572,8 +576,29 @@ function maybeRekeyFromInit(resolvedId: string, event: any, catchingUp: boolean 
   return true;
 }
 
+/**
+ * The backend renamed this session after a provider rekey. Unlike an init
+ * event's provider-native id, this rename has already happened server-side —
+ * the old id no longer has a row — so it is honoured whatever the current id is.
+ */
+function maybeRekeyFromBackend(resolvedId: string, event: any): boolean {
+  if (event?.type !== "system" || event.subtype !== "session_rekeyed") return false;
+  const nextId = typeof event.to === "string" ? event.to : "";
+  if (!nextId || nextId === resolvedId) return false;
+  rekeySession(resolvedId, nextId);
+  return true;
+}
+
 /** Re-key a session (e.g. pending-xxx → real ID) */
 export function rekeySession(oldId: string, newId: string) {
+  // A missing id here is not a no-op that resolves itself on the next render:
+  // it becomes a key in `sessions`, and every subsequent pass over the map —
+  // eviction, selection, the sidebar — throws on it. The store stays broken
+  // until reload, far from whatever produced the bad id. Refuse it loudly.
+  if (!newId) {
+    console.error(`[sessionStore] refusing to rekey ${oldId} to an empty session id`);
+    return;
+  }
   const entry = sessions.get(oldId);
   if (!entry) return;
   // Record mapping so SSE callbacks with stale IDs can resolve
@@ -846,6 +871,12 @@ function ensureSubscribedInternal(
   opts: EnsureSubscribedOpts,
   mayRetryAfterPending: boolean,
 ): Promise<void> {
+  // Same reasoning as rekeySession: subscribing under a missing id registers
+  // one in `sessions` and poisons every later traversal of the map.
+  if (!sessionId) {
+    console.error("[sessionStore] refusing to subscribe to an empty session id");
+    return Promise.resolve();
+  }
   const currentEntry = sessions.get(sessionId);
   const reuseSubscription = shouldReuseSessionSubscription({
     subscribed: subscriptions.has(sessionId),

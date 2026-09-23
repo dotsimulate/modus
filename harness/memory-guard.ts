@@ -76,7 +76,19 @@ function availableMemory(): number {
 const MAX_HEAP_MB = Number(process.env.MG_MAX_HEAP_MB ?? 4096);
 
 /** Max concurrent agent sessions. N × MAX_HEAP_MB = worst-case RAM. */
-const MAX_CONCURRENT = Number(process.env.MG_MAX_CONCURRENT ?? 6);
+const DEFAULT_MAX_CONCURRENT = 10;
+const configuredMaxConcurrent = Number(process.env.MG_MAX_CONCURRENT ?? DEFAULT_MAX_CONCURRENT);
+let maxConcurrentSessions = Number.isSafeInteger(configuredMaxConcurrent) && configuredMaxConcurrent > 0
+  ? configuredMaxConcurrent
+  : DEFAULT_MAX_CONCURRENT;
+
+/** Changes admission for future spawns only; never stops or restarts existing sessions. */
+export function setMaxConcurrentSessions(value: unknown): void {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+    throw new Error("maxConcurrentSessions must be a positive safe integer");
+  }
+  maxConcurrentSessions = value;
+}
 
 /** Block new sessions when system memory usage exceeds this ratio (0-1). */
 const PRESSURE_THRESHOLD = Number(process.env.MG_PRESSURE_THRESHOLD ?? 0.90);
@@ -157,15 +169,15 @@ export type SpawnGuardResult =
 
 /**
  * Check whether a new session can be spawned. Returns `{ ok: false, reason }` if:
- * - `activeCount` >= MAX_CONCURRENT
+ * - `activeCount` >= the current concurrency limit
  * - System memory pressure exceeds threshold and pressure blocking is enabled
  */
 export function canSpawnSession(activeCount: number): SpawnGuardResult {
-  if (activeCount >= MAX_CONCURRENT) {
+  if (activeCount >= maxConcurrentSessions) {
     return {
       ok: false,
-      reason: `concurrent session limit reached (${activeCount}/${MAX_CONCURRENT}). ` +
-        `Wait for an existing session to finish or increase MG_MAX_CONCURRENT.`,
+      reason: `concurrent session limit reached (${activeCount}/${maxConcurrentSessions}). ` +
+        `Wait for an existing session to finish or raise the limit in Settings > Environment.`,
     };
   }
 
@@ -200,6 +212,7 @@ export interface MemoryStatus {
   pressureBlockingEnabled: boolean;
   maxHeapPerProcessMB: number;
   maxConcurrentSessions: number;
+  concurrencyLimitMutable: boolean;
   watchdogRunning: boolean;
 }
 
@@ -214,7 +227,8 @@ export function getMemoryStatus(): MemoryStatus {
     pressureThreshold: PRESSURE_THRESHOLD * 100,
     pressureBlockingEnabled: BLOCK_ON_PRESSURE,
     maxHeapPerProcessMB: MAX_HEAP_MB,
-    maxConcurrentSessions: MAX_CONCURRENT,
+    maxConcurrentSessions,
+    concurrencyLimitMutable: true,
     watchdogRunning: watchdogTimer !== null,
   };
 }
@@ -223,7 +237,7 @@ export function startMemoryWatchdog(): void {
   if (watchdogTimer) return;
   console.log(
     `[memory-guard] watchdog started — heap cap: ${MAX_HEAP_MB}MB/process, ` +
-    `max concurrent: ${MAX_CONCURRENT}, pressure threshold: ${(PRESSURE_THRESHOLD * 100).toFixed(0)}%, ` +
+    `max concurrent: ${maxConcurrentSessions}, pressure threshold: ${(PRESSURE_THRESHOLD * 100).toFixed(0)}%, ` +
     `pressure blocking: ${BLOCK_ON_PRESSURE ? "on" : "off"}`
   );
   watchdogTimer = setInterval(() => {

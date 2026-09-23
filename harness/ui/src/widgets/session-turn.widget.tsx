@@ -57,7 +57,7 @@ import {
   type TurnNavigationEntry,
   type TurnScrollThroughProgress,
 } from "../turn-card-state";
-import { buildTurns, findTurnBySeq, segmentMessage, tallyToolNames, type ChatTurn } from "../turn-segments";
+import { buildTurns, findTurnBySeq, segmentMessage, streamingTailSegments, tallyToolNames, type ChatTurn } from "../turn-segments";
 import type { Message, SessionTurnIndexEntry, ToolCall } from "../../../sdk/index";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
@@ -432,10 +432,8 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
 
   const renderToolRun = useCallback((tools: ToolCall[], keyPrefix: string) => (
     // Every run is a line here, including a run of one. That is the whole
-    // difference from the transcript, which only folds runs of five or more and
-    // only once the turn has landed — so a streaming turn rearranges itself
-    // under the reader the instant the result arrives. A card that is already
-    // one line per run has nothing to rearrange.
+    // difference from the transcript, which only offers grouping for runs of
+    // five or more once the turn has landed. Focus offers it from the start.
     partitionToolRun(tools).map((partition, index) => {
       const partitionKey = `${keyPrefix}:p:${index}`;
       const rows = (
@@ -467,8 +465,8 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
     })
   ), [sessionId, latestMoveToolCallIds]);
 
-  const renderBody = useCallback((msg: Message) => (
-    segmentMessage(msg).map((segment) => {
+  const renderBody = useCallback((msg: Message, streamingMessage: boolean) => (
+    [...segmentMessage(msg), ...(streamingMessage ? streamingTailSegments(msg) : [])].map((segment) => {
       if (segment.kind === "text") {
         return blocks.has("text")
           ? (
@@ -604,10 +602,14 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
           )}
 
           <div className="session-turn-body">
-            {turn.body.map((msg) => (
+            {turn.body.map((msg, index) => (
               msg.role === "system"
                 ? <div key={msg.id} className="system-divider"><span>{msg.content}</span></div>
-                : <div key={msg.id} className="session-turn-message">{renderBody(msg)}</div>
+                : (
+                  <div key={msg.id} className="session-turn-message">
+                    {renderBody(msg, streaming && index === turn.body.length - 1)}
+                  </div>
+                )
             ))}
             {activity && (
               <div

@@ -26,6 +26,7 @@ import { useContextMenu } from "./ContextMenu";
 import { PasteBlock } from "./PasteBlock";
 import { rehypeWordReveal } from "../markdown-reveal";
 import { openMarkdownNavigation } from "../markdown-navigation";
+import { MarkdownImage, MarkdownImageContext } from "./MarkdownImage";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";
@@ -242,6 +243,7 @@ type MarkdownComponents = Components
   & Record<"reveal", ComponentType<{ children?: ReactNode; delay?: number }>>;
 
 const markdownComponents: MarkdownComponents = {
+  img: MarkdownImage,
   // Web links open a new tab rather than replacing the app. In a browser that
   // is what `target` does; in the desktop shell `handleClick` intercepts first
   // and routes to the system browser, because a Tauri webview would otherwise
@@ -298,10 +300,12 @@ const markdownComponents: MarkdownComponents = {
 export const Markdown = memo(function Markdown({
   content,
   sourceFile,
+  cwd,
   revealText = false,
 }: {
   content: string;
   sourceFile?: string;
+  cwd?: string | null;
   revealText?: boolean;
 }) {
   const { openFile } = useFileViewer();
@@ -309,6 +313,7 @@ export const Markdown = memo(function Markdown({
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bounded = limitMarkdownContent(content);
+  const imageContext = useMemo(() => ({ sourceFile, cwd }), [sourceFile, cwd]);
   const rehypePlugins = useMemo(
     () => revealText ? [...markdownRehypePlugins, rehypeWordReveal] : markdownRehypePlugins,
     [revealText],
@@ -395,14 +400,16 @@ export const Markdown = memo(function Markdown({
 
   return (
     <div onClick={handleClick} onContextMenu={handleContextMenu}>
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={markdownComponents}
-        urlTransform={markdownUrlTransform}
-      >
-        {bounded.content}
-      </ReactMarkdown>
+      <MarkdownImageContext.Provider value={imageContext}>
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={markdownComponents}
+          urlTransform={markdownUrlTransform}
+        >
+          {bounded.content}
+        </ReactMarkdown>
+      </MarkdownImageContext.Provider>
       {linkError && <div className="markdown-link-error" role="status">{linkError}</div>}
       {contextMenuPortal}
     </div>

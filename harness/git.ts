@@ -172,10 +172,46 @@ function parseGitLogWithFilesRaw(raw: string): GitLogEntryWithFiles[] {
   return entries;
 }
 
+// `--shortstat` diffs every listed commit — about a second for 200 commits in a
+// mid-sized repo — and every open chat and status poll asks for it. Output is a
+// function of HEAD and the arguments, so results are cached per HEAD and
+// concurrent identical requests share one git process instead of stacking
+// processes that slow each other down.
+const LOG_CACHE_MAX = 64;
+const logCache = new Map<string, { head: string; raw: Promise<string> }>();
+
+async function currentHead(cwd: string): Promise<string | null> {
+  try {
+    return (await simpleGit(cwd).revparse(["HEAD"])).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function cachedLogRaw(cwd: string, args: string[]): Promise<string> {
+  const head = await currentHead(cwd);
+  if (!head) return simpleGit(cwd).raw(args);
+  const key = `${cwd}\0${args.join("\0")}`;
+  const hit = logCache.get(key);
+  if (hit?.head === head) return hit.raw;
+
+  const raw = simpleGit(cwd).raw(args);
+  logCache.delete(key);
+  logCache.set(key, { head, raw });
+  // A failure is not an answer; the next request retries.
+  raw.catch(() => { if (logCache.get(key)?.raw === raw) logCache.delete(key); });
+  if (logCache.size > LOG_CACHE_MAX) logCache.delete(logCache.keys().next().value!);
+  return raw;
+}
+
+/** Test seam. */
+export function clearGitLogCache(): void {
+  logCache.clear();
+}
+
 export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
   try {
-    const git = simpleGit(cwd);
-    const raw = await git.raw([
+    const raw = await cachedLogRaw(cwd, [
       "log", `--max-count=${limit}`,
       "--format=---GIT-LOG-SEP---%n%H%n%aI%n%an%n%B---GIT-LOG-END---",
       "--shortstat",
@@ -198,7 +234,6 @@ export async function gitLogWithFiles(
   const { limit = 30, since, until } = opts;
 
   try {
-    const git = simpleGit(cwd);
     const args = [
       "log",
       `--max-count=${limit}`,
@@ -208,7 +243,7 @@ export async function gitLogWithFiles(
     ];
     if (since) args.push(`--since=${since}`);
     if (until) args.push(`--until=${until}`);
-    const raw = await git.raw(args);
+    const raw = await cachedLogRaw(cwd, args);
     return parseGitLogWithFilesRaw(raw);
   } catch {
     return [];

@@ -13,7 +13,7 @@
 import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import { modus } from "../modusClient";
 import type { BrowseResult } from "../../../sdk/index";
-import { onFsChange } from "../modusClient";
+import { onFsChange } from "../fsEvents";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { buildFileHistoryItem } from "./fileHistoryMenu";
 import { usePinboard } from "../providers/PinboardContext";

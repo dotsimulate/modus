@@ -203,6 +203,12 @@ an API token and instance id.
   number, file)
   - A select can source its options dynamically: `optionsSource: { "type": "agentProfiles" }`
     (also `projects`, `sessions`), or the template form `options: "{{agentProfiles}}"`.
+    Agent options load from the form's target project, including when the move
+    comes from a plugin. Project-local profiles always appear; the active user
+    profile's `agentProfiles` list filters Vault-owned profiles, and exposed
+    plugin profiles follow the main agent picker's visibility rules. Values
+    retain their qualified profile keys. Switching projects reloads the options
+    and prevents submission with the previous project's list while loading.
   - A `file` input opens a server-side file picker and delivers an **absolute path**
     (see File inputs below).
   - **Profile pickers prepend a "Current profile" sentinel option.** The runner translates

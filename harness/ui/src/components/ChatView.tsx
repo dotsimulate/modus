@@ -6,7 +6,7 @@ import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
 import { VirtualMessageList, type VirtualItem, type VirtualListControls, type VirtualLayoutSnapshot } from "./VirtualMessageList";
-import { estimateMessageHeight, estimateSystemMessageHeight, TOOL_CALL_COLLAPSED_HEIGHT } from "./textMeasure";
+import { estimateMessageHeight, estimateSystemMessageHeight, getFontProfile, TOOL_CALL_COLLAPSED_HEIGHT } from "./textMeasure";
 import { ChatScrollSpine, type ChatSpineItem, type ChatSpineMeasure } from "./ChatScrollSpine";
 import { modus } from "../modusClient";
 import type { Message, ToolCall, ToolCallDisplayMode, ChatScrollIndicator, CommitAttribution, GitCommit } from "../../../sdk/index";
@@ -15,7 +15,7 @@ import { navigateToGitRoute } from "../git-route";
 import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interface-settings";
 import { buildLatestMoveToolCallIds, partitionToolRun } from "../move-tool-view";
 import { buildTurns, segmentContentBlocks } from "../turn-segments";
-import { currentTurnKey, onControlIntent, stepTurnKey } from "../control-intents";
+import { currentTurnKey, onControlIntent, scrollIntentPixels, stepTurnKey } from "../control-intents";
 import { TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
 import { isTodoTool } from "../tool-names";
 
@@ -277,7 +277,12 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       return;
     }
 
+    // The next poll is scheduled only after the previous one settles. A git log
+    // with --shortstat can take far longer than the interval under load; a fixed
+    // setInterval stacked those requests until they held every browser
+    // connection to the harness and stalled unrelated requests for 15-30s.
     let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const load = async () => {
       try {
         const next = await modus.gitLog(cwd, 200);
@@ -285,16 +290,14 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       } catch {
         if (active) setCommits([]);
       }
+      if (active) timer = setTimeout(() => { void load(); }, 4000);
     };
 
     void load();
-    const timer = setInterval(() => {
-      void load();
-    }, 4000);
 
     return () => {
       active = false;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
   }, [cwd, showGitEvents]);
 
@@ -304,7 +307,10 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       return;
     }
 
+    // Status runs git for commit attribution; same settle-then-schedule rule
+    // as the git log poll above.
     let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const load = async () => {
       try {
         const status = await modus.getSessionStatus(sessionId);
@@ -312,16 +318,14 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       } catch {
         if (active) setCommitAttribution(null);
       }
+      if (active) timer = setTimeout(() => { void load(); }, 4000);
     };
 
     void load();
-    const timer = setInterval(() => {
-      void load();
-    }, 4000);
 
     return () => {
       active = false;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
   }, [lastMessage?.timestamp, sessionId, showGitEvents]);
 
@@ -540,9 +544,23 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
   }, []);
 
   // ── Control intents ──
-  // Turn anchors are the user messages — the same landmarks the ruler indexes —
-  // so one detent on a desk control and one rung on the spine mean the same
-  // thing. See control-intents.ts for the vocabulary and its limits.
+  // A distance scroll is the everyday one: it moves the transcript the way a
+  // wheel does, and resolves lines at this chat's font scale. Turn anchors are
+  // the user messages — the same landmarks the ruler indexes — for jumping
+  // between prompts. See control-intents.ts for the vocabulary and its limits.
+  useEffect(() => onControlIntent("transcript.scroll", (intent) => {
+    if (intent.intent !== "transcript.scroll" || !scrollEl) return;
+    listControlsRef.current?.scrollBy(scrollIntentPixels(intent.unit, intent.delta, {
+      viewportHeight: scrollEl.clientHeight,
+      lineHeight: getFontProfile("message", fontScale).lineHeight,
+    }));
+  }), [scrollEl, fontScale]);
+
+  useEffect(() => onControlIntent("transcript.scrollTo", (intent) => {
+    if (intent.intent !== "transcript.scrollTo" || !scrollEl) return;
+    listControlsRef.current?.scrollTo(intent.fraction * (scrollEl.scrollHeight - scrollEl.clientHeight));
+  }), [scrollEl]);
+
   const turnAnchorKeys = useMemo(
     () => spineItems
       .filter((item) => item.kind === "message" && item.message.role === "user")

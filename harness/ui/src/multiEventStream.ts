@@ -47,10 +47,6 @@ let backoff = 0;
 // Once we learn the multiplexed endpoint is missing, route through per-session
 // streams for the rest of the session (until reload). Re-probed only on reload.
 let fallbackMode = false;
-// True once the multiplexed stream has connected at least once. Distinguishes a
-// transient drop (keep retrying the multiplexed stream) from an endpoint that
-// never works (degrade to per-session streams).
-let everConnected = false;
 
 const STALE_TIMEOUT_MS = 45_000; // server pings every 30s
 const CONNECT_DEBOUNCE_MS = 40;
@@ -148,9 +144,13 @@ function scheduleConnect() {
 }
 
 function clearStale() { if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; } }
-function resetStale() {
+function resetStale(controller: AbortController) {
   clearStale();
-  staleTimer = setTimeout(() => { abort?.abort(); }, STALE_TIMEOUT_MS);
+  staleTimer = setTimeout(() => {
+    if (abort !== controller) return;
+    controller.abort();
+    scheduleConnect();
+  }, STALE_TIMEOUT_MS);
 }
 
 function connect() {
@@ -164,6 +164,7 @@ function connect() {
 
   const ac = new AbortController();
   abort = ac;
+  resetStale(ac);
 
   fetch(url, {
     method: "POST",
@@ -172,6 +173,7 @@ function connect() {
     body: JSON.stringify({ sessions: specs }),
   })
     .then(async (res) => {
+      if (abort !== ac) return;
       if (res.status === 404 || res.status === 405) { enableFallback(); return; }
       if (!res.ok) throw new Error(`multi events ${res.status}`);
       const reader = res.body?.getReader();
@@ -179,13 +181,13 @@ function connect() {
       const decoder = new TextDecoder();
       let buf = "";
       let event = ""; // persists across chunks — a message may split mid-frame
-      resetStale();
+      resetStale(ac);
       backoff = 0;
-      everConnected = true;
       while (true) {
         const { done, value } = await reader.read();
+        if (abort !== ac) return;
         if (done) break;
-        resetStale();
+        resetStale(ac);
         buf += decoder.decode(value, { stream: true });
         const lines = buf.split("\n");
         buf = lines.pop() ?? "";
@@ -197,15 +199,14 @@ function connect() {
       throw new Error("multi stream closed");
     })
     .catch(() => {
+      if (abort !== ac) return; // an old reader must not clear the new stream's watchdog
       clearStale();
       if (ac.signal.aborted) return; // intentional teardown (set change / unsub-all)
       if (fallbackMode) return;      // switched to per-session mid-flight
       backoff = Math.min(backoff + 1, 5);
-      // If the endpoint never connected (likely broken or unreachable), degrade
-      // to per-session streams so live updates still work. A drop AFTER a
-      // successful connect is treated as transient — keep retrying the
-      // multiplexed stream so it recovers on its own.
-      if (!everConnected && backoff >= 3) { enableFallback(); return; }
+      // Network/auth/server failures do not mean multiplexing is unsupported.
+      // Opening one fallback per chat here can exhaust the connection pool.
+      // Only an explicit 404/405 above enables the compatibility fallback.
       const delay = 500 * backoff;
       if (connectTimer) return;
       connectTimer = setTimeout(() => { connectTimer = null; connect(); }, delay);

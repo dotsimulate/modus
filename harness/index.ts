@@ -109,7 +109,7 @@ import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
 import {
   startSession, startSessionWithMoves, interactWithSession, queueMessage, steerMessage, stopSession, stopTask,
-  getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
+  getActiveSession, getAllActiveSessions, subscribe, shutdownAll, resolveSessionAlias, sessionRekeyedEvent,
   updateSessionConfig, resolvePermission, switchProfile,
   pauseSession, resumeSession, branchSession, previewSessionBranch,
   previewSessionCheckpoint, restoreSessionCheckpoint, cancelQueuedDispatch,
@@ -119,6 +119,7 @@ import {
 } from "./session-manager";
 import { parseControlIntent, publishControlIntent, subscribeControlIntents } from "./control-intents";
 import { startMemoryWatchdog, stopMemoryWatchdog, getMemoryStatus } from "./memory-guard";
+import { memoryGuardApi } from "./memory-guard-api";
 import {
   createTerminal, killTerminal, resizeTerminal as resizeTerminalPty,
   getActiveTerminal, getAllActiveTerminals, getTerminalInfo, listAllTerminals,
@@ -128,6 +129,7 @@ import { closeTerminalWebSockets, tryUpgradeTerminalWS, terminalWebSocket, setAu
 import { getProcessSnapshot, killProcess } from "./process-registry";
 import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cache";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
+import { onClientAbort } from "./sse-abort";
 import {
   initShadowRepo, scheduleCommit, listCommits, onShadowCommit,
   shadowRepoPath, gitShowFile, gitDiffTree, gitHead, gitLsTree, getWorkTree,
@@ -452,6 +454,35 @@ function splitUserProfilePayload(body: Record<string, unknown> | null | undefine
   };
   return Object.keys(ui).length > 0 ? { core, ui } : { core };
 }
+
+// Server-side half of a request's cost. A renderer timing (see
+// /api/client-timing) measures the whole round trip — time queued in the
+// webview's per-host connection pool, transit, and server work — so the two
+// numbers together localize a stall instead of just proving one exists.
+// `inflight` counts non-stream API requests being served concurrently: a client
+// that fires eight requests at once and shows up here as inflight=1, each fast,
+// was queueing before the socket rather than waiting on the backend.
+// Registered first so it measures auth and origin rejection too. Query strings
+// are never logged — they carry credentials.
+const SLOW_REQUEST_LOG_MS = 250;
+let inflightApiRequests = 0;
+app.use("/api/*", async (c, next) => {
+  const path = c.req.path;
+  // Event streams are long-lived by contract, and the timing endpoint would
+  // otherwise report on itself.
+  if (path.startsWith("/api/events/") || path === "/api/client-timing") return next();
+  const startedAt = performance.now();
+  const concurrent = ++inflightApiRequests;
+  try {
+    await next();
+  } finally {
+    inflightApiRequests--;
+    const elapsedMs = performance.now() - startedAt;
+    if (elapsedMs >= SLOW_REQUEST_LOG_MS) {
+      console.log(`[REQ-TIMING] ${c.req.method} ${path} ${elapsedMs.toFixed(1)}ms inflight=${concurrent}`);
+    }
+  }
+});
 
 // Browser-origin boundary. CLI/SDK requests normally omit Origin and remain
 // valid; browser requests must come from a known Modus UI origin.
@@ -904,7 +935,7 @@ app.post("/api/internal/shutdown", (c) => {
   return c.json({ ok: true });
 });
 
-app.get("/api/system/memory", (c) => c.json(getMemoryStatus()));
+app.route("/api/system/memory", memoryGuardApi);
 
 app.post("/api/admin/restart", async (c) => {
   // Requires HARNESS_TOKEN — agents only, not browser PIN sessions
@@ -1753,7 +1784,7 @@ app.post("/api/sessions/empty", async (c) => {
 
 // Get session status
 app.get("/api/sessions/:id/status", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const active = getActiveSession(id);
   if (active) {
     const dbRow = getSession(active.sessionId);
@@ -1815,6 +1846,11 @@ const SSE_HEADERS = {
  * Create an SSE Response using Bun's direct ReadableStream.
  * The handler receives a writer with auto-flushing write() and a cleanup signal.
  * When the handler's returned promise resolves, the stream closes.
+ *
+ * Handlers must check `signal.aborted` after registering their abort listener:
+ * a client that disconnects during catch-up has already aborted, a late
+ * listener never fires, and Bun writes to the dead socket succeed silently —
+ * so the handler, its subscriptions, and the half-closed socket live forever.
  */
 function sseResponse(
   req: Request,
@@ -1851,6 +1887,11 @@ function sseResponse(
 // Used by both GET /api/sessions/:id/events and POST /api/sessions/interact
 function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
   return sseResponse(c.req.raw, async (writer, signal) => {
+    const canonicalId = resolveSessionAlias(sessionId);
+    if (canonicalId !== sessionId) {
+      await writer.write("system", JSON.stringify(sessionRekeyedEvent(sessionId, canonicalId)), "");
+      sessionId = canonicalId;
+    }
     // Send catch-up events from DB, bookended by catchup-start/catchup-end
     // so the client can batch them into a single React render.
     const _sseT0 = performance.now();
@@ -1957,7 +1998,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
         unsubscribe();
         resolve();
       };
-      signal.addEventListener("abort", onAbort);
+      onClientAbort(signal, onAbort);
 
       await done;
       signal.removeEventListener("abort", onAbort);
@@ -2038,11 +2079,18 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
     const unsubscribers: Array<() => void> = [];
 
     for (const spec of specs) {
+      if (signal.aborted) break;
       const sessionId = spec.id;
+      // Subscribed under an id a provider has since renamed: say so first, so
+      // the client re-keys instead of watching a transcript that stopped.
+      const canonicalId = resolveSessionAlias(sessionId);
+      if (canonicalId !== sessionId) {
+        await send("ev", { sid: sessionId, seq: 0, ev: sessionRekeyedEvent(sessionId, canonicalId) });
+      }
       const afterSeq = Number.isFinite(spec.after) ? spec.after : 0;
 
       // Catch-up from DB, bracketed per session so the client batch-renders it.
-      const pastEvents = getEvents(sessionId, afterSeq);
+      const pastEvents = getEvents(canonicalId, afterSeq);
       if (pastEvents.length > 0) {
         await send("catchup-start", { sid: sessionId });
         for (const evt of pastEvents) {
@@ -2096,7 +2144,7 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
       for (const unsub of unsubscribers) unsub();
       resolve();
     };
-    signal.addEventListener("abort", onAbort);
+    onClientAbort(signal, onAbort);
 
     await done;
     signal.removeEventListener("abort", onAbort);
@@ -2152,7 +2200,7 @@ app.get("/api/events/sessions", (c) => {
 
     const unsubscribe = subscribeGlobal(globalWriter);
     const onAbort = () => { clearInterval(keepAlive); unsubscribe(); resolve(); };
-    signal.addEventListener("abort", onAbort);
+    onClientAbort(signal, onAbort);
 
     await done;
     signal.removeEventListener("abort", onAbort);
@@ -2185,7 +2233,7 @@ app.get("/api/events/fs", (c) => {
     });
 
     const onAbort = () => { clearInterval(keepAlive); unsub(); resolve(); };
-    signal.addEventListener("abort", onAbort);
+    onClientAbort(signal, onAbort);
 
     await done;
     signal.removeEventListener("abort", onAbort);
@@ -2235,7 +2283,7 @@ app.get("/api/events/control", (c) => {
     });
 
     const onAbort = () => { clearInterval(keepAlive); unsubscribe(); resolve(); };
-    signal.addEventListener("abort", onAbort);
+    onClientAbort(signal, onAbort);
 
     await done;
     signal.removeEventListener("abort", onAbort);
@@ -2245,9 +2293,74 @@ app.get("/api/events/control", (c) => {
   });
 });
 
+// ── Browser event hub (SSE) ──
+// One connection per browser tab carries every tab-wide channel the UI listens
+// to — session lifecycle, control intents, filesystem changes. Chromium and
+// WebView2 allow six HTTP/1.1 connections per host; giving each channel its own
+// stream left a single slot for every ordinary request in the UI, and one slow
+// request then stalled everything behind it (STT uploads included).
+//
+// `channels` selects subscriptions so server-side listener counts stay honest:
+// a tab with no navigable surface is not counted by `POST /api/control`.
+// Header credential only, like `/api/events/control`.
+//
+//   event: ready    data: {"channels":[...]}
+//   event: session  data: <global session event>
+//   event: control  data: <control intent>
+//   event: fs       data: <fs change event>
+//   event: ping     data: {}
+const HUB_CHANNELS = new Set(["session", "control", "fs"]);
+
+app.get("/api/events/hub", (c) => {
+  const requested = (new URL(c.req.url).searchParams.get("channels") ?? "").split(",");
+  const channels = [...new Set(requested.map((name) => name.trim()).filter((name) => HUB_CHANNELS.has(name)))];
+
+  return sseResponse(c.req.raw, async (writer, signal) => {
+    let resolve!: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
+    const unregisterBrowser = registerBrowserConnection(c, () => resolve());
+    const send = (event: string, data: string) => writer.write(event, data, "").catch(() => { resolve(); });
+
+    const unsubscribers: Array<() => void> = [];
+    if (channels.includes("session")) {
+      unsubscribers.push(subscribeGlobal({ write: (data) => send("session", data), close() { resolve(); } }));
+    }
+    if (channels.includes("control")) {
+      unsubscribers.push(subscribeControlIntents({ write: (data) => send("control", data), close() { resolve(); } }));
+    }
+    if (channels.includes("fs")) {
+      unsubscribers.push(subscribeFsEvents({ write(event) { void send("fs", JSON.stringify(event)); }, close() { resolve(); } }));
+    }
+    const keepAlive = setInterval(() => { void send("ping", "{}"); }, 30_000);
+
+    const teardown = () => {
+      clearInterval(keepAlive);
+      for (const unsubscribe of unsubscribers.splice(0)) unsubscribe();
+      resolve();
+    };
+    onClientAbort(signal, teardown);
+    // The first frame flushes the response head, so the client knows the
+    // stream is live without waiting for an event or the first ping.
+    await send("ready", JSON.stringify({ channels }));
+
+    await done;
+    signal.removeEventListener("abort", teardown);
+    teardown();
+    unregisterBrowser();
+  });
+});
+
+/** Point the shared filesystem watcher at a root; events arrive on the hub's `fs` channel. */
+app.post("/api/events/fs/root", async (c) => {
+  const body = await c.req.json().catch(() => null) as { root?: unknown } | null;
+  if (typeof body?.root !== "string" || !body.root) return c.json({ error: "root required" }, 400);
+  startWatching(body.root);
+  return c.json({ ok: true });
+});
+
 // Get reconstructed message content for a session (from events)
 app.get("/api/sessions/:id/messages-content", (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const seq = c.req.query("seq");
   if (seq) {
     const seqNum = Number(seq);
@@ -2262,7 +2375,7 @@ app.get("/api/sessions/:id/messages-content", (c) => {
 // Every turn in a session with no bodies — what a turn-navigating surface needs
 // to know the shape of a conversation without paging the whole transcript in.
 app.get("/api/sessions/:id/turns", (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   if (!getSession(id) && !getActiveSession(id)) return c.json({ error: "session not found" }, 404);
   const requestedLimit = Number(c.req.query("limit"));
   const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
@@ -2272,7 +2385,7 @@ app.get("/api/sessions/:id/turns", (c) => {
 });
 
 app.get("/api/sessions/:id/history-snapshot", (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const rawLimit = c.req.query("limit");
   const requestedLimit = Number(rawLimit ?? 40);
   const limit = rawLimit === "all"
@@ -2343,7 +2456,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
 });
 
 app.get("/api/sessions/:id/artifacts/:artifactId", async (c) => {
-  const sessionId = c.req.param("id");
+  const sessionId = resolveSessionAlias(c.req.param("id"));
   const artifactId = Number(c.req.param("artifactId"));
   if (!Number.isFinite(artifactId) || artifactId <= 0) {
     return c.json({ error: "invalid artifact id" }, 400);
@@ -2386,7 +2499,7 @@ app.get("/api/sessions/:id/artifacts/:artifactId", async (c) => {
 
 // Queue a message into a running/idle session
 app.post("/api/sessions/:id/messages", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const v = validate(SendMessageRequestSchema, body);
   if (!v.ok) return c.json({ error: "invalid message request", details: v.errors }, 400);
@@ -2421,14 +2534,14 @@ app.post("/api/sessions/:id/messages", async (c) => {
 });
 
 app.delete("/api/sessions/:id/dispatch/:dispatchId", (c) => {
-  const ok = cancelQueuedDispatch(c.req.param("id"), c.req.param("dispatchId"));
+  const ok = cancelQueuedDispatch(resolveSessionAlias(c.req.param("id")), c.req.param("dispatchId"));
   return c.json({ ok });
 });
 
 // Steer: inject a message at the next tool boundary. `mode` reports what actually
 // happened — "steer" reached the running turn, "queued" is waiting for it to end.
 app.post("/api/sessions/:id/steer", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   const v = validate(SendMessageRequestSchema, { ...body, prompt: prompt || (body.moves?.length ? " " : "") });
@@ -2440,34 +2553,34 @@ app.post("/api/sessions/:id/steer", async (c) => {
 
 // Stop session entirely
 app.post("/api/sessions/:id/stop", (c) => {
-  const ok = stopSession(c.req.param("id"));
+  const ok = stopSession(resolveSessionAlias(c.req.param("id")));
   return c.json({ ok });
 });
 
 // Stop a subagent task
 app.post("/api/sessions/:id/stop-task", async (c) => {
   const body = await c.req.json();
-  const ok = stopTask(c.req.param("id"), body.taskId);
+  const ok = stopTask(resolveSessionAlias(c.req.param("id")), body.taskId);
   return c.json({ ok });
 });
 
 // Pause a running/idle session at the next tool boundary
 app.post("/api/sessions/:id/pause", (c) => {
-  const result = pauseSession(c.req.param("id"));
+  const result = pauseSession(resolveSessionAlias(c.req.param("id")));
   if (!result.ok) return c.json({ error: "session not found or cannot be paused" }, 404);
   return c.json({ ok: true, status: result.status });
 });
 
 // Resume a paused session
 app.post("/api/sessions/:id/resume", (c) => {
-  const result = resumeSession(c.req.param("id"));
+  const result = resumeSession(resolveSessionAlias(c.req.param("id")));
   if (!result.ok) return c.json({ error: "session not found" }, 404);
   return c.json({ ok: true, status: result.status });
 });
 
 // Respond to a permission request (approve/deny from UI)
 app.post("/api/sessions/:id/permission-response", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const { requestId, behavior, updatedInput, message, scope } = body;
   if (!requestId || !behavior) return c.json({ error: "requestId and behavior required" }, 400);
@@ -2480,13 +2593,13 @@ app.patch("/api/sessions/:id/config", async (c) => {
   const body = await c.req.json();
   const v = validate(UpdateSessionConfigRequestSchema, body);
   if (!v.ok) return c.json({ error: "invalid session config", details: v.errors }, 400);
-  const ok = updateSessionConfig(c.req.param("id"), body);
+  const ok = updateSessionConfig(resolveSessionAlias(c.req.param("id")), body);
   return ok ? c.json({ ok: true }) : c.json({ error: "session not found" }, 404);
 });
 
 // Switch active profile on a running/idle session
 app.patch("/api/sessions/:id/profile", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const { profile, contextMode } = body;
   if (!profile) return c.json({ error: "profile required" }, 400);
@@ -2514,11 +2627,11 @@ app.patch("/api/sessions/:id/profile", async (c) => {
 
 registerSessionReadRoute(app, (sessionId, lastReplySeq, readReplySeq) => {
   emitGlobalSessionEvent({ type: "session:read-state", sessionId, lastReplySeq, readReplySeq });
-});
+}, resolveSessionAlias);
 
 // Archive session (soft-delete — preserves data in DB)
 app.delete("/api/sessions/:id", (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   // Stop if active
   stopSession(id);
   const dbRow = getSession(id);
@@ -2546,28 +2659,29 @@ app.get("/api/sessions/archived", (c) => {
 
 // Unarchive a session — restore it to the active list
 app.post("/api/sessions/:id/unarchive", (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   unarchiveSession(id);
   return c.json({ ok: true });
 });
 
 // Rename session (set/clear title)
 app.patch("/api/sessions/:id/title", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const title = typeof body.title === "string" ? body.title.trim() || null : null;
   updateSessionTitle(id, title);
+  emitGlobalSessionEvent({ type: "session:title", sessionId: id, title });
   return c.json({ ok: true, title });
 });
 
 // Session tags — get, set, add, remove
 app.get("/api/sessions/:id/tags", (c) => {
-  const tags = getSessionTags(c.req.param("id"));
+  const tags = getSessionTags(resolveSessionAlias(c.req.param("id")));
   return c.json({ tags });
 });
 
 app.patch("/api/sessions/:id/tags", async (c) => {
-  const id = c.req.param("id");
+  const id = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   if (Array.isArray(body.tags)) {
     // Replace all tags
@@ -2593,7 +2707,7 @@ app.get("/api/sessions/by-tag/:tag", (c) => {
 // Branch session — fork from a specific point in a past conversation.
 // restoreCode: also rewind the working tree to the checkpoint for that message.
 app.post("/api/sessions/:id/branch/preview", async (c) => {
-  const sourceId = c.req.param("id");
+  const sourceId = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const { seq, restoreCode, checkpointSeq, providerMessageId } = body;
   if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "seq required (positive integer)" }, 400);
@@ -2607,7 +2721,7 @@ app.post("/api/sessions/:id/branch/preview", async (c) => {
 });
 
 app.post("/api/sessions/:id/branch", async (c) => {
-  const sourceId = c.req.param("id");
+  const sourceId = resolveSessionAlias(c.req.param("id"));
   const body = await c.req.json();
   const { seq, restoreCode, checkpointSeq, providerMessageId, confirmed } = body;
   if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "seq required (positive integer)" }, 400);
@@ -2624,14 +2738,14 @@ app.post("/api/sessions/:id/branch", async (c) => {
 app.get("/api/sessions/:id/checkpoints/:checkpointId/preview", async (c) => {
   const checkpointId = Number(c.req.param("checkpointId"));
   if (!Number.isInteger(checkpointId) || checkpointId < 1) return c.json({ error: "valid checkpoint id required" }, 400);
-  const result = await previewSessionCheckpoint(c.req.param("id"), checkpointId);
+  const result = await previewSessionCheckpoint(resolveSessionAlias(c.req.param("id")), checkpointId);
   if ("error" in result) return c.json(result, 400);
   return c.json(result);
 });
 
 app.get("/api/sessions/:id/file-observations", (c) => {
   return c.json({
-    observations: getFileObservations(c.req.param("id")),
+    observations: getFileObservations(resolveSessionAlias(c.req.param("id"))),
     authority: "observability-only",
     warning: "Provider-declared tool paths are provenance hints, not proof of every workspace change and never authorize undo.",
   });
@@ -2641,7 +2755,7 @@ app.post("/api/sessions/:id/checkpoints/:checkpointId/restore", async (c) => {
   const checkpointId = Number(c.req.param("checkpointId"));
   if (!Number.isInteger(checkpointId) || checkpointId < 1) return c.json({ error: "valid checkpoint id required" }, 400);
   const body = await c.req.json();
-  const result = await restoreSessionCheckpoint(c.req.param("id"), checkpointId, body.confirmed === true);
+  const result = await restoreSessionCheckpoint(resolveSessionAlias(c.req.param("id")), checkpointId, body.confirmed === true);
   if ("error" in result) return c.json(result, 400);
   return c.json(result);
 });
@@ -2650,24 +2764,24 @@ app.post("/api/sessions/:id/checkpoints/:checkpointId/restore", async (c) => {
 // Persists unsent user input per session — syncs across devices.
 
 app.get("/api/sessions/:id/draft", (c) => {
-  const text = getDraft(c.req.param("id"));
+  const text = getDraft(resolveSessionAlias(c.req.param("id")));
   return c.json({ draft: text });
 });
 
 app.put("/api/sessions/:id/draft", async (c) => {
   const body = await c.req.json();
-  setDraft(c.req.param("id"), body.draft ?? "");
+  setDraft(resolveSessionAlias(c.req.param("id")), body.draft ?? "");
   return c.json({ ok: true });
 });
 
 app.get("/api/ui/sessions/:id/draft", (c) => {
-  const text = getDraft(c.req.param("id"));
+  const text = getDraft(resolveSessionAlias(c.req.param("id")));
   return c.json({ draft: text });
 });
 
 app.put("/api/ui/sessions/:id/draft", async (c) => {
   const body = await c.req.json();
-  setDraft(c.req.param("id"), body.draft ?? "");
+  setDraft(resolveSessionAlias(c.req.param("id")), body.draft ?? "");
   return c.json({ ok: true });
 });
 
@@ -2675,22 +2789,22 @@ app.put("/api/ui/sessions/:id/draft", async (c) => {
 // Persists per-session UI layout (panel widths, open/closed state, etc.)
 
 app.get("/api/sessions/:id/ui-state", (c) => {
-  return c.json(getSessionUiState(c.req.param("id")));
+  return c.json(getSessionUiState(resolveSessionAlias(c.req.param("id"))));
 });
 
 app.patch("/api/sessions/:id/ui-state", async (c) => {
   const body = await c.req.json();
-  const updated = patchSessionUiState(c.req.param("id"), body);
+  const updated = patchSessionUiState(resolveSessionAlias(c.req.param("id")), body);
   return c.json(updated);
 });
 
 app.get("/api/ui/sessions/:id/state", (c) => {
-  return c.json(getSessionUiState(c.req.param("id")));
+  return c.json(getSessionUiState(resolveSessionAlias(c.req.param("id"))));
 });
 
 app.patch("/api/ui/sessions/:id/state", async (c) => {
   const body = await c.req.json();
-  const updated = patchSessionUiState(c.req.param("id"), body);
+  const updated = patchSessionUiState(resolveSessionAlias(c.req.param("id")), body);
   return c.json(updated);
 });
 
@@ -3934,6 +4048,8 @@ function readWhisperSecretName(cwd?: string, userProfile?: string): string | und
   return shared ?? profile;
 }
 
+const WHISPER_UPSTREAM_TIMEOUT_MS = 40_000;
+
 app.post("/api/whisper/transcribe", async (c) => {
   try {
     const form = await c.req.formData();
@@ -3987,14 +4103,24 @@ app.post("/api/whisper/transcribe", async (c) => {
     // A refused connection to an endpoint nobody configured is a configuration
     // problem, and saying "transcription failed" sends the user looking at
     // their microphone or their network instead of their settings.
+    // Bounded below the client's 45 s upload timeout, so a hung whisper host
+    // reports as itself instead of as a harness that never answered.
+    const upstreamTimeout = AbortSignal.timeout(WHISPER_UPSTREAM_TIMEOUT_MS);
     let upstream: Response;
+    let upstreamText: string;
     try {
       upstream = await fetch(whisperUrl, {
         method: "POST",
         headers,
         body: whisperBody,
+        signal: upstreamTimeout,
       });
+      upstreamText = await upstream.text();
     } catch (fetchErr: any) {
+      if (upstreamTimeout.aborted) {
+        console.error("[whisper/transcribe] timed out", { whisperUrl, timeoutMs: WHISPER_UPSTREAM_TIMEOUT_MS });
+        return c.json({ error: `whisper did not respond within ${WHISPER_UPSTREAM_TIMEOUT_MS / 1000}s`, whisperUrl }, 504);
+      }
       const message = describeWhisperFetchFailure(endpoint, fetchErr?.message);
       console.error("[whisper/transcribe] unreachable", {
         whisperUrl,
@@ -4004,7 +4130,6 @@ app.post("/api/whisper/transcribe", async (c) => {
       });
       return c.json({ error: message, whisperUrl, configured: endpoint.configured }, 502);
     }
-    const upstreamText = await upstream.text();
     console.log("[whisper/transcribe] upstream", {
       ok: upstream.ok,
       status: upstream.status,
@@ -4048,6 +4173,7 @@ import {
   resetAction, setActionPreference, getActionPreferences,
   reloadActions, cancelExecution, startNewExecution,
   addActionTag, removeActionTag, getActionScopeKey,
+  getActionLoadErrors,
 } from "./action-runner";
 import { initWakeScheduler } from "./wake-scheduler";
 import { getActionRuns as dbGetActionRuns, clearActionRuns, getExecutions, getRunsByExecution } from "./db";
@@ -4126,9 +4252,11 @@ app.delete("/api/actions/:name/executions/:execId", (c) => {
 app.post("/api/actions/:name/trigger", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json().catch(() => ({}));
-  const ok = await triggerAction(name, actionResolveOpts(c, body));
-  if (!ok) return c.json({ error: "action not found or already running" }, 400);
-  return c.json({ ok: true });
+  try {
+    const ok = await triggerAction(name, { ...actionResolveOpts(c, body), inputs: body.inputs, caller: "api" });
+    if (!ok) return c.json({ error: "action unavailable, denied, or at concurrency limit" }, 400);
+    return c.json({ ok: true });
+  } catch (error) { return c.json({ error: String((error as Error).message) }, 400); }
 });
 
 app.post("/api/actions/:name/hook", async (c) => {
@@ -4157,6 +4285,7 @@ app.delete("/api/actions/:name/runs", (c) => {
   const opts = actionResolveQuery(c);
   const state = getActionState(name, opts);
   if (!state) return c.json({ error: "action not found" }, 404);
+  if (state.config.execution && [...state.activeExecutions.values()].some(exec => exec.runStartedAt !== null)) return c.json({ error: "Cancel active operations before clearing their history" }, 409);
   clearActionRuns(name, state.scopeKey);
   return c.json({ ok: true });
 });
@@ -4207,7 +4336,7 @@ app.patch("/api/actions/:name", async (c) => {
 app.post("/api/actions/reload", (c) => {
   reloadActions();
   const actions = getActions(actionResolveQuery(c));
-  return c.json({ ok: true, count: actions.length });
+  return c.json({ ok: true, count: actions.length, errors: getActionLoadErrors(actionResolveQuery(c)) });
 });
 
 // ── Prompts ──

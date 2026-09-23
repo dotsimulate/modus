@@ -16,6 +16,7 @@
 import { describe, expect, test } from "bun:test";
 import { createInitialState, reduceEvent } from "../../ui/src/eventReducer";
 import { reconstructSessionTurns, type SessionHistoryEventRow } from "../../session-history";
+import { segmentMessage, streamingTailSegments } from "../../ui/src/turn-segments";
 
 type Ev = { type: string; subtype?: string | null; data: Record<string, unknown> };
 
@@ -205,6 +206,41 @@ describe("streaming into a merged turn", () => {
     // History never sees stream events; the durable rows are the same minus deltas.
     const durable = events.filter((e) => e.type !== "stream_event");
     expect(live(events)).toEqual(history(durable));
+  });
+
+  test("reasoning before a tool call stays visible while the next round streams", () => {
+    // A provider that finalizes each round just before its tool call, then
+    // streams the next round's reasoning into a bubble that already has blocks.
+    const thinkingDelta = (thinking: string): Ev => ({
+      type: "stream_event",
+      data: { event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking } } },
+    });
+    const events: Ev[] = [
+      prompt("go"),
+      thinkingDelta("let me "),
+      thinkingDelta("look"),
+      assistant([{ type: "thinking", thinking: "let me look" }]),
+      assistant([{ type: "tool_use", id: "a", name: "Read", input: {} }]),
+      toolResult("a", "ok"),
+      thinkingDelta("now edit"),
+    ];
+    let state = createInitialState("parity");
+    events.forEach((e, index) => {
+      state = reduceEvent(state, { ...e.data, type: e.type, subtype: e.subtype ?? e.data.subtype }, index + 1);
+    });
+    const bubble = state.messages.filter((m) => m.role === "assistant");
+    expect(bubble).toHaveLength(1);
+    const rendered = [...segmentMessage(bubble[0]!), ...streamingTailSegments(bubble[0]!)]
+      .map((s) => s.kind === "thinking" ? `thinking:${s.thinking}` : s.kind);
+    expect(rendered).toEqual(["thinking:let me look", "tools", "thinking:now edit"]);
+
+    const settled: Ev[] = [
+      ...events,
+      assistant([{ type: "thinking", thinking: "now edit" }]),
+      assistant([{ type: "text", text: "done" }]),
+      result(),
+    ];
+    expect(live(settled)).toEqual(history(settled.filter((e) => e.type !== "stream_event")));
   });
 });
 

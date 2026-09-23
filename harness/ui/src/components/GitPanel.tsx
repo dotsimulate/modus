@@ -774,9 +774,16 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
   useEffect(() => {
     setStatus(null); setLog([]); setOpenCommit(null);
     setDetailState({ kind: "overview" }); setCommitDetails(new Map());
-    load();
-    const interval = setInterval(load, 10_000);
-    return () => clearInterval(interval);
+    // Settle-then-schedule: a slow `git status` in a large repo must not stack
+    // a second one behind it on the tab's few HTTP connections.
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      await load();
+      if (active) timer = setTimeout(() => { void poll(); }, 10_000);
+    };
+    void poll();
+    return () => { active = false; if (timer) clearTimeout(timer); };
   }, [load]);
 
   // Sync route → state

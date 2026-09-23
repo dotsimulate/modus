@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { selectVisibleGroupSessions, selectVisibleProjectSessions } from "../../ui/src/sessionHistoryVisibility";
+import { selectCycleSessionIds, selectVisibleGroupSessions, selectVisibleProjectSessions } from "../../ui/src/sessionHistoryVisibility";
 
 const NOW = 1_800_000_000_000;
 
@@ -99,5 +99,27 @@ describe("timeline, agent, and status group visibility", () => {
     expect(selectVisibleGroupSessions(sessions, { limit: 5, revealCount: 2 })).toHaveLength(7);
     expect(selectVisibleGroupSessions(sessions, { limit: 5, revealCount: 99 })).toHaveLength(9);
     expect(selectVisibleGroupSessions(sessions, { limit: 5, searching: true })).toHaveLength(9);
+  });
+});
+
+describe("session cycle ring", () => {
+  const row = (id: string) => ({ id });
+
+  test("walks pinned then visible rows of open groups, never hidden or collapsed ones", () => {
+    const groups = [
+      { key: "a", visibleSessions: [row("a1"), row("a2")] }, // a3 sits behind "show more"
+      { key: "b", visibleSessions: [row("b1")] },            // collapsed
+      { key: "c", visibleSessions: [row("c1"), row("pending-x")] },
+    ];
+    expect(selectCycleSessionIds([row("p1")], groups, new Set(["a", "c"])))
+      .toEqual(["p1", "a1", "a2", "c1"]);
+  });
+
+  test("with nothing open or pinned, visible rows of every group stand in", () => {
+    const groups = [
+      { key: "a", visibleSessions: [row("a1")] },
+      { key: "b", visibleSessions: [row("b1")] },
+    ];
+    expect(selectCycleSessionIds([], groups, new Set())).toEqual(["a1", "b1"]);
   });
 });

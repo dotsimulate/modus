@@ -137,10 +137,14 @@ export function classifyLinkTarget(rawHref: string): MarkdownLinkTarget {
 /**
  * After rehype-sanitize admits a one-letter drive candidate, React Markdown's
  * own URL transform would still treat it as an unsafe URI scheme. Preserve
- * only destinations proven to be local paths or in-app navigation; image
- * sources and unsupported schemes stay behind the library's sanitizer.
+ * only destinations proven to be local paths or in-app navigation. Windows
+ * image sources are consumed by the ticketed MarkdownImage renderer.
  */
 export function markdownUrlTransform(value: string, key: string): string {
+  if (key === "src" && /^\/?[A-Za-z]:(?:[\\/]|%5c|%2f)/i.test(value)) {
+    // Markdown URI-encodes backslashes before this hook sees the destination.
+    return value.replace(/%5c/ig, "\\").replace(/%2f/ig, "/");
+  }
   if (key === "href") {
     const target = classifyLinkTarget(value);
     if (target.kind === "local" || target.kind === "navigation") return value;

@@ -49,8 +49,11 @@ type GrokState = {
   abortController: AbortController;
   turnActive: boolean;
   disposed: boolean;
+  /** The round streaming now; finalized before each tool call and at turn end. */
   text: string;
   thinking: string;
+  /** Every message chunk of the turn, for the result and the session preview. */
+  turnText: string;
   tools: Map<string, ToolState>;
   pendingRpcPermissions: Map<string, JsonRpcId>;
   model?: string;
@@ -266,6 +269,19 @@ function thinkingEvent(text: string) {
 }
 
 /**
+ * ACP streams thought and message chunks with no event that closes them, so the
+ * round is finalized here: before the next tool call and at turn end. Holding
+ * both until the turn ended put every tool call ahead of the reasoning that led
+ * to it, and the transcript hid that reasoning as soon as a tool appeared.
+ */
+function flushAssistantRound(ctx: TurnContext, state: GrokState): void {
+  if (state.thinking) ctx.emitEvent(thinkingEvent(state.thinking));
+  if (state.text) ctx.emitEvent(assistantEvent(state.text));
+  state.thinking = "";
+  state.text = "";
+}
+
+/**
  * Collapse Grok's meta-MCP `use_tool` into the Claude-shaped tool call the rest
  * of Modus expects (`modus_submit` + top-level token/data). Without this, move
  * tool-views never claim the row and live-html / chess / etc. never paint.
@@ -292,6 +308,7 @@ function emitToolStart(ctx: TurnContext, state: GrokState, toolCall: any): ToolS
   const id = String(toolCall.toolCallId ?? toolCall.tool_call_id ?? `grok-tool-${Date.now()}`);
   const existing = state.tools.get(id);
   if (existing) return existing;
+  flushAssistantRound(ctx, state);
   const normalized = normalizeGrokToolCall(toolCall);
   const tool: ToolState = {
     id,
@@ -331,7 +348,8 @@ function handleUpdate(ctx: TurnContext, state: GrokState, params: any): void {
     const text = update?.content?.text;
     if (typeof text !== "string") return;
     state.text += text;
-    ctx.session.lastAssistantText = state.text.slice(-200);
+    state.turnText += text;
+    ctx.session.lastAssistantText = state.turnText.slice(-200);
     ctx.emitEvent({
       type: "stream_event",
       event: { type: "content_block_delta", delta: { type: "text_delta", text } },
@@ -572,6 +590,7 @@ async function runTurn(
     state.turnActive = true;
     state.text = "";
     state.thinking = "";
+    state.turnText = "";
     state.tools.clear();
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
@@ -588,13 +607,12 @@ async function runTurn(
       ctx.emitEvent({ type: "done" });
       return;
     }
-    if (state.thinking) ctx.emitEvent(thinkingEvent(state.thinking));
-    if (state.text) ctx.emitEvent(assistantEvent(state.text));
+    flushAssistantRound(ctx, state);
     const usage = usageFrom(result);
     ctx.emitEvent({
       type: "result",
       subtype: "success",
-      result: state.text,
+      result: state.turnText,
       stop_reason: result?.stopReason,
       harness_duration_ms: Date.now() - session.turnStartedAt,
       input_tokens: usage.input,
@@ -611,7 +629,7 @@ async function runTurn(
       messageCount: (session.exchangeCount + 1) * 2,
       costUsd: session.costUsd,
       lastPrompt: session.preview,
-      lastResponse: state.text.slice(0, 200),
+      lastResponse: state.turnText.slice(0, 200),
     });
     ctx.emitEvent({ type: "done" });
   } catch (error) {
@@ -715,6 +733,7 @@ export function createGrokBuildProvider(options?: {
         disposed: false,
         text: "",
         thinking: "",
+        turnText: "",
         tools: new Map(),
         pendingRpcPermissions: new Map(),
         model: ctx.opts.model ?? ctx.profile?.model,

@@ -35,7 +35,7 @@ Passed to providers by session-manager. Contains:
 - `profile` — resolved agent profile (or undefined)
 - `emitEvent()` — persist + broadcast
 - `broadcastEvent()` — broadcast without persisting
-- `rekeySession()` — replace temp session ID with real one
+- `rekeySession()` — rename the Modus session to a provider-chosen ID. Clients holding the old ID are told (`session_rekeyed`) and it stays an alias, but prefer `setProviderSessionId()` for new providers: the Modus ID then never changes
 - `setProviderSessionId()` — persist a provider-native conversation/thread ID without replacing the Modus ID
 - `notifyConfigChange(patch)` — provider-initiated config change; updates `_configOverrides` and emits `config_updated` to subscribers
 - `updateSessionDb()` — update session row

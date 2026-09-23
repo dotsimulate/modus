@@ -88,6 +88,7 @@ import type {
   TerminalInfo,
   CreateTerminalOpts,
   ProcessSnapshot,
+  MemoryStatus,
   WebPosition,
   MissionRunStatus,
   ApiAttachment,
@@ -288,13 +289,18 @@ export class ModusClient {
   }
   /** Returns the status of a single session. */
   async getSessionStatus(id: string): Promise<SessionStatusInfo> { return (await this.fetch(`/api/sessions/${id}/status`)).json(); }
-  /** Creates and optionally starts a session with the given profile, prompt, and config. */
+  /** Creates and optionally starts a session with the given profile, prompt, and config.
+   *
+   *  Throws on a rejected create. An error body has no `sessionId`, and callers
+   *  destructure one out and key their store on it — so swallowing the status
+   *  turns a 400 into an `undefined` session id that reaches a Map as a key and
+   *  breaks every later lookup, long after the request that caused it. */
   async createSession(opts: CreateSessionOpts): Promise<{ sessionId: string; status: string }> {
-    return (await this.fetch("/api/sessions", { method: "POST", body: JSON.stringify(opts) })).json();
+    return (await this.fetchOrThrow("/api/sessions", { method: "POST", body: JSON.stringify(opts) })).json();
   }
-  /** Creates a session without starting it, returning just the session ID. */
+  /** Creates a session without starting it, returning just the session ID. Throws on a rejected create. */
   async createEmptySession(opts?: { profile?: string; model?: string; provider?: string; cwd?: string; userProfile?: string }): Promise<string> {
-    const data = await (await this.fetch("/api/sessions/empty", { method: "POST", body: JSON.stringify(opts ?? {}) })).json();
+    const data = await (await this.fetchOrThrow("/api/sessions/empty", { method: "POST", body: JSON.stringify(opts ?? {}) })).json();
     return data.sessionId;
   }
   /** Queues a message to a session. Accepts a string prompt or a SendMessageOpts object; string form uses the remaining args for attachments and config. */
@@ -730,10 +736,15 @@ export class ModusClient {
   /** Returns context source and config source paths for an action. */
   async getActionInfo(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<{ contextSource: string; configSource: string }> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/info${this.actionScopeQuery(scope)}`)).json(); }
   /** Manually triggers an action. */
-  async triggerAction(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> {
-    const body = typeof scope === "string" ? { userProfile: scope } : { userProfile: scope?.userProfile ?? undefined, cwd: scope?.cwd ?? undefined };
+  async triggerAction(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null, inputs?: Record<string, unknown>): Promise<void> {
+    const body = { ...(typeof scope === "string" ? { userProfile: scope } : { userProfile: scope?.userProfile ?? undefined, cwd: scope?.cwd ?? undefined }), inputs };
     const r = await this.fetch(`/api/actions/${encodeURIComponent(name)}/trigger`, { method: "POST", body: JSON.stringify(body) });
-    if (!r.ok) throw new Error("trigger failed");
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "trigger failed");
+  }
+  /** Cancel an operation and its managed process tree. */
+  async cancelActionExecution(name: string, executionId: number, scope?: { userProfile?: string | null; cwd?: string | null }): Promise<void> {
+    const response = await this.fetch(`/api/actions/${encodeURIComponent(name)}/executions/${executionId}${this.actionScopeQuery(scope)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("Unable to cancel action execution");
   }
   /** Updates action config fields (partial patch). */
   async patchAction(name: string, patch: Record<string, unknown>, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}${this.actionScopeQuery(scope)}`, { method: "PATCH", body: JSON.stringify(patch) }); }
@@ -744,7 +755,7 @@ export class ModusClient {
   /** Resets an action's state (clears runs, resets schedule). */
   async resetAction(name: string, skipConfirm?: boolean, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/reset${this.actionScopeQuery(scope)}`, { method: "POST", body: JSON.stringify({ skipConfirm }) }); }
   /** Re-scans and reloads all action configs from disk. */
-  async reloadActions(scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<{ ok: boolean; count: number }> { return (await this.fetch(`/api/actions/reload${this.actionScopeQuery(scope)}`, { method: "POST" })).json(); }
+  async reloadActions(scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<{ ok: boolean; count: number; errors?: Array<{ name: string; error: string }> }> { return (await this.fetch(`/api/actions/reload${this.actionScopeQuery(scope)}`, { method: "POST" })).json(); }
   /** Returns user preferences for an action. */
   async getActionPreferences(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<Record<string, boolean>> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/preferences${this.actionScopeQuery(scope)}`)).json(); }
   /** Adds a tag to an action. */
@@ -1085,6 +1096,20 @@ export class ModusClient {
   // ── Process Registry ──
   /** Returns a snapshot of every managed process in the harness (sessions, mission workers, terminals). */
   async listProcesses(): Promise<ProcessSnapshot> { const r = await this.fetch("/api/processes"); if (!r.ok) throw new Error(`Failed to list processes: ${r.status}`); return r.json(); }
+
+  /** Read the backend's current memory and session admission limits. */
+  async getMemoryStatus(): Promise<MemoryStatus> {
+    const r = await this.fetchOrThrow("/api/system/memory");
+    return r.json();
+  }
+
+  /** Apply a concurrency limit until backend restart, without interrupting sessions. */
+  async setMaxConcurrentSessions(maxConcurrentSessions: number): Promise<MemoryStatus> {
+    const r = await this.fetchOrThrow("/api/system/memory", {
+      method: "PUT", body: JSON.stringify({ maxConcurrentSessions }),
+    });
+    return r.json();
+  }
   /** Kill a managed process by session ID. Aborts the provider and tears down SDK subprocess + MCP transports. */
   async killProcess(id: string): Promise<void> { const r = await this.fetch(`/api/processes/${id}`, { method: "DELETE" }); if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error((body as any).error ?? `Failed to kill process: ${r.status}`); } }
 

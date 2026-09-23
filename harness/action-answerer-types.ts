@@ -1,5 +1,5 @@
 /** Shared backend/SDK identity for how an action prompt was answered. */
-export type ActionAnswerer = "session" | "completion";
+export type ActionAnswerer = "session" | "completion" | "command" | "code";
 
 /** Telemetry persisted only when an action used the completion answerer. */
 export interface ActionCompletionMetadata {

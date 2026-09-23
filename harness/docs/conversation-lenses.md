@@ -22,6 +22,12 @@ The built-ins are:
 - `core:transcript` — the canonical continuous transcript;
 - `core:focus` — a turn index beside one focused turn.
 
+Tool runs keep their identity as streamed calls and results arrive, preserving
+expanded tool details in both built-in views. In Transcript, a run first shown
+live stays open when the response finishes and its group header appears.
+Completed history still starts with long tool runs collapsed. Expansion is local
+to mounted rows; it is not persisted across reloads or virtualized unmounts.
+
 The Chat Display **View** selector shows their labels as **Transcript** and
 **Focus**, plus valid discovered authored lenses. It is the only view selector
 and persists through the existing device default or project override. Source

@@ -5,7 +5,7 @@ import { usePinboard } from "../providers/PinboardContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import type { BrowseResult, FileSearchResponse, PreviewManifest } from "../../../sdk/index";
-import { setFsWatchRoot } from "../modusClient";
+import { setFsWatchRoot } from "../fsEvents";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser, type FileBrowserHandle } from "./FileBrowser";
 import { CodeMirrorEditor, type CodeMirrorContextInfo, type CodeMirrorEditorHandle } from "./CodeMirrorEditor";

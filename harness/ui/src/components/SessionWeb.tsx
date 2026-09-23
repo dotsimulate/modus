@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo, type CSSProperties } from "react";
-import { modus, API_BASE, authHeaders, getAuthToken } from "../modusClient";
+import { modus, API_BASE, authHeaders } from "../modusClient";
+import { onHubConnection, onHubEvent } from "../eventHub";
 import type { SessionInfo, GitCommit, MissionRunSummary, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
@@ -1428,22 +1429,22 @@ export function SessionWeb() {
     setTouches(touchData.touches);
   }, [activeUserProfile, activeUP]);
 
-  // ── Global SSE: real-time session lifecycle events ──
+  // ── Real-time session lifecycle events (shared browser event hub) ──
   useEffect(() => {
-    const token = getAuthToken();
-    const url = `${API_BASE}/api/events/sessions${token ? `?token=${token}` : ""}`;
-    const es = new EventSource(url);
-
-    es.addEventListener("session", (e) => {
+    const stopEvents = onHubEvent("session", (payload) => {
       try {
-        const evt = JSON.parse(e.data);
-        if (evt.type === "session:created") {
+        const evt = payload as any;
+        if (evt.type === "session:created" || evt.type === "session:rekeyed") {
           reloadData();
         } else if (evt.type === "session:status") {
           setSessions(prev => prev.map(s =>
             s.id === evt.sessionId
               ? { ...s, status: evt.status, total_cost_usd: evt.costUsd ?? s.total_cost_usd, preview: evt.preview ?? s.preview }
               : s,
+          ));
+        } else if (evt.type === "session:title") {
+          setSessions(prev => prev.map(s =>
+            s.id === evt.sessionId ? { ...s, title: evt.title ?? null } : s,
           ));
         } else if (evt.type === "session:archived") {
           setSessions(prev => prev.filter(s => s.id !== evt.sessionId));
@@ -1455,12 +1456,10 @@ export function SessionWeb() {
         }
       } catch { /* ignore malformed events */ }
     });
-
-    es.onerror = () => {
-      // EventSource auto-reconnects — no action needed
-    };
-
-    return () => es.close();
+    const stopConnection = onHubConnection((connected) => {
+      if (connected) void reloadData();
+    });
+    return () => { stopEvents(); stopConnection(); };
   }, [reloadData]);
 
   const handleCanvasDoubleClick = useCallback(async (e: React.MouseEvent) => {

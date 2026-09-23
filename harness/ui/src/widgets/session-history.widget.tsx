@@ -12,6 +12,7 @@ import { scheduleSessionSearch } from "../session-search-request";
 import { onControlIntent, stepSessionId } from "../control-intents";
 import {
   isActiveProjectSessionStatus,
+  selectCycleSessionIds,
   selectVisibleGroupSessions,
   selectVisibleProjectSessions,
   type ProjectWindow,
@@ -485,15 +486,14 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   // cycles the unfiltered project list, so a knob visits sessions that are not on
   // screen and skips ones that are.
   //
-  // Group collapse and the per-group row cap are presentation, not filtering, so
-  // they do not narrow the ring — landing inside a collapsed group expands it.
+  // Only rows on screen are in the ring: pinned, then the visible rows of open
+  // groups. Rows behind "show N more" and inside collapsed groups are skipped,
+  // so turning the knob walks the list you are looking at.
   // Pending sessions are skipped: they have no history to land in.
-  const cycleIds = useMemo(() => {
-    const ids = query
-      ? searchResults.map((hit) => hit.session_id)
-      : [...pinned, ...displayGroups.flatMap((group) => group.sessions)].map((session) => session.id);
-    return ids.filter((id) => !id.startsWith("pending-"));
-  }, [query, searchResults, pinned, displayGroups]);
+  const cycleIds = useMemo(() => query
+    ? searchResults.map((hit) => hit.session_id).filter((id) => !id.startsWith("pending-"))
+    : selectCycleSessionIds(pinned, displayGroups, expandedGroups),
+  [query, searchResults, pinned, displayGroups, expandedGroups]);
 
   useEffect(() => onControlIntent("session.cycle", (intent) => {
     if (intent.intent !== "session.cycle") return;

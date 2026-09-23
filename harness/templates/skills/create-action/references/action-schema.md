@@ -2,17 +2,153 @@
 
 Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is the action's ID.
 
-## Complete Schema
+## Command and Code configuration
+
+Both paths default to `trigger: { type: "manual" }`, `enabled: true`,
+`concurrency: 1`, and `timeoutMs: 300000`. Project actions default `cwd` to the
+project root and execute on the connected backend machine.
+
+### Command with typed inputs
+
+```json
+{
+  "name": "export",
+  "execution": {
+    "type": "command",
+    "executable": "bun",
+    "args": ["scripts/export.ts", "--format", { "input": "format" }]
+  },
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": { "type": "string", "enum": ["json", "csv"], "default": "json" }
+    },
+    "required": ["format"],
+    "additionalProperties": false
+  }
+}
+```
+
+Provide the project's `scripts/export.ts` before using this example. Each input
+reference becomes one literal argument, never interpolated shell text.
+`execution.shell: true` uses `executable` as a platform-shell script and cannot
+be combined with arguments. Prefer executable plus argv for portability.
+Command does not load `context.ts` and returns process output; use Code for
+custom results and artifacts.
+
+### Code with a managed process and artifact
+
+`action.json`:
+
+```json
+{
+  "name": "runtime-report",
+  "execution": { "type": "code" },
+  "artifacts": [{ "name": "report", "mime": "application/json" }]
+}
+```
+
+`context.ts` (uses `CodeActionContext`, not the AI `ActionContext`):
+
+```ts
+import { writeFile } from "node:fs/promises";
+
+export async function run(ctx) {
+  const result = await ctx.process.run({ executable: "bun", args: ["--version"] });
+  const path = ctx.artifacts.path("report.json");
+  await writeFile(path, JSON.stringify({ version: result.stdout.trim() }));
+  return {
+    summary: "Recorded Bun version",
+    data: { exitCode: result.exitCode },
+    artifacts: [{ name: "report", path, mime: "application/json" }]
+  };
+}
+```
+
+The worker context supplies only:
+
+- `runId`, `actionName`, `inputs`, `trigger`, `cwd`, `signal` (AbortSignal).
+- `log(message)`.
+- `process.run({ executable, args?, cwd?, check? })`: returns `exitCode`,
+  `signal`, `stdout`, `stderr`, `truncated`. Nonzero exit throws by default;
+  `check: false` permits explicit inspection. Use this for managed subprocesses.
+- `artifacts.path(filename)`: a basename-only managed output path.
+- `secrets.resolve(reference)`: asynchronously resolves a named secret.
+- `actions.trigger(name, inputs?)`: explicit handoff to a manual/interval action;
+  the recipient must declare invocation fields in its `inputSchema`.
+- `sessions.create({ profile, prompt })`: explicit agent-session handoff.
+
+Await every context request. Action handoff means accepted, not completed; inspect
+the recipient's run separately. Code has no harness DB handles, AI artifact
+helpers, `gather`, `verify`, or `afterRun`. Use ordinary file APIs as needed and
+avoid importing harness runtime modules. Exact types are in the Modus docs
+`generated/authoring-contracts` under `CodeActionContext`.
+
+`run` returns void or `{ summary?, data?, artifacts?: [{ name, path, mime }] }`.
+Returned files must exist and be nonempty; required config artifact declarations
+must match returned names and MIME types. Relative returned paths resolve from
+`cwd`. Results must be JSON-serializable; worker messages/results have a 256 KiB
+limit.
+
+### Shared input and execution rules
+
+- `inputSchema` supports an object with scalar `string`, `number`, `integer`,
+  or `boolean` properties. Field options: `title`, `description`, `default`,
+  `enum`, `minLength`, `maxLength`, `minimum`, `maximum`. Root options:
+  `type`, `properties`, `required`, `additionalProperties: false`.
+- Unknown input keys and unsupported schema keywords are rejected. No coercion;
+  invocation JSON is limited to 16 KiB. Static config `inputs` are separate;
+  validated invocation values merge over them in Code/AI contexts. Command argv
+  references use validated invocation values, so provide defaults or required fields.
+- Manual HTTP invocation: `POST /api/actions/<name>/trigger` with `{ "inputs": {...} }`.
+  SDK: `triggerAction(name, scope, inputs)`. Harness Context:
+  `ctx.actions.trigger(name, inputs)`. These acknowledge dispatch, not completion.
+- Command/Code webhooks take the entire JSON body as invocation inputs. Session
+  and chain event payloads reach Code via `ctx.trigger.payload`; schemas for
+  automatic triggers must be satisfiable using defaults.
+- Command/Code reject `answerer`, `agentProfile`, `steps`, `provider`, `model`,
+  `maxTurns`, `effort`, `tools`, `disallowedTools`, `providerControls`,
+  `loadProjectSettings`, `moves`, `skills`, `maxRetries`, `maxTransientRetries`,
+  `onGatherError`, `onTransientFailure`, `retryBackoff`, and webhook `sessionKey`.
+- Optional `env` values are named secret references, for example
+  `"env": { "API_KEY": { "secret": "service-key" } }`. Resolve at execution time;
+  do not put secrets in inputs or command text. Retained-log redaction is best effort.
+- `concurrency` and `timeoutMs` must be positive integers. Four Command/Code runs
+  may run globally; Code permits four managed processes and eight pending context
+  requests. There is no waiting queue or automatic retry.
+- Cancellation/timeout tears down owned process trees and holds capacity through
+  cleanup. Restart records unfinished work as `interrupted` without replay.
+  Reset is rejected while an operation remains active.
+- Run history has `operation.outcome`: `running`, `succeeded`, `failed`,
+  `could-not-start`, `timed-out`, `cancelled`, `interrupted`, `skipped`.
+  Legacy statuses remain `done`/`error`/`skipped` for chains and notifications.
+  Stdout and stderr retain separate 32 KiB tails; stderr alone does not mean failure.
+- Existing trusted-local capability rules apply: execution uses `shell`, action
+  handoff uses `actionTrigger`, session handoff uses `sessionSpawn`. A reviewed
+  action with a capability explicitly false is denied; omission is allowed.
+  Worker isolation provides crash containment, not a security sandbox.
+
+## AI configuration
+
+Omit `execution`. Set `agentProfile` to a resolvable project, Vault, or plugin
+profile. `answerer` defaults to `session`. To use a tool-less completion, set
+`answerer: "completion"` and return a string from `gather()`. Completion rejects
+`steps`, `maxTurns`, `effort`, `tools`, `disallowedTools`, `providerControls`,
+`loadProjectSettings`, `moves`, and `skills`; it uses `modelCall` permission and
+creates no session. Explicit `provider`/`model` override the chosen profile.
+
+The following configuration illustrates the **AI Session path**. Retry, session
+options, and AI artifact helpers below do not apply to Command/Code.
 
 ```jsonc
 {
   // ── Identity (required) ──
   "name": "health-monitor",           // Must match directory name
   "description": "Check service health every 5 minutes",
-  "enabled": false,                    // Always start disabled
+  "enabled": false,                    // Park automatic triggers; default is true
 
   // ── What to Run (required) ──
-  "agentProfile": "ops-agent",        // References .modus/profiles/agents/<name>.json
+  "agentProfile": "ops-agent",        // Resolvable project, Vault, or plugin profile
 
   // ── Multi-step sequence (optional) ──
   // Switches agent profiles mid-session. Each step runs in the same session.
@@ -22,8 +158,8 @@ Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is
   ],
   // contextMode: "full" (default) | "summary" | "lastResponse"
 
-  // ── Trigger (required) ──
-  // Exactly one of the four trigger types:
+  // ── Trigger (optional; defaults to manual) ──
+  // Choose one of the five trigger types:
 
   // Interval trigger:
   "trigger": {
@@ -46,6 +182,10 @@ Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is
   // Action chain trigger:
   // "trigger": { "type": "action", "source": "other-action-name", "condition": "done" }
   // condition: "done" | "error" | "any"
+
+  // Session event trigger:
+  // "trigger": { "type": "session", "on": { "role": "assistant", "round": 1, "at": "end" } }
+  // on also accepts "archived" or "deleted"; excludeTags defaults to ["internal"].
 
   // ── Run Layer ──
   "maxRuns": 3,                        // per-cycle limit (or lifetime cap without cycleInterval)
@@ -154,7 +294,7 @@ Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is
 { "trigger": { "type": "action", "source": "health-check", "condition": "any" } }
 ```
 
-## Verify + Retry Examples
+## AI Verify + Retry Examples
 
 ### File-producing action with auto-verify (no verify() needed)
 
@@ -183,7 +323,7 @@ Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is
 }
 ```
 
-## Override Precedence
+## AI Override Precedence
 
 ```
 Action config  >  Agent Profile  >  User Profile  >  Default
@@ -194,7 +334,7 @@ Action config  >  Agent Profile  >  User Profile  >  Default
 
 **Not overridable:** `prompt` (from agent profile), `mcpServers`, `permissionPolicy`
 
-## Concurrency
+## AI Concurrency
 
 Controlled by `concurrency` config (default 1). When at the limit, new triggers
 are dropped and logged. Multiple executions run independently with separate
@@ -207,14 +347,14 @@ up to 8 levels, the 9th is refused.
 
 ## Session Timeout
 
-Each action run has a 30-minute maximum. If the agent hasn't finished, the run is marked
+Each AI session run has a 30-minute maximum. If the agent hasn't finished, the run is marked
 as error with a timeout message.
 
 ## API Endpoints
 
 - `GET /api/actions` — list all actions with runtime state
 - `GET /api/actions/<name>` — single action detail
-- `POST /api/actions/<name>/trigger` — manual trigger (bypasses interval + active hours)
+- `POST /api/actions/<name>/trigger` — manual trigger with optional `{ "inputs": {...} }` (bypasses interval + active hours)
 - `POST /api/actions/<name>/hook?token=<token>` — webhook trigger
 - `GET /api/actions/<name>/runs?limit=20` — run history
 - `GET /api/actions/<name>/executions` — list executions
@@ -222,7 +362,7 @@ as error with a timeout message.
 - `POST /api/actions/<name>/executions` — start new execution
 - `DELETE /api/actions/<name>/executions/<id>` — cancel execution
 - `PATCH /api/actions/<name>` — update config (enabled, interval)
-- `POST /api/actions/<name>/reset` — clear history, reset counters
+- `POST /api/actions/<name>/reset` — archive old executions and reset counters; preserves history, rejected while an operation is busy
 - `POST /api/actions/reload` — reload from disk
 
 ## Naming Conventions

@@ -24,6 +24,8 @@ export function formatToolTally(toolNames: Record<string, number>): string {
 }
 
 type Props = {
+  /** Keep the same subtree while showing ungrouped rows during streaming. */
+  inline?: boolean;
   count: number;
   toolNames: Record<string, number>;
   hasThinking?: boolean;
@@ -36,6 +38,7 @@ type Props = {
 };
 
 export function ToolCallGroup({
+  inline = false,
   count,
   toolNames,
   hasThinking = false,
@@ -45,7 +48,8 @@ export function ToolCallGroup({
   onLoad,
   children,
 }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  // A run first seen live stays open when its collapse header appears.
+  const [expanded, setExpanded] = useState(inline);
   const tally = formatToolTally(toolNames);
   const label = count > 0
     ? `${count} tool call${count === 1 ? "" : "s"}`
@@ -53,7 +57,8 @@ export function ToolCallGroup({
 
   // A deferred group that has been asked to load stays "expanded" so the
   // arriving content appears in place rather than needing a second click.
-  const open = expanded && (!deferred || !loading);
+  const open = inline || (expanded && (!deferred || !loading));
+  const inlineStyle = inline ? { display: "contents" } : undefined;
 
   const toggle = () => {
     if (deferred && !expanded && onLoad) void onLoad();
@@ -61,8 +66,8 @@ export function ToolCallGroup({
   };
 
   return (
-    <div className={`tool-run${open ? " tool-run--open" : ""}${deferred ? " tool-run--deferred" : ""}`}>
-      <button type="button" className="tool-run-header" onClick={toggle} aria-expanded={open}>
+    <div style={inlineStyle} className={`tool-run${open ? " tool-run--open" : ""}${deferred ? " tool-run--deferred" : ""}`}>
+      <button type="button" style={inline ? { display: "none" } : undefined} className="tool-run-header" onClick={toggle} aria-expanded={open}>
         <svg className="tool-run-chevron" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true">
           <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
@@ -73,9 +78,9 @@ export function ToolCallGroup({
         {!loading && error && <span className="tool-run-state tool-run-state--error">{error}</span>}
         {!loading && !error && deferred && <span className="tool-run-state">not loaded</span>}
       </button>
-      <div className={`tool-run-collapse${open ? " tool-run-collapse--open" : ""}`}>
-        <div className="tool-run-clip">
-          <div className="tool-run-body">{children}</div>
+      <div style={inlineStyle} className={`tool-run-collapse${open ? " tool-run-collapse--open" : ""}`}>
+        <div style={inlineStyle} className="tool-run-clip">
+          <div style={inlineStyle} className="tool-run-body">{children}</div>
         </div>
       </div>
     </div>

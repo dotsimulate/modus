@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { onUiEvent } from "../sessionStore";
 import { modus } from "../modusClient";
-import { onFsChange } from "../modusClient";
+import { onFsChange } from "../fsEvents";
 import { FileViewerContext, type FileOpenRequest, type Tab } from "./FileViewerContext";
 
 export function FileViewerProvider({ children }: { children: ReactNode }) {

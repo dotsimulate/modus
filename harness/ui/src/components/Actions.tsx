@@ -5,6 +5,7 @@ import { useProfiles } from "../providers/ProfileContext";
 import { collapseSkippedActionRuns } from "../action-run-history";
 import { describeActionCycleLimit, describeActionRunLimit } from "../action-limit-display";
 import { Markdown } from "./Markdown";
+import { ActionOperationControls, ActionOperationDetails } from "./ActionOperation";
 
 type Props = {
   onSelectSession: (id: string) => void;
@@ -193,7 +194,7 @@ function RunsTab({
       {/* Actions */}
       <div className="sched-runs-actions">
         {runs.length > 0 && (
-          <button className="sched-clear-btn" onClick={onClear}>
+          <button className="sched-clear-btn" onClick={onClear} disabled={!!action.execution && action.running}>
             clear history
           </button>
         )}
@@ -384,6 +385,7 @@ function RunRow({ run, session, onSelect, onPeek }: { run: ActionRun; session?: 
           {completion.stopReason && <span>stop: {completion.stopReason}</span>}
         </div>
       )}
+      {run.operation && <ActionOperationDetails run={run} />}
     </div>
   );
 }
@@ -725,7 +727,7 @@ function ActionCard({
           checked={action.enabled}
           onChange={(v) => onToggleEnabled(v)}
         />
-        {(trigger.type === "manual" || trigger.type === "interval") && (
+        {!action.execution && (trigger.type === "manual" || trigger.type === "interval") && (
         <button
           className="sched-trigger-btn"
           onClick={(e) => {
@@ -760,7 +762,7 @@ function ActionCard({
 
       {/* Tags row */}
       <div className="sched-card-tags">
-        <span className="override-tag">{action.agentProfile}</span>
+        <span className="override-tag">{action.execution?.type ?? action.agentProfile}</span>
         <span className="override-tag">{triggerLabel(action)}</span>
         {trigger.type === "interval" && trigger.activeHours && (
           <span className="override-tag">{trigger.activeHours.start}-{trigger.activeHours.end}</span>
@@ -772,6 +774,8 @@ function ActionCard({
 
       {/* Description */}
       <div className="sched-card-desc">{action.description}</div>
+      {action.execution && <ActionOperationControls action={action} scope={scope} />}
+      {action.execution && runs.filter(run => run.status === "running").map(run => <ActionOperationDetails key={run.id} run={run} actionName={action.name} scope={scope} />)}
 
       {/* Meters */}
       <ActionMeters action={action} />
@@ -844,6 +848,7 @@ function ActionCard({
 export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Props) {
   const { activeUserProfile, activeCwd } = useProfiles();
   const [actions, setActions] = useState<ActionInfo[]>([]);
+  const [loadErrors, setLoadErrors] = useState<Array<{ name: string; error: string }>>([]);
   const [expandedName, setExpandedName] = useState<string | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -868,7 +873,10 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
         if (active) setActions(a);
       } catch { /* silent */ }
     };
-    modus.reloadActions(actionScope).then(poll, poll);
+    modus.reloadActions(actionScope).then(result => {
+      if (active) setLoadErrors(result.errors ?? []);
+      return poll();
+    }, poll);
     const interval = setInterval(poll, 2000);
     return () => { active = false; clearInterval(interval); };
   }, [actionScope]);
@@ -927,6 +935,7 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
 
   return (
     <div className="schedules-view">
+      {loadErrors.map(error => <div role="alert" key={error.name}>{error.name}: {error.error}</div>)}
       {/* Header */}
       <div className="sched-header">
         <span className="sched-header-title">actions</span>

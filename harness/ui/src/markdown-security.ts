@@ -34,6 +34,7 @@ export const markdownSanitizeSchema = {
   protocols: {
     ...defaultSchema.protocols,
     href: [...(defaultSchema.protocols?.href ?? []), ...windowsDriveProtocolCandidates, "modus"],
+    src: [...(defaultSchema.protocols?.src ?? []), ...windowsDriveProtocolCandidates],
   },
 };
 

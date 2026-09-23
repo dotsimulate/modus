@@ -18,9 +18,14 @@ export function QueuedMessage({ message, onCancel }: Props) {
   // Say why, since the reason differs: an ordinary send always waits for the
   // turn, while a declined interjection waits because the provider cannot
   // deliver mid-turn at all.
-  const title = message.steerDeclined
-    ? "This provider cannot deliver mid-turn — sends when the current turn ends"
-    : "Sends when the current turn ends";
+  const title = message.failed
+    ? `Not sent: ${message.failed}`
+    : message.steerDeclined
+      ? "This provider cannot deliver mid-turn — sends when the current turn ends"
+      : "Sends when the current turn ends";
+  const label = message.failed
+    ? "not sent"
+    : message.steerDeclined ? "queued · can't interject" : "queued";
 
   return (
     <div className="queued-message" title={title}>
@@ -29,14 +34,14 @@ export function QueuedMessage({ message, onCancel }: Props) {
           <span className="queued-message-dot" />
         </span>
         <span className="queued-message-label">
-          {message.steerDeclined ? "queued · can't interject" : "queued"}
+          {label}
         </span>
         <span className="queued-message-preview">
           {hasImages && `[${message.attachments.length} img] `}
           {preview}
         </span>
         <button className="queued-message-cancel" onClick={(e) => { e.stopPropagation(); onCancel(); }}>
-          cancel
+          {message.failed ? "restore" : "cancel"}
         </button>
       </div>
       {expanded && (

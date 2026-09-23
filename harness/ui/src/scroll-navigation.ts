@@ -58,3 +58,23 @@ export function calculateScrollTarget(
   const target = itemOffset + Math.max(itemHeight - 1, 0) * position - padding;
   return Math.min(Math.max(0, target), Math.max(0, max));
 }
+
+/** How quickly a programmatic glide closes on its target. */
+export const GLIDE_TIME_CONSTANT_MS = 70;
+
+/**
+ * One frame of an eased glide: the share of the remaining distance to cover
+ * after `elapsedMs`. Exponential rather than a fixed-duration curve, so a new
+ * request mid-glide just adds distance and the motion never restarts from zero —
+ * which is what keeps a fast spin on a knob smooth instead of stuttering.
+ * Snaps the last half pixel so a glide always finishes.
+ */
+export function glideStep(
+  remaining: number,
+  elapsedMs: number,
+  timeConstantMs: number = GLIDE_TIME_CONSTANT_MS,
+): number {
+  if (Math.abs(remaining) < 0.5) return remaining;
+  const share = 1 - Math.exp(-Math.max(0, elapsedMs) / Math.max(1, timeConstantMs));
+  return remaining * share;
+}

@@ -10,6 +10,8 @@ import whisperTranscribeExtension, {
   matchAudioInputDevice,
   needsLabelProbe,
   pickLoudestChannel,
+  requestText,
+  UPLOAD_TIMEOUT_MS,
   RMS_THRESHOLD,
   shouldWarnNoFrames,
   shouldWarnNoInput,
@@ -553,6 +555,38 @@ describe("whisper-transcribe composer routing", () => {
     await getAction().onClick({ composer: clicked.handle });
     expect(getAction().state.status?.tone).toBe("active");
   });
+
+  test("a hung upload retries once, releases finishing, and allows another recording", async () => {
+    audio = installAudioStubs();
+    let stalled = true;
+    const { api, uploads, getAction } = createApiStub("", () => stalled
+      ? new Promise(() => {})
+      : { ok: true, status: 200, text: async () => JSON.stringify({ text: "recovered" }) });
+    const originalSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: TimerHandler, delay?: number, ...args: unknown[]) =>
+      originalSetTimeout(fn, delay === UPLOAD_TIMEOUT_MS ? 10 : delay, ...args)) as typeof setTimeout;
+    try {
+      dispose = whisperTranscribeExtension(api as any) as () => void;
+      const clicked = createComposerStub();
+      await getAction().onClick({ composer: clicked.handle });
+      audio.speak();
+      await getAction().onClick({ composer: clicked.handle });
+      await Bun.sleep(0);
+
+      expect(uploads).toHaveLength(2);
+      expect(getAction().state.status?.label).toBe("timed out");
+      expect(getAction().state.disabled).toBe(false);
+
+      stalled = false;
+      await getAction().onClick({ composer: clicked.handle });
+      expect(getAction().state.status?.tone).toBe("active");
+      audio.speak();
+      await getAction().onClick({ composer: clicked.handle });
+      expect(clicked.drafts).toEqual(["recovered"]);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
 });
 
 describe("whisper-transcribe request shape", () => {
@@ -716,5 +750,33 @@ describe("too quiet is advisory", () => {
   test("shouldWarnTooQuiet still detects the dead zone", () => {
     expect(shouldWarnTooQuiet({ elapsedMs: 9999, peakLevel: 0.005, sawSpeech: false })).toBe(true);
     expect(shouldWarnTooQuiet({ elapsedMs: 9999, peakLevel: 0.005, sawSpeech: true })).toBe(false);
+  });
+});
+
+// Uploads are serial: one request that never settles used to hold every later
+// chunk, and the chip sat on "finishing" until a reload.
+describe("upload timeout", () => {
+  test("a request that never settles is abandoned and its fetch aborted", async () => {
+    let signal: AbortSignal | undefined;
+    const never = (_path: string, init: RequestInit) => {
+      signal = init.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    };
+    const error = await requestText(never, "/api/whisper/transcribe", { method: "POST" }, 20).catch((e: any) => e);
+    expect(error.label).toBe("timed out");
+    expect(signal?.aborted).toBe(true);
+  });
+
+  test("a body that never finishes is bounded too", async () => {
+    const stalledBody = async () => new Response(new ReadableStream({ start() {} }));
+    const error = await requestText(stalledBody, "/x", {}, 20).catch((e: any) => e);
+    expect(error.label).toBe("timed out");
+  });
+
+  test("a prompt response resolves with its status and raw body", async () => {
+    const ok = async () => new Response('{"text":"hello"}', { status: 200 });
+    const { response, raw } = await requestText(ok, "/x", {}, 1000);
+    expect(response.status).toBe(200);
+    expect(raw).toBe('{"text":"hello"}');
   });
 });

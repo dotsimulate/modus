@@ -3,6 +3,17 @@ export type VirtualHeightUpdate = {
   previous: number | undefined;
 };
 
+/** Refresh mounted rows immediately: unchanged DOM sizes do not fire ResizeObserver again. */
+export function resetVirtualHeights(
+  heights: Map<string, number>,
+  measuredKeys: Set<string>,
+  mounted: Iterable<readonly [string, number]>,
+): void {
+  heights.clear();
+  measuredKeys.clear();
+  for (const [key, height] of mounted) recordVirtualHeight(heights, measuredKeys, key, height);
+}
+
 /**
  * Record a mounted virtual row's height without allowing teardown or hidden
  * layout states to collapse previously valid geometry.

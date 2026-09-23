@@ -24,6 +24,7 @@ export function MessageText({
   text,
   isNew = false,
   revealText = false,
+  cwd,
   onContextMenu,
 }: {
   messageId: string;
@@ -31,6 +32,7 @@ export function MessageText({
   text: string;
   isNew?: boolean;
   revealText?: boolean;
+  cwd?: string | null;
   onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   const parts = role === "user" ? parseMessageText(text) : [];
@@ -50,8 +52,8 @@ export function MessageText({
           {visibleParts.length > 0
             ? visibleParts.map((part, index) => part.type === "paste"
                 ? <PasteBlock key={`paste:${index}`} text={part.text} />
-                : <Markdown key={`text:${index}`} content={part.text} revealText={revealText} />)
-            : <Markdown content={visibleText} revealText={revealText} />}
+                : <Markdown key={`text:${index}`} content={part.text} revealText={revealText} cwd={cwd} />)
+            : <Markdown content={visibleText} revealText={revealText} cwd={cwd} />}
         </div>
       )}
       {injectedContexts.length > 0 && (

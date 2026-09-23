@@ -248,6 +248,7 @@ async function stage(): Promise<void> {
     [join(harnessDir, "node_modules", "@silvia-odwyer", "photon-node")],
   );
   await bundle(join(harnessDir, "cli.ts"), join(stageDir, "cli.js"));
+  await bundle(join(harnessDir, "action-worker.ts"), join(stageDir, "action-worker.js"));
   await bundle(
     join(harnessDir, "svg-render-worker.ts"),
     join(stageDir, "svg-render-worker.js"),

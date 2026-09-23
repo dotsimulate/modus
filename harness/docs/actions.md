@@ -1,13 +1,165 @@
 ---
 title: Actions
-lastUpdated: 2026-08-29
+lastUpdated: 2026-09-15
 covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts harness/skill-attachment.ts harness/core-action-overlay.ts harness/action-setting-reference.ts
 ---
 
 # Actions
 
-Actions are the automation primitive. They define WHEN an agent runs, with
-what context, and what happens after.
+Actions are named operations with triggers and a recorded result. They execute
+commands, custom code, model completions, or agent sessions. The trigger and page
+presentation are independent of the execution choice.
+
+## Command and Code operations
+
+A build button needs only `action.json` in an action directory:
+
+```json
+{
+  "name": "build",
+  "execution": { "type": "command", "executable": "bun", "args": ["run", "build"] }
+}
+```
+
+The directory name is the action identity. `trigger` defaults to `manual`,
+`enabled` to `true`, and project actions run in their project root unless `cwd`
+is supplied. Commands run on the **connected backend machine**. The Actions
+manager and `action-card` page widget show the execution target, Run control,
+expandable output, result, and cancellation. They do not open a terminal for a
+finite operation. To expose a selected operation on a page, use a widget leaf
+with `"type": "action-card", "actionName": "build"`.
+
+`execution` and the AI fields (`answerer`, `agentProfile`, `steps`, model/session
+overrides, and AI retry options) are mutually exclusive. Existing definitions
+without `execution` retain their gather → session/completion pipeline.
+Command actions never load `context.ts`. Code actions load it only in an isolated
+process and call **`run(ctx)`**, never `gather`, `verify`, or `afterRun`.
+
+### Parameterized commands
+
+```json
+{
+  "name": "export",
+  "execution": {
+    "type": "command",
+    "executable": "bun",
+    "args": ["scripts/export.ts", "--format", { "input": "format" }]
+  },
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": { "type": "string", "enum": ["json", "csv"], "default": "json" }
+    },
+    "required": ["format"],
+    "additionalProperties": false
+  }
+}
+```
+
+Each input reference inserts exactly one argument. It never interpolates shell
+text. `execution.shell: true` explicitly interprets `executable` as a shell
+script using the platform shell; `args` cannot be combined with that mode.
+For portable command definitions, prefer executable plus arguments.
+
+`inputSchema` is a deliberately limited JSON Schema subset: object properties
+of type string, number, integer, or boolean; required, default, enum, title,
+description, minLength/maxLength, and minimum/maximum. Unknown fields and schema
+keywords are rejected. No coercion occurs; invocation input JSON is limited to
+16 KiB. Static `inputs` remain configuration; invocation values are validated
+separately and merged over static values for Code/AI contexts.
+
+The same validation applies to Run forms, `POST /api/actions/:name/trigger`
+with `{ "inputs": { "format": "csv" } }`, SDK
+`triggerAction(name, scope, inputs)`, and Harness Context
+`actions.trigger(name, inputs)`. For Command/Code webhooks, the entire JSON body
+is the invocation input object. Session/chain events supply `ctx.trigger.payload`;
+their input schemas must be satisfiable by defaults. A Command/Code webhook
+cannot configure the AI-only `sessionKey` routing option.
+
+### Isolated code and explicit handoff
+
+Set `"execution": { "type": "code" }` and provide `context.ts`:
+
+```ts
+export async function run(ctx) {
+  const tests = await ctx.process.run({ executable: "bun", args: ["test"], check: false });
+  if (tests.exitCode !== 0) {
+    await ctx.actions.trigger("review-test-failure", {
+      runId: ctx.runId,
+      output: (tests.stdout + tests.stderr).slice(-12000),
+    });
+  }
+  return { summary: "Tests inspected", data: { exitCode: tests.exitCode } };
+}
+```
+
+The receiving action declares `runId` and `output` in its own `inputSchema`.
+It may be an AI action whose gather hook reads `ctx.inputs`. Handoff records the
+parent run; it means the receiving action was accepted, not that its later work
+succeeded. There is no implicit repair agent. `steps[]` remains an AI profile
+sequence, not a mixed workflow engine.
+
+`ctx.process.run({ executable, args?, cwd?, check? })` returns exitCode, signal,
+stdout, stderr, and truncated. A nonzero exit throws `ProcessExitError` by
+default; `check: false` opts into explicit inspection. All calls must be awaited.
+The context also supplies runId, actionName, inputs, trigger, cwd, signal,
+log(message), artifacts.path(filename), secrets.resolve(reference),
+actions.trigger(name, inputs), and sessions.create({ profile, prompt }). See
+`generated/authoring-contracts` for exact declarations. Primary code and required
+artifact validation complete before success. Notification delivery errors are
+stored separately as `afterRunError`.
+
+Results contain optional summary, JSON data, and artifacts
+`[{ name, path, mime }]`. Returned artifact files must exist and be nonempty;
+required `artifacts[]` declarations must match returned names and MIME types.
+Relative returned paths resolve against the operation's working directory.
+Use `ctx.artifacts.path(filename)` for a managed output path under the active
+Vault's data directory, `action-artifacts/<runId>/`. Command actions
+currently return process results; custom artifact-producing work uses Code.
+
+### Ownership, limits, and receipts
+
+- The harness supervises responsive guardian processes. Each guardian owns its
+  command or code worker. Managed Code processes have their own guardians.
+  Windows teardown uses `taskkill /T`, then `/F`; POSIX uses detached process
+  groups. A guardian detects harness disconnection and tears down its tree,
+  including blocked code workers. This is crash containment for trusted local
+  code, not a security sandbox or CPU/memory quota.
+- Defaults are concurrency one per action, **four Command/Code runs globally**,
+  and a **five-minute timeout**. Set positive `concurrency` and `timeoutMs` to
+  override per-action limits. There is no waiting queue and no automatic retry.
+  Code permits at most four managed processes and eight pending context requests.
+- Cancellation and timeout request cooperative cancellation, then terminate the
+  owned tree with a bounded grace period and forced termination. A run holds its
+  slot through cleanup. Reset is rejected while operation work remains active.
+  Descendants that deliberately detach or escape ownership are outside this
+  process-tree guarantee.
+- Worker messages/results are limited to 256 KiB. Stdout and stderr retain
+  separate 32 KiB tails with a truncation flag. Snapshots persist at 500 ms
+  intervals and existing UI polling displays them while work runs. Stderr alone
+  is not failure. Total historical run count is not automatically pruned.
+- Run rows retain legacy `done`/`error`/`skipped` statuses for chain and notify
+  compatibility. `operation.outcome` distinguishes succeeded, failed,
+  could-not-start, timed-out, cancelled, interrupted, and skipped. No session or
+  fake model response is created. Receipt metadata includes run/caller/parent
+  identity, backend cwd, invocation inputs, command details, definition hash,
+  exit status, bounded logs, and structured results. Normal run timestamps
+  provide timing. The hash covers resolved configuration and the Code entry
+  file; it does not snapshot sibling dependencies or mutable external state.
+- Startup marks unfinished runs interrupted; it does not replay side effects.
+  `enabled: false` parks automatic triggers but still allows explicit Run for
+  manual/interval actions. Vault policy is checked at dispatch and capability
+  requests. Existing trust-tier semantics govern execution (`shell`) and handoff
+  (`actionTrigger`/`sessionSpawn`).
+- `env: { "API_KEY": { "secret": "service-key" } }` resolves a named secret at
+  execution time. Resolved secrets are excluded from receipts and best-effort
+  redacted from retained logs/results. Arbitrarily transformed secrets, ambient
+  environment values, and secrets embedded directly into authored commands are
+  not guaranteed to be redacted; use references.
+
+External terminals, long-running services, automatic retry policies, deduplication
+keys, custom confirmation workflows, and general workflow graphs are outside
+this finite operation contract.
 
 ## Directory Structure
 
@@ -25,7 +177,7 @@ loader writes back into an authored `action.json`.
 Each action directory contains:
 ```
 action.json   — ActionConfig (required)
-context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
+context.ts    — AI: gather(), verify?(), afterRun?(); Code: run(); Command: not needed
 ```
 
 ### Core action state is per-Vault
@@ -62,7 +214,7 @@ A session trigger is filtered by the same user-profile `actions` allowlist that
 decides what the Actions list shows. An action a profile excludes is neither
 listed for that profile nor fired on its sessions.
 
-## Execution Model
+## AI Execution Model
 
 ```
 Trigger

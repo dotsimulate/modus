@@ -48,6 +48,7 @@ import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "fs";
 import { APP_PATHS } from "./app-paths";
 import { providerErrorDisplayText } from "./provider-error";
 import { isAlwaysDurableEvent, isLiveOnlyEvent } from "./event-persistence";
+import { QUEUED_PROMPT_SUBTYPE } from "./session-history";
 import { formatMoveActivationFailures, type MoveActivationFailure } from "./move-activation-failure";
 import { sendPermissionNotifications } from "./notify";
 import { pendingPermissionCount } from "./permission-policy";
@@ -80,8 +81,26 @@ function rollSseLogIfLarge(): void {
   } catch { /* diagnostics must never break a broadcast */ }
 }
 
+/**
+ * Local wall-clock stamp as HH:MM:SS.mmm.
+ *
+ * `fractionalSecondDigits` alone is not enough: it is not one of the components
+ * the date-time defaulting algorithm fills in around, so asking for only it
+ * yields a bare millisecond count ("746") with no hour, minute, or second — a
+ * flow log that cannot be lined up against anything. Request each component.
+ */
+export function sseTimestamp(): string {
+  return new Date().toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    fractionalSecondDigits: 3,
+  });
+}
+
 function sseLog(event: string, sid: string | undefined, detail: string): void {
-  const ts = new Date().toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 });
+  const ts = sseTimestamp();
   const sidShort = sid ? sid.slice(0, 12) : "------------";
   const line = `${ts} [${sidShort}] ${event}: ${detail}\n`;
   try {
@@ -373,8 +392,32 @@ export function contentPreview(content: MessageContent, maxLen = 80): string {
 
 const activeSessions = new Map<string, ActiveSession>();
 
+// A provider that renames its session (ctx.rekeySession) strands every client
+// still holding the old id: a create call that returned before provider init,
+// a tab that missed the live notice, an agent's MCP handle. Old ids resolve to
+// the renamed session until restart or eviction from the bounded alias map;
+// exported entry points that
+// take a caller's id canonicalize it first so nothing is written under the old key.
+const sessionAliases = new Map<string, string>();
+const SESSION_ALIAS_MAX = 1000;
+
+export function resolveSessionAlias(id: string): string {
+  let resolved = id;
+  for (let hops = 0; hops < 8; hops++) {
+    const next = sessionAliases.get(resolved);
+    if (!next) break;
+    resolved = next;
+  }
+  return resolved;
+}
+
+/** The live notice that a session's id changed; clients re-key on receipt. */
+export function sessionRekeyedEvent(from: string, to: string) {
+  return { type: "system", subtype: "session_rekeyed", from, to } as const;
+}
+
 export function getActiveSession(id: string): ActiveSession | undefined {
-  return activeSessions.get(id);
+  return activeSessions.get(id) ?? activeSessions.get(resolveSessionAlias(id));
 }
 
 export function getAllActiveSessions(): ActiveSession[] {
@@ -406,6 +449,7 @@ function fireWatchers(session: ActiveSession, payload: ExchangePayload): void {
 
 /** One-shot: resolves when the session reaches idle/done/error. */
 export function watchSession(sessionId: string): Promise<SessionOutcome> {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) {
     return Promise.resolve({
@@ -435,6 +479,7 @@ export function watchSessionExchanges(
   sessionId: string,
   onExchange: (payload: ExchangePayload) => void,
 ): () => void {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return () => {};
   const watcher: SessionExchangeWatcher = { kind: "exchange", onExchange };
@@ -526,6 +571,16 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       if (oldId !== newId) {
         rekeySessionMcpCredentials(oldId, newId);
         renameSession(oldId, newId);
+        for (const [alias, target] of sessionAliases) {
+          if (target === oldId) sessionAliases.set(alias, newId);
+        }
+        sessionAliases.delete(newId);
+        sessionAliases.set(oldId, newId);
+        if (sessionAliases.size > SESSION_ALIAS_MAX) sessionAliases.delete(sessionAliases.keys().next().value!);
+        // Live-only: subscribers are still tagged with the old id, and this is
+        // what tells them to follow. A replayed copy would be meaningless.
+        broadcastEventToSession(session, sessionRekeyedEvent(oldId, newId));
+        emitGlobalSessionEvent({ type: "session:rekeyed", sessionId: newId, previousId: oldId });
       }
       sseLog("REKEY", newId,
         `from=${oldId.slice(0, 12)} to=${newId.slice(0, 12)} subsRetained=${session.subscribers.size} status=${session.status}`);
@@ -1074,6 +1129,7 @@ function broadcastEventToSession(session: ActiveSession, event: any, seq = sessi
  * These are ephemeral (not persisted to DB) — they trigger frontend actions.
  */
 export function broadcastUiEvent(sessionId: string, event: { type: "ui"; action: string; [key: string]: unknown }) {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return;
   broadcastEventToSession(session, event);
@@ -1091,6 +1147,7 @@ export function attachArtifactToSession(opts: {
   previewText?: string;
   metadata?: Record<string, unknown>;
 }): SessionArtifactRef {
+  opts = { ...opts, sessionId: resolveSessionAlias(opts.sessionId) };
   const createdAt = Date.now();
   const artifactId = insertSessionArtifact({
     sessionId: opts.sessionId,
@@ -1142,6 +1199,7 @@ export function attachArtifactToSession(opts: {
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
+  if (opts.sessionId) opts = { ...opts, sessionId: resolveSessionAlias(opts.sessionId) };
   // Memory guard: block spawn if too many sessions or system memory pressure is high.
   // Count only live sessions — those have CLI processes consuming memory.
   // Idle/error/done sessions are just metadata waiting for reaper cleanup.
@@ -1407,6 +1465,7 @@ async function waitForProviderInit(session: ActiveSession, timeoutMs = 15_000): 
  * Returns the ActiveSession (same as startSession) after all moves are wired up.
  */
 export async function startSessionWithMoves(opts: StartSessionOpts): Promise<ActiveSession> {
+  if (opts.sessionId) opts = { ...opts, sessionId: resolveSessionAlias(opts.sessionId) };
   const _t0 = performance.now();
   const _timing = (step: string) => console.log(`[session-timing] step=${step} dt=${(performance.now() - _t0).toFixed(0)}ms`);
   _timing("enter");
@@ -1592,6 +1651,7 @@ function reportMoveActivationFailures(session: ActiveSession, failures: MoveActi
 }
 
 export async function interactWithSession(opts: InteractSessionOpts): Promise<InteractSessionResult> {
+  if (opts.sessionId) opts = { ...opts, sessionId: resolveSessionAlias(opts.sessionId) };
   const {
     prompt,
     sessionId,
@@ -1709,6 +1769,7 @@ export type DeliverResult = { delivered: string[]; missed: boolean };
  * webhook session routing (action-runner) and ctx.sessions.wake (harness-context).
  */
 export async function deliverToSession(target: string, content: string): Promise<DeliverResult> {
+  target = resolveSessionAlias(target);
   const ids: string[] = [];
   if (getActiveSession(target) || getSession(target)) {
     ids.push(target);
@@ -1753,6 +1814,7 @@ function removePendingDispatch(session: ActiveSession, dispatchId: string): Pend
 }
 
 export function cancelQueuedDispatch(sessionId: string, dispatchId: string): boolean {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
   const item = session.pendingDispatch.find((entry) => entry.id === dispatchId);
@@ -1767,6 +1829,7 @@ export function queueMessage(
   attachments?: ImageAttachment[],
   moves?: QueueMessageMoveBinding[],
 ): { queued: boolean; dispatchId?: string } {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return { queued: false };
 
@@ -1863,11 +1926,14 @@ async function _dispatchUserMessage(
 ): Promise<void> {
   const content = buildContent(augmentedPrompt, attachments);
 
-  // Persist user event for catch-up replay
+  // Persist the queued message so it survives a backend death before dispatch.
+  // Written under QUEUED_PROMPT_SUBTYPE rather than "prompt": the provider emits
+  // the real user/prompt event once the message reaches it, and two durable rows
+  // per message doubled every transcript rebuilt from the event stream.
   session.seq++;
-  addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
+  addEvent(sessionId, session.seq, "user", QUEUED_PROMPT_SUBTYPE, JSON.stringify({
     type: "user",
-    subtype: "prompt",
+    subtype: QUEUED_PROMPT_SUBTYPE,
     message: { role: "user", content },
   }));
 
@@ -1968,6 +2034,7 @@ export async function steerMessage(
   attachments?: ImageAttachment[],
   moves?: QueueMessageMoveBinding[],
 ): Promise<SteerResult> {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return { ok: false, mode: "none" };
 
@@ -2024,6 +2091,7 @@ export async function steerMessage(
 
 export function stopSession(sessionId: string): boolean {
   const t0 = performance.now();
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
@@ -2087,6 +2155,7 @@ export function stopSession(sessionId: string): boolean {
 }
 
 export function stopTask(sessionId: string, taskId: string): boolean {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
   return session._provider.stopTask?.(session, taskId) ?? false;
@@ -2095,6 +2164,7 @@ export function stopTask(sessionId: string, taskId: string): boolean {
 // ── Pause / Resume ──
 
 export function pauseSession(sessionId: string): { ok: boolean; status?: SessionStatus } {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return { ok: false };
   if (session.status === "paused") return { ok: true, status: "paused" };
@@ -2128,6 +2198,7 @@ export function pauseSession(sessionId: string): { ok: boolean; status?: Session
 }
 
 export function resumeSession(sessionId: string): { ok: boolean; status?: SessionStatus } {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return { ok: false };
 
@@ -2193,6 +2264,7 @@ export function updateSessionConfig(
     additionalDirectories?: string[];
   },
 ): boolean {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
   const nextCwd = config.cwd !== undefined ? resolveSessionCwd(config.cwd) : resolveSessionCwd(session.cwd);
@@ -2272,6 +2344,7 @@ export async function switchProfile(
   newProfileName: string,
   opts?: SwitchProfileOpts,
 ): Promise<boolean> {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
@@ -2410,6 +2483,7 @@ export function resolvePermission(
   requestId: string,
   response: { behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string; scope?: "once" | "session" },
 ): boolean {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
   const pending = session.pendingPermissions.get(requestId);
@@ -2424,6 +2498,7 @@ export function resolvePermission(
 // ── Subscriber Management ──
 
 export function subscribe(sessionId: string, writer: SSEWriter): () => void {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (session) {
     session.subscribers.add(writer);
@@ -2445,7 +2520,7 @@ export function subscribe(sessionId: string, writer: SSEWriter): () => void {
 }
 
 // ── Global Session Event Bus ──
-// Broadcasts lifecycle events (created, status-changed, archived) to all
+// Broadcasts lifecycle events (created, status-changed, title, archived) to all
 // subscribers. SessionWeb uses this for real-time updates without polling.
 
 export type GlobalSessionEvent =
@@ -2454,6 +2529,8 @@ export type GlobalSessionEvent =
   | { type: "session:status"; sessionId: string; status: SessionStatus; costUsd?: number; preview?: string }
   | { type: "session:activity"; sessionId: string; status: SessionStatus; seq: number; lastText: string | null; lastEventAt: number; costUsd?: number }
   | { type: "session:archived"; sessionId: string }
+  | { type: "session:rekeyed"; sessionId: string; previousId: string }
+  | { type: "session:title"; sessionId: string; title: string | null }
   | { type: "session:permission"; sessionId: string; pendingCount: number };
 
 type GlobalSSEWriter = {
@@ -2502,6 +2579,7 @@ export function forceClearActiveSession(
   status: Extract<SessionStatus, "idle" | "done" | "error"> = "idle",
   reason = "force clear",
 ): boolean {
+  sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
@@ -2865,6 +2943,7 @@ export async function previewSessionBranch(
   branchSeq: number,
   opts?: { restoreCode?: boolean; checkpointSeq?: number; providerMessageId?: string },
 ): Promise<BranchPreview | { error: string }> {
+  sourceId = resolveSessionAlias(sourceId);
   const source = getSession(sourceId);
   if (!source) return { error: "source session not found" };
   if (!Number.isInteger(branchSeq) || branchSeq < 0 || branchSeq > getMaxSeq(sourceId)) {
@@ -2941,6 +3020,7 @@ export async function branchSession(
   conversationCapability: ConversationBranchCapability;
   workspace: RewindResult | null;
 } | { error: string }> {
+  sourceId = resolveSessionAlias(sourceId);
   if (!opts?.confirmed) return { error: "explicit confirmation is required" };
   const source = getSession(sourceId);
   if (!source) return { error: "source session not found" };
@@ -3038,6 +3118,7 @@ export async function restoreSessionCheckpoint(
   checkpointId: number,
   confirmed: boolean,
 ): Promise<RewindResult | { error: string }> {
+  sessionId = resolveSessionAlias(sessionId);
   if (!confirmed) return { error: "explicit confirmation is required" };
   if (!getSession(sessionId)) return { error: "session not found" };
   const checkpoint = checkpointById(checkpointId);
@@ -3049,6 +3130,7 @@ export async function previewSessionCheckpoint(
   sessionId: string,
   checkpointId: number,
 ): Promise<RewindPreview | { error: string }> {
+  sessionId = resolveSessionAlias(sessionId);
   if (!getSession(sessionId)) return { error: "session not found" };
   const checkpoint = checkpointById(checkpointId);
   if (!checkpoint || checkpoint.session_id !== sessionId) return { error: "checkpoint does not belong to this session" };

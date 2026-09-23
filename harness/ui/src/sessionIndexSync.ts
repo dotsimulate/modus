@@ -1,5 +1,6 @@
 import type { SessionIndex, SessionInfo } from "../../sdk/index";
 import { modus } from "./modusClient";
+import { onHubConnection, onHubEvent } from "./eventHub";
 
 export type SessionIndexConnectionState = {
   status: "connecting" | "connected" | "reconnecting" | "offline";
@@ -16,6 +17,7 @@ type LifecycleEvent = {
   status?: string;
   costUsd?: number;
   preview?: string;
+  title?: string | null;
   seq?: number;
   lastText?: string | null;
   lastEventAt?: number;
@@ -48,8 +50,7 @@ let state: SessionIndexConnectionState = {
 };
 let channel: BroadcastChannel | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
-let currentStream: { abort: () => void } | null = null;
-let streamGeneration = 0;
+let stopLifecycleStream: (() => void) | null = null;
 let started = false;
 let leader = false;
 let lastFetchAt = 0;
@@ -139,6 +140,9 @@ function patchSession(session: SessionInfo, event: LifecycleEvent, at: number): 
   if (event.type === "session:permission") {
     return { ...session, pending_permission_count: event.pendingCount ?? 0 };
   }
+  if (event.type === "session:title") {
+    return { ...session, title: event.title ?? null };
+  }
   return session;
 }
 
@@ -157,7 +161,7 @@ function applyPatch(event: LifecycleEvent, at: number, broadcast: boolean): bool
 export async function handleSessionIndexLifecycleEvent(event: LifecycleEvent) {
   const at = Date.now();
   updateState({ status: "connected", lastEventAt: at });
-  if (event.type === "session:activity" || event.type === "session:status" || event.type === "session:permission" || event.type === "session:read-state") {
+  if (event.type === "session:activity" || event.type === "session:status" || event.type === "session:permission" || event.type === "session:read-state" || event.type === "session:title") {
     if (applyPatch(event, at, true)) return;
     // Internal sessions and rows beyond the index limit also stream events.
     // They stay absent after a refresh; fetching again on every token creates
@@ -169,42 +173,31 @@ export async function handleSessionIndexLifecycleEvent(event: LifecycleEvent) {
   await fetchIndex(true).catch(() => {});
 }
 
-function delay(ms: number, generation: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    if (generation !== streamGeneration) {
-      clearTimeout(timer);
-      resolve();
-    }
+/**
+ * The leader follows lifecycle events on the tab's shared event hub. Events are
+ * handled one at a time, in arrival order, as the dedicated stream did; a
+ * reconnect after a drop refetches the index because the gap is not replayed.
+ */
+function startLifecycleStream() {
+  if (stopLifecycleStream) return;
+  let queue: Promise<void> = Promise.resolve();
+  let active = true;
+  let dropped = false;
+  const stopEvents = onHubEvent("session", (event) => {
+    queue = queue
+      .then(() => { if (active) return handleSessionIndexLifecycleEvent(event as LifecycleEvent); })
+      .catch(() => {});
   });
-}
-
-async function runLifecycleStream(generation: number) {
-  let failures = 0;
-  while (started && leader && generation === streamGeneration) {
-    updateState({ status: failures === 0 ? "connecting" : "reconnecting" });
-    const handle = modus.subscribeGlobalEvents();
-    currentStream = handle;
-    try {
-      for await (const envelope of handle.events) {
-        if (!started || !leader || generation !== streamGeneration) break;
-        failures = 0;
-        await handleSessionIndexLifecycleEvent((envelope as any).data as LifecycleEvent);
-      }
-      if (started && leader && generation === streamGeneration) throw new Error("session lifecycle stream closed");
-    } catch {
-      if (!started || !leader || generation !== streamGeneration) break;
-      failures++;
-      updateState({
-        status: "reconnecting",
-        reconnects: state.reconnects + 1,
-      });
-      await delay(Math.min(5_000, 400 * (2 ** Math.min(failures, 4))), generation);
-    } finally {
-      if (currentStream === handle) currentStream = null;
-      handle.abort();
+  const stopConnection = onHubConnection((connected) => {
+    if (connected) {
+      updateState({ status: "connected" });
+      if (dropped) void fetchIndex(true).catch(() => {});
+      return;
     }
-  }
+    dropped = true;
+    updateState({ status: "reconnecting", reconnects: state.reconnects + 1 });
+  });
+  stopLifecycleStream = () => { active = false; stopEvents(); stopConnection(); };
 }
 
 function readLease(): { id: string; expiresAt: number } | null {
@@ -226,28 +219,17 @@ function writeLease(expiresAt: number): boolean {
 function loseLeadership() {
   if (!leader) return;
   leader = false;
-  streamGeneration++;
-  currentStream?.abort();
-  currentStream = null;
+  stopLifecycleStream?.();
+  stopLifecycleStream = null;
   updateState({ status: "connecting", role: channel ? "follower" : "standalone" });
 }
 
 function becomeLeader(role: SessionIndexConnectionState["role"] = "leader") {
   if (leader) return;
   leader = true;
-  streamGeneration++;
   updateState({ status: "connecting", role });
   void fetchIndex(true).catch(() => updateState({ status: "offline" }));
-  void runLifecycleStream(streamGeneration);
-}
-
-function restartLifecycleStream() {
-  if (!started || !leader) return;
-  streamGeneration++;
-  currentStream?.abort();
-  currentStream = null;
-  updateState({ status: "connecting" });
-  void runLifecycleStream(streamGeneration);
+  startLifecycleStream();
 }
 
 function maintainLease() {
@@ -371,20 +353,18 @@ export function refreshSessionIndex(): Promise<SessionIndex> {
  *
  * A frozen tab may retain both an expired leader lease and a fetch whose TCP
  * connection died while JavaScript timers were paused. Re-elect synchronously,
- * force a new compact snapshot, and replace the lifecycle stream when this tab
- * still owns it. Followers fetch their own snapshot too so a frozen leader
- * cannot keep the visible tab stale.
+ * and force a new compact snapshot. The lifecycle events ride the tab's event
+ * hub, which the caller resumes separately. Followers fetch their own snapshot
+ * too so a frozen leader cannot keep the visible tab stale.
  */
 export function resumeSessionIndex(): void {
   if (!started) return;
-  const wasLeader = leader;
   const previousFetch = fetchPromise;
   maintainLease();
 
   if (leader) {
     const leaseStartedFetch = fetchPromise !== previousFetch;
     void fetchIndex(true, !leaseStartedFetch).catch(() => updateState({ status: "offline" }));
-    if (wasLeader) restartLifecycleStream();
     return;
   }
 
