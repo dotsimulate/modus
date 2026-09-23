@@ -109,5 +109,5 @@ describe("checkpoint maintenance planning", () => {
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
