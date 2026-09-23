@@ -9,6 +9,7 @@ type Options = {
   args: string[];
   env: Record<string, string>;
   apiKey?: string;
+  mcpConfig?: Record<string, unknown>;
   spawn?: typeof spawn;
   onSpawn?: (pid: number) => void;
   onExit?: (pid: number) => void;
@@ -245,7 +246,7 @@ export class CodexAppServerTurn {
         // user's persisted ChatGPT login or write the key to disk.
         await this.request("account/login/start", { type: "apiKey", apiKey: this.options.apiKey });
       }
-      const config: Record<string, unknown> = {};
+      const config: Record<string, unknown> = { ...this.options.mcpConfig };
       if (options.webSearchMode) config.web_search = options.webSearchMode;
       if (options.additionalDirectories?.length) config["sandbox_workspace_write.writable_roots"] = options.additionalDirectories;
       this.threadId = resumeId;

@@ -411,7 +411,10 @@ export class Thread {
     if (this.options.transport === "app-server") {
       const executable = this.options.codexPathOverride ?? resolveCodexExecutable();
       const commandArgs = ["app-server", "--listen", "stdio://"];
-      for (const override of serializeConfigOverrides(this.options.config ?? {})) {
+      // MCP definitions can contain stdio env values and literal HTTP headers.
+      // Deliver them on the per-turn app-server channel, never in process argv.
+      const { mcp_servers: mcpServers, ...launchConfig } = this.options.config ?? {};
+      for (const override of serializeConfigOverrides(launchConfig)) {
         commandArgs.push("--config", override);
       }
       if (this.options.apiKey) commandArgs.push("--config", 'cli_auth_credentials_store="ephemeral"');
@@ -424,6 +427,7 @@ export class Thread {
       if (this.options.baseUrl) env.OPENAI_BASE_URL = this.options.baseUrl;
       const appTurn = new CodexAppServerTurn({
         executable, args: commandArgs, env, apiKey: this.options.apiKey,
+        mcpConfig: mcpServers === undefined ? undefined : { mcp_servers: mcpServers },
         spawn: this.options.spawnOverride,
         onSpawn: this.options.onSpawn,
         onExit: this.options.onExit,

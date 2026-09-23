@@ -206,6 +206,26 @@ describe("Codex app-server steering", () => {
     await run.done;
   });
 
+  test("delivers MCP stdio env and HTTP headers over thread RPC without exposing values in argv", async () => {
+    const mcpServers = {
+      local: { command: "fake-mcp", env: { MCP_KEY: "fake-stdio-canary" } },
+      remote: { url: "http://127.0.0.1:1/mcp", http_headers: { "X-Api-Key": "fake-http-canary" } },
+    };
+    for (const resumeId of [undefined, "thread-1"]) {
+      const f = setup({}, resumeId, { config: { mcp_servers: mcpServers, project_doc_max_bytes: 0 } });
+      const run = await running(f);
+      const argv = f.spawns[0].args.join(" ");
+      expect(argv).not.toContain("fake-stdio-canary");
+      expect(argv).not.toContain("fake-http-canary");
+      expect(argv).not.toContain("mcp_servers");
+      expect(argv).toContain("project_doc_max_bytes=0");
+      const method = resumeId ? "thread/resume" : "thread/start";
+      expect(f.server.messages.find((message) => message.method === method)?.params.config.mcp_servers).toEqual(mcpServers);
+      f.server.complete();
+      await run.done;
+    }
+  });
+
   test("refuses a mismatched native resume identity before sending input", async () => {
     const f = setup({}, "missing-thread");
     await expect(running(f)).rejects.toThrow("refusing context-free replacement");
