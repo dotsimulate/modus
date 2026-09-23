@@ -27,7 +27,7 @@ import {
 } from "../interface-settings";
 import { useConversationResources } from "../useConversationResources";
 import { isTauriRuntime } from "../desktopBridge";
-import AboutPanel from "./AboutPanel";
+import AboutPanel, { docsPageHash } from "./AboutPanel";
 import { providerDisplayLabel } from "../tools";
 import {
   checkForDesktopUpdate,
@@ -831,7 +831,12 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
           {/* Security tab */}
           {tab === "about" && (
             <div className="us-section">
-              <AboutPanel />
+              <AboutPanel onOpenDocs={(event) => {
+                event.preventDefault();
+                applyInterfaceSettings(resolveEffectiveInterfaceSettings(userProfile.interface));
+                onClose();
+                window.location.hash = docsPageHash(window.location.hash);
+              }} />
             </div>
           )}
 

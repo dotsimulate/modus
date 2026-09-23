@@ -6,8 +6,12 @@
  */
 
 import AboutPanel from "../components/AboutPanel";
+import { customPageView } from "../views";
 import type { WidgetProps } from "./types";
 
-export default function AboutWidget(_props: WidgetProps) {
-  return <AboutPanel />;
+export default function AboutWidget({ onNavigate }: WidgetProps) {
+  return <AboutPanel onOpenDocs={(event) => {
+    event.preventDefault();
+    onNavigate(customPageView("docs"));
+  }} />;
 }

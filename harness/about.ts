@@ -98,6 +98,13 @@ const TOPICS: HelpTopic[] = [
     docId: "profile-system",
   },
   {
+    title: "Data and network access",
+    body:
+      "See when configured services can receive content, where Modus stores data, and how to "
+      + "remove it deliberately after stopping the app.",
+    docId: "data-and-network",
+  },
+  {
     title: "Running something on demand",
     body:
       "Moves are the invocation primitive: they define what you want, gather context, and can "
