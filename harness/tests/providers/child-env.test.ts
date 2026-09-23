@@ -29,6 +29,21 @@ describe("provider child environment policy", () => {
     expect(Object.values(env)).not.toContain("session-mcp-canary");
   });
 
+  test.skipIf(process.platform !== "win32")("removes credential names regardless of Windows casing", () => {
+    const env = providerChildEnv({
+      harness_token: "lowercase-canary",
+      Harness_Pin: "mixed-case-canary",
+      modus_session_mcp_token: "session-canary",
+      PATH: "C:\\bin",
+      CUSTOM_KEY: "unrelated-canary",
+    });
+    expect(Object.values(env)).not.toContain("lowercase-canary");
+    expect(Object.values(env)).not.toContain("mixed-case-canary");
+    expect(Object.values(env)).not.toContain("session-canary");
+    expect(env.PATH).toBe("C:\\bin");
+    expect(env.CUSTOM_KEY).toBe("unrelated-canary");
+  });
+
   test("preserves OS, PATH, locale, proxy and provider variables", () => {
     const env = providerChildEnv(HOST_ENV);
     expect(env.PATH).toBe("/usr/bin");
@@ -48,6 +63,30 @@ describe("provider child environment policy", () => {
     const env = providerChildEnv({ ...HOST_ENV, [PROVIDER_ENV_PASSTHROUGH_VAR]: "1" });
     expect(env.HARNESS_TOKEN).toBe("supervisor-canary");
     expect(strippedProviderEnvNames({ ...HOST_ENV, [PROVIDER_ENV_PASSTHROUGH_VAR]: "1" })).toEqual([]);
+  });
+
+  test.skipIf(process.platform !== "win32")("honours a differently cased Windows passthrough name", () => {
+    const env = providerChildEnv({ ...HOST_ENV, modus_provider_env_passthrough: "YES" });
+    expect(env.HARNESS_TOKEN).toBe("supervisor-canary");
+  });
+
+  test.skipIf(process.platform !== "win32")("does not opt out when Windows passthrough aliases conflict", () => {
+    const env = providerChildEnv({
+      ...HOST_ENV,
+      MODUS_PROVIDER_ENV_PASSTHROUGH: "0",
+      modus_provider_env_passthrough: "1",
+    });
+    expect(env.HARNESS_TOKEN).toBeUndefined();
+  });
+
+  test.skipIf(process.platform === "win32")("retains POSIX case-sensitive environment semantics", () => {
+    const env = providerChildEnv({
+      HARNESS_TOKEN: "supervisor-canary",
+      harness_token: "unrelated-lowercase-value",
+      modus_provider_env_passthrough: "1",
+    });
+    expect(env.HARNESS_TOKEN).toBeUndefined();
+    expect(env.harness_token).toBe("unrelated-lowercase-value");
   });
 
   test("does not treat an arbitrary passthrough value as opt-in", () => {

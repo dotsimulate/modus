@@ -31,8 +31,17 @@ const STRIPPED_CREDENTIALS = [
 export const PROVIDER_ENV_PASSTHROUGH_VAR = "MODUS_PROVIDER_ENV_PASSTHROUGH";
 
 function passthroughEnabled(base: NodeJS.ProcessEnv): boolean {
-  const value = base[PROVIDER_ENV_PASSTHROUGH_VAR]?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
+  const values = process.platform === "win32"
+    ? Object.entries(base)
+      .filter(([key, value]) => key.toUpperCase() === PROVIDER_ENV_PASSTHROUGH_VAR && value !== undefined)
+      .map(([, value]) => value!)
+    : [base[PROVIDER_ENV_PASSTHROUGH_VAR]].filter((value): value is string => value !== undefined);
+  // A plain object can contain casing aliases even though a real Windows
+  // environment cannot. Conflicting aliases must not turn the opt-out on.
+  return values.length > 0 && values.every((value) => {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes";
+  });
 }
 
 /** Names removed from a provider child environment under the current policy. */
@@ -52,7 +61,7 @@ export function providerChildEnv(base: NodeJS.ProcessEnv = process.env): Record<
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(base)) {
     if (value === undefined) continue;
-    if (stripped.has(key)) continue;
+    if (stripped.has(process.platform === "win32" ? key.toUpperCase() : key)) continue;
     env[key] = value;
   }
   return env;
