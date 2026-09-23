@@ -55,8 +55,12 @@ function isTailnetIpv4(hostname: string): boolean {
   return parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
 }
 
-function hostWithoutDefaultPort(host: string): string {
-  return host.toLowerCase().replace(/:80$/, "").replace(/:443$/, "");
+function normalizedRequestHost(host: string, protocol: string): string {
+  const normalized = host.toLowerCase();
+  const defaultPort = protocol === "https:" ? ":443" : protocol === "http:" ? ":80" : "";
+  return defaultPort && normalized.endsWith(defaultPort)
+    ? normalized.slice(0, -defaultPort.length)
+    : normalized;
 }
 
 /** Browser origins accepted by the local UI/API boundary. Requests without an
@@ -69,15 +73,17 @@ export function isAllowedBrowserOrigin(origin: string, options: OriginOptions): 
   const url = new URL(normalized);
   const hostname = url.hostname.toLowerCase();
   const effectivePort = Number(url.port || (url.protocol === "https:" ? 443 : 80));
-  const requestHost = hostWithoutDefaultPort(options.requestHost ?? "");
-  const originHost = hostWithoutDefaultPort(url.host);
+  const requestHost = normalizedRequestHost(options.requestHost ?? "", url.protocol);
+  const originHost = url.host.toLowerCase();
   const sameRequestHost = !!requestHost && requestHost === originHost;
 
   if (url.protocol === "tauri:" && hostname === "localhost" && !url.port) return true;
   if ((url.protocol === "http:" || url.protocol === "https:") && hostname === "tauri.localhost" && !url.port) return true;
 
   if (isLoopback(hostname)) {
-    return effectivePort === options.port || effectivePort === 5173 || effectivePort === 5174 || effectivePort === 5180;
+    // A loopback reverse proxy may expose the UI on its own port. Its Host
+    // must match the browser Origin; forwarded headers are not trust inputs.
+    return sameRequestHost || effectivePort === options.port || effectivePort === 5173 || effectivePort === 5174 || effectivePort === 5180;
   }
   if (url.protocol === "https:" && hostname.endsWith(".ts.net") && effectivePort === 443) {
     return sameRequestHost;

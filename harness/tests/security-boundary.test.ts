@@ -34,6 +34,52 @@ describe("browser origin boundary", () => {
       configuredOrigins: "https://modus.example.com",
     })).toBe(true);
   });
+
+  test("allows a same-origin loopback reverse proxy on its own port", () => {
+    for (const [origin, host] of [
+      ["https://localhost:8443", "localhost:8443"],
+      ["http://127.0.0.1:8080", "127.0.0.1:8080"],
+      ["https://[::1]:8443", "[::1]:8443"],
+    ] as const) {
+      expect(isAllowedBrowserOrigin(origin, { port: 3777, requestHost: host })).toBe(true);
+      expect(isAllowedBrowserOrigin(origin, { port: 3777, requestHost: "127.0.0.1:3777" })).toBe(false);
+    }
+  });
+
+  test("uses the received Host, never spoofed forwarded host or protocol", () => {
+    const proxyRequest = new Headers({
+      Host: "127.0.0.1:3777",
+      "X-Forwarded-Host": "localhost:8443",
+      "X-Forwarded-Proto": "https",
+    });
+    expect(isAllowedBrowserOrigin("https://localhost:8443", {
+      port: 3777,
+      requestHost: proxyRequest.get("Host"),
+    })).toBe(false);
+    expect(isAllowedBrowserOrigin("https://modus-host.example.ts.net", {
+      port: 3777,
+      requestHost: proxyRequest.get("Host"),
+    })).toBe(false);
+    expect(isAllowedBrowserOrigin("https://modus-host.example.ts.net", {
+      port: 3777,
+      requestHost: "modus-host.example.ts.net",
+    })).toBe(true);
+  });
+
+  test("does not treat the other scheme's default port as the same Host", () => {
+    expect(isAllowedBrowserOrigin("https://localhost", {
+      port: 3777,
+      requestHost: "localhost:80",
+    })).toBe(false);
+    expect(isAllowedBrowserOrigin("https://modus-host.example.ts.net", {
+      port: 3777,
+      requestHost: "modus-host.example.ts.net:80",
+    })).toBe(false);
+    expect(isAllowedBrowserOrigin("https://modus-host.example.ts.net", {
+      port: 3777,
+      requestHost: "modus-host.example.ts.net:443",
+    })).toBe(true);
+  });
 });
 
 describe("PIN throttling", () => {
