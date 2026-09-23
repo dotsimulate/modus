@@ -77,7 +77,9 @@ afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) await backend.exited;
   await removeTreeAfterExit(root);
-  if (childPid !== null) await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(childPid)));
+  // A full Windows suite can hold the just-exited child's SQLite directory
+  // longer than the fixture's default two-second handle-release window.
+  if (childPid !== null) await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(childPid)), 100);
 }, 15_000);
 
 async function browserToken(): Promise<string> {

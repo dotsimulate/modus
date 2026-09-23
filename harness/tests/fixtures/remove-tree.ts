@@ -32,13 +32,13 @@ function isLockTransitionError(error: unknown): boolean {
  * a tree that is still locked after that is a real leak and should be reported,
  * not swallowed.
  */
-export async function removeTreeAfterExit(target: string): Promise<void> {
+export async function removeTreeAfterExit(target: string, maxAttempts = MAX_ATTEMPTS): Promise<void> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       rmSync(target, { recursive: true, force: true });
       return;
     } catch (error) {
-      if (!isLockTransitionError(error) || attempt >= MAX_ATTEMPTS) throw error;
+      if (!isLockTransitionError(error) || attempt >= maxAttempts) throw error;
       await Bun.sleep(RETRY_DELAY_MS);
     }
   }
