@@ -58,7 +58,7 @@ impl DesktopTailscaleStatus {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TailscaleOwnership {
     version: u8,
@@ -106,6 +106,46 @@ impl TailscaleOwnership {
     }
 }
 
+/// A route change that has been recorded but not yet verified.
+///
+/// Serve is mutated only after this is on disk, and it names both routes the
+/// change can leave behind. Whichever of the two Serve later shows is Modus's,
+/// so a crash or failure on either side of the mutation stays recoverable
+/// instead of leaving a live route that the record calls foreign.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingOwnership {
+    transition_version: u8,
+    previous: Option<TailscaleOwnership>,
+    intended: TailscaleOwnership,
+}
+
+impl PendingOwnership {
+    fn owner(&self, state: TransitionState) -> Option<&TailscaleOwnership> {
+        match state {
+            TransitionState::Intended => Some(&self.intended),
+            TransitionState::Previous => self.previous.as_ref(),
+            TransitionState::Absent | TransitionState::Foreign => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+enum OwnershipRecord {
+    Pending(PendingOwnership),
+    Committed(TailscaleOwnership),
+}
+
+/// What Serve shows for a pending transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TransitionState {
+    Intended,
+    Previous,
+    Absent,
+    Foreign,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ServeEndpoint {
     endpoint: String,
@@ -134,7 +174,13 @@ pub struct TailscaleManager {
     command_timeout: Duration,
     status_attempts: u32,
     status_delay: Duration,
+    #[cfg(test)]
+    test_cli: Option<TestCli>,
 }
+
+/// Stands in for the Tailscale CLI so recovery can be driven without it.
+#[cfg(test)]
+type TestCli = Box<dyn Fn(&[&str]) -> Result<CliOutput, String> + Send + Sync>;
 
 impl TailscaleManager {
     pub fn resolve(app: &AppHandle) -> Result<Self, String> {
@@ -167,6 +213,8 @@ impl TailscaleManager {
             command_timeout,
             status_attempts,
             status_delay,
+            #[cfg(test)]
+            test_cli: None,
         })
     }
 
@@ -176,8 +224,12 @@ impl TailscaleManager {
             return DesktopTailscaleStatus::disabled(pin_configured);
         }
         let url = self
-            .read_ownership()
-            .map(|owner| format!("https://{}", owner.dns_name.trim_end_matches('.')));
+            .read_record()
+            .map(|record| match record {
+                OwnershipRecord::Pending(pending) => pending.intended.dns_name,
+                OwnershipRecord::Committed(owner) => owner.dns_name,
+            })
+            .map(|dns_name| format!("https://{}", dns_name.trim_end_matches('.')));
         DesktopTailscaleStatus::enabled_waiting(
             url,
             pin_configured,
@@ -245,7 +297,20 @@ impl TailscaleManager {
                 };
             }
         };
-        let current_owner = self.read_ownership();
+        // A pending record is an earlier attempt that never verified its result.
+        // Nothing of ours is in flight now, so Serve's current state settles it.
+        // A route matching neither side stays untouched with its record kept,
+        // and falls through to the foreign check below.
+        let current_owner = match self.read_record() {
+            Some(OwnershipRecord::Pending(pending)) => {
+                match self.settle_transition(&serve_config, &pending) {
+                    Ok(state) => pending.owner(state).cloned(),
+                    Err(message) => return active_error(url, pin_configured, message),
+                }
+            }
+            Some(OwnershipRecord::Committed(owner)) => Some(owner),
+            None => None,
+        };
         let mut ownership_class = classify_https_443(&serve_config, current_owner.as_ref());
         if ownership_class == ServeOwnershipClass::Foreign
             && current_owner.is_none()
@@ -266,57 +331,104 @@ impl TailscaleManager {
                 pin_configured,
             };
         }
-        let previous_endpoint = parse_https_443(&serve_config).ok().flatten();
         let expected = TailscaleOwnership::desktop(&dns_name, target_port, instance_id);
+        if endpoint_matches(&serve_config, &expected) {
+            if let Err(error) = self.write_ownership(&expected) {
+                return active_error(url, pin_configured, error);
+            }
+            return self.active_status(url, pin_configured, target_port);
+        }
+        let previous = if ownership_class == ServeOwnershipClass::Modus {
+            current_owner.or_else(|| {
+                parse_https_443(&serve_config).ok().flatten().map(|route| {
+                    let mut owner =
+                        TailscaleOwnership::desktop(&dns_name, route.target_port, instance_id);
+                    owner.endpoint = route.endpoint;
+                    owner.proxy = route.proxy;
+                    owner
+                })
+            })
+        } else {
+            None
+        };
+        let pending = PendingOwnership {
+            transition_version: 1,
+            previous,
+            intended: expected,
+        };
 
-        // Record the intent BEFORE mutating the route.
+        // Record the transition BEFORE mutating the route.
         //
-        // The ownership record used to be written after the serve command
-        // succeeded and verified. A crash in that window left the route live
-        // with no record of who owns it, and the next start read no ownership,
-        // classified Modus's own :443 rule as foreign, and refused to touch it —
-        // locking Tailnet access out permanently with no way back short of
-        // editing Tailscale by hand. Writing first inverts the failure: a crash
-        // now leaves a record whose route was never published, which the next
-        // reconcile simply overwrites because it owns that record.
-        //
-        // Every failure path below therefore has to retract the record, or a
-        // failed attempt would claim a route it does not have.
-        if let Err(error) = self.write_ownership(&expected) {
+        // Writing a record for the new route alone was not enough: a crash
+        // between that write and the Serve command left the old route live
+        // under a record naming the new one, and the next start classified
+        // Modus's own rule as foreign and refused to touch it. The pending
+        // record names both, so either outcome of the mutation is recognised.
+        if let Err(error) = self.write_record(&OwnershipRecord::Pending(pending.clone())) {
             return active_error(url, pin_configured, error);
         }
 
-        let serve = match self.run_cli(&["serve", "--bg", "--yes", &target_port.to_string()]) {
-            Ok(output) => output,
+        let failure = match self.run_cli(&["serve", "--bg", "--yes", &target_port.to_string()]) {
+            Ok(output) if output.code == 0 => None,
+            Ok(output) => Some(command_error("tailscale serve", &output)),
+            Err(message) => Some(message),
+        };
+
+        // Commit only what Serve now verifiably shows. Absence is not final
+        // here — a timed-out command can still land — so anything short of a
+        // verified route keeps the pending record for the next reconcile.
+        let state = match self
+            .serve_config()
+            .and_then(|raw| self.record_verified(&raw, &pending))
+        {
+            Ok(state) => state,
             Err(message) => {
-                let _ = self.remove_ownership_if_current(target_port, instance_id);
+                let message = match failure {
+                    Some(failure) => format!("{failure}; {message}"),
+                    None => message,
+                };
                 return active_error(url, pin_configured, message);
             }
         };
-        if serve.code != 0 {
-            let _ = self.remove_ownership_if_current(target_port, instance_id);
-            return active_error(
+        let failure = failure.unwrap_or_else(|| {
+            "Tailscale accepted the Serve command but did not publish the expected Modus route"
+                .into()
+        });
+        match state {
+            TransitionState::Intended => self.active_status(url, pin_configured, target_port),
+            TransitionState::Previous => active_error(url, pin_configured, failure),
+            TransitionState::Absent => {
+                let Some(previous) = pending.previous.as_ref() else {
+                    return active_error(url, pin_configured, failure);
+                };
+                let detail = match self.restore_previous(previous, &pending) {
+                    Ok(TransitionState::Intended) => {
+                        return self.active_status(url, pin_configured, target_port);
+                    }
+                    Ok(TransitionState::Previous) => {
+                        format!("{failure}; restored the previous Modus route")
+                    }
+                    Ok(_) => format!("{failure}; the previous Modus route could not be restored"),
+                    Err(error) => format!("{failure}; {error}"),
+                };
+                active_error(url, pin_configured, detail)
+            }
+            TransitionState::Foreign => active_error(
                 url,
                 pin_configured,
-                command_error("tailscale serve", &serve),
-            );
+                format!(
+                    "{failure}; HTTPS :443 now matches neither recorded Modus route, so Modus left it untouched"
+                ),
+            ),
         }
+    }
 
-        let verified = match self.serve_config() {
-            Ok(raw) => endpoint_matches(&raw, &expected),
-            Err(_) => false,
-        };
-        if !verified {
-            self.rollback_route(previous_endpoint.as_ref());
-            let _ = self.remove_ownership_if_current(target_port, instance_id);
-            return active_error(
-                url,
-                pin_configured,
-                "Tailscale accepted the Serve command but did not publish the expected Modus route"
-                    .into(),
-            );
-        }
-
+    fn active_status(
+        &self,
+        url: String,
+        pin_configured: bool,
+        target_port: u16,
+    ) -> DesktopTailscaleStatus {
         DesktopTailscaleStatus {
             enabled: true,
             state: "active".into(),
@@ -333,17 +445,36 @@ impl TailscaleManager {
     }
 
     pub fn release(&self, target_port: u16, instance_id: &str) -> Result<(), String> {
-        let Some(owner) = self.read_ownership() else {
-            return Ok(());
+        let owner = match self.read_record() {
+            None => return Ok(()),
+            Some(OwnershipRecord::Committed(owner)) => {
+                if !owner.is_current_desktop(target_port, instance_id) {
+                    return Ok(());
+                }
+                owner
+            }
+            // A transition this backend started owns whichever of its two
+            // routes is live, including a previous route it failed to replace.
+            // Neither live means nothing to remove; a foreign route stays put.
+            Some(OwnershipRecord::Pending(pending)) => {
+                if !pending
+                    .intended
+                    .is_current_desktop(target_port, instance_id)
+                {
+                    return Ok(());
+                }
+                let state = self.settle_transition(&self.serve_config()?, &pending)?;
+                match pending.owner(state) {
+                    Some(owner) => owner.clone(),
+                    None => return Ok(()),
+                }
+            }
         };
-        if !owner.is_current_desktop(target_port, instance_id) {
-            return Ok(());
-        }
 
         let serve_config = self.serve_config()?;
         match classify_https_443(&serve_config, Some(&owner)) {
             ServeOwnershipClass::None => {
-                self.remove_ownership_if_current(target_port, instance_id)?;
+                self.remove_ownership(&owner)?;
                 return Ok(());
             }
             ServeOwnershipClass::Foreign => return Ok(()),
@@ -358,7 +489,7 @@ impl TailscaleManager {
         if classify_https_443(&after, Some(&owner)) != ServeOwnershipClass::None {
             return Err("Tailscale did not remove the Modus-owned HTTPS :443 route".into());
         }
-        self.remove_ownership_if_current(target_port, instance_id)
+        self.remove_ownership(&owner)
     }
 
     fn enabled(&self) -> bool {
@@ -423,30 +554,87 @@ impl TailscaleManager {
         Err(command_error("tailscale serve status", &output))
     }
 
-    fn read_ownership(&self) -> Option<TailscaleOwnership> {
+    fn read_record(&self) -> Option<OwnershipRecord> {
         let bytes = fs::read(&self.ownership_file).ok()?;
-        let owner: TailscaleOwnership = serde_json::from_slice(&bytes).ok()?;
-        (owner.version == 1 && !owner.dns_name.is_empty() && !owner.endpoint.is_empty())
-            .then_some(owner)
+        let record: OwnershipRecord = serde_json::from_slice(&bytes).ok()?;
+        let valid = |owner: &TailscaleOwnership| {
+            owner.version == 1 && !owner.dns_name.is_empty() && !owner.endpoint.is_empty()
+        };
+        let accepted = match &record {
+            OwnershipRecord::Committed(owner) => valid(owner),
+            OwnershipRecord::Pending(pending) => {
+                pending.transition_version == 1
+                    && valid(&pending.intended)
+                    && pending.previous.iter().all(valid)
+            }
+        };
+        accepted.then_some(record)
     }
 
     fn write_ownership(&self, owner: &TailscaleOwnership) -> Result<(), String> {
+        self.write_record(&OwnershipRecord::Committed(owner.clone()))
+    }
+
+    fn write_record(&self, record: &OwnershipRecord) -> Result<(), String> {
         fs::create_dir_all(&self.config_dir)
             .map_err(display_error("create Modus configuration directory"))?;
-        let bytes = serde_json::to_vec_pretty(owner).map_err(|error| error.to_string())?;
+        let bytes = serde_json::to_vec_pretty(record).map_err(|error| error.to_string())?;
         atomic_write(&self.ownership_file, &bytes)
             .map_err(display_error("record Tailscale route ownership"))
     }
 
-    fn remove_ownership_if_current(
+    /// Commit a verified side of a transition and keep the pending record
+    /// otherwise. Used after this process mutated the route, when an absent
+    /// route may still be a mutation that has not landed yet.
+    fn record_verified(
         &self,
-        target_port: u16,
-        instance_id: &str,
-    ) -> Result<(), String> {
-        if self
-            .read_ownership()
-            .is_some_and(|owner| owner.is_current_desktop(target_port, instance_id))
-            && self.ownership_file.exists()
+        raw: &str,
+        pending: &PendingOwnership,
+    ) -> Result<TransitionState, String> {
+        let state = transition_state(raw, pending);
+        if let Some(owner) = pending.owner(state) {
+            self.write_ownership(owner)?;
+        }
+        Ok(state)
+    }
+
+    /// Resolve a transition left by an earlier attempt. Only valid when no
+    /// mutation of ours is in flight, so an absent route is final and the
+    /// record can go. A foreign route keeps the record and stays untouched.
+    fn settle_transition(
+        &self,
+        raw: &str,
+        pending: &PendingOwnership,
+    ) -> Result<TransitionState, String> {
+        let state = self.record_verified(raw, pending)?;
+        if state == TransitionState::Absent {
+            match fs::remove_file(&self.ownership_file) {
+                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                    return Err(display_error("remove settled Tailscale transition")(error));
+                }
+                _ => {}
+            }
+        }
+        Ok(state)
+    }
+
+    /// Put back the previous Modus route after a transition removed it
+    /// without publishing the new one, and report what Serve then shows.
+    fn restore_previous(
+        &self,
+        previous: &TailscaleOwnership,
+        pending: &PendingOwnership,
+    ) -> Result<TransitionState, String> {
+        let output =
+            self.run_cli(&["serve", "--bg", "--yes", &previous.target_port.to_string()])?;
+        if output.code != 0 {
+            return Err(command_error("Tailscale rollback", &output));
+        }
+        self.record_verified(&self.serve_config()?, pending)
+    }
+
+    fn remove_ownership(&self, owner: &TailscaleOwnership) -> Result<(), String> {
+        if matches!(self.read_record(), Some(OwnershipRecord::Committed(current)) if current == *owner)
         {
             fs::remove_file(&self.ownership_file)
                 .map_err(display_error("remove Tailscale route ownership"))?;
@@ -455,6 +643,10 @@ impl TailscaleManager {
     }
 
     fn run_cli(&self, args: &[&str]) -> Result<CliOutput, String> {
+        #[cfg(test)]
+        if let Some(fake) = &self.test_cli {
+            return fake(args);
+        }
         let mut command = Command::new(&self.cli);
         command
             .args(args)
@@ -507,15 +699,6 @@ impl TailscaleManager {
             stdout: String::from_utf8_lossy(&stdout).trim().to_string(),
             stderr: String::from_utf8_lossy(&stderr).trim().to_string(),
         })
-    }
-
-    fn rollback_route(&self, previous: Option<&ServeEndpoint>) {
-        if let Some(previous) = previous {
-            let port = previous.target_port.to_string();
-            let _ = self.run_cli(&["serve", "--bg", "--yes", &port]);
-        } else {
-            let _ = self.run_cli(&["serve", "--https=443", "off"]);
-        }
     }
 }
 
@@ -648,6 +831,20 @@ fn classify_https_443(raw: &str, ownership: Option<&TailscaleOwnership>) -> Serv
     }
 }
 
+fn transition_state(raw: &str, pending: &PendingOwnership) -> TransitionState {
+    if classify_https_443(raw, Some(&pending.intended)) == ServeOwnershipClass::Modus {
+        TransitionState::Intended
+    } else if pending.previous.as_ref().is_some_and(|previous| {
+        classify_https_443(raw, Some(previous)) == ServeOwnershipClass::Modus
+    }) {
+        TransitionState::Previous
+    } else if classify_https_443(raw, None) == ServeOwnershipClass::None {
+        TransitionState::Absent
+    } else {
+        TransitionState::Foreign
+    }
+}
+
 fn can_adopt_legacy_rule(raw: &str, dns_name: &str) -> bool {
     matches!(
         parse_https_443(raw),
@@ -713,29 +910,523 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        collections::VecDeque,
+        sync::{Arc, Mutex},
+    };
 
-    /// reconcile drives the real Tailscale CLI and cannot be exercised from a
-    /// unit test, so the ordering is pinned at the source level. If the route is
-    /// mutated before ownership is recorded, a crash in that window orphans the
-    /// route: the next start reads no ownership, classifies Modus's own :443
-    /// rule as foreign, and refuses to reclaim it.
-    #[test]
-    fn reconcile_records_ownership_before_mutating_the_route() {
-        let source = include_str!("tailscale.rs");
-        let reconcile_at = source
-            .find("pub fn reconcile(")
-            .expect("reconcile definition");
-        let body = &source[reconcile_at..];
-        let write_at = body
-            .find("self.write_ownership(&expected)")
-            .expect("ownership write in reconcile");
-        let serve_at = body
-            .find(r#"self.run_cli(&["serve", "--bg""#)
-            .expect("serve mutation in reconcile");
-        assert!(
-            write_at < serve_at,
-            "reconcile must record ownership before mutating the route"
+    const DNS: &str = "desktop.example.ts.net";
+    const INSTANCE: &str = "instance-under-test";
+
+    /// How the fake answers one `serve --bg` call.
+    #[derive(Clone, Copy)]
+    enum Serve {
+        Apply,
+        FailBeforeMutation,
+        FailAfterMutation,
+        /// Times out with nothing applied yet; the test may land it later.
+        Timeout,
+        AcceptWithoutPublishing,
+        /// Snapshot the record, then die without mutating or with mutating.
+        CrashBeforeMutation,
+        CrashAfterMutation,
+    }
+
+    #[derive(Default)]
+    struct FakeState {
+        https_443: Option<String>,
+        funnel: bool,
+        serve_script: VecDeque<Serve>,
+        status_failures: VecDeque<bool>,
+        off_fails: bool,
+        log: Vec<String>,
+        record_at_mutation: Vec<Option<String>>,
+    }
+
+    /// Stands in for the Tailscale CLI: a :443 root route plus an unrelated
+    /// :8443 rule that every test expects to survive untouched.
+    struct Fake {
+        dir: PathBuf,
+        state: Arc<Mutex<FakeState>>,
+    }
+
+    impl Fake {
+        fn new() -> Self {
+            let dir = std::env::temp_dir()
+                .join(format!("modus-tailscale-{}", uuid::Uuid::new_v4().simple()));
+            fs::create_dir_all(&dir).expect("create test directory");
+            fs::write(dir.join("remote"), "tailscale\n").expect("enable Tailnet access");
+            Self {
+                dir,
+                state: Arc::default(),
+            }
+        }
+
+        fn with_route(self, port: u16) -> Self {
+            self.set_route(Some(port));
+            self
+        }
+
+        fn set_route(&self, port: Option<u16>) {
+            self.state().https_443 = port.map(|port| format!("http://127.0.0.1:{port}"));
+        }
+
+        fn state(&self) -> std::sync::MutexGuard<'_, FakeState> {
+            self.state.lock().expect("fake state")
+        }
+
+        fn script(&self, steps: &[Serve]) {
+            self.state().serve_script.extend(steps.iter().copied());
+        }
+
+        fn route(&self) -> Option<String> {
+            self.state().https_443.clone()
+        }
+
+        fn ownership_file(&self) -> PathBuf {
+            self.dir.join("tailscale-serve-owner.json")
+        }
+
+        fn record(&self) -> Option<Value> {
+            let bytes = fs::read(self.ownership_file()).ok()?;
+            Some(serde_json::from_slice(&bytes).expect("ownership record is JSON"))
+        }
+
+        fn committed_port(&self) -> Option<u64> {
+            let record = self.record()?;
+            if record.get("transitionVersion").is_some() {
+                return None;
+            }
+            record["targetPort"].as_u64()
+        }
+
+        fn pending_ports(&self) -> Option<(Option<u64>, u64)> {
+            let record = self.record()?;
+            record.get("transitionVersion")?;
+            Some((
+                record["previous"]["targetPort"].as_u64(),
+                record["intended"]["targetPort"].as_u64()?,
+            ))
+        }
+
+        fn serve_calls(&self) -> usize {
+            self.state()
+                .log
+                .iter()
+                .filter(|call| call.starts_with("serve --bg"))
+                .count()
+        }
+
+        /// A fresh manager over the same fake and directory, as after a restart.
+        fn manager(&self) -> TailscaleManager {
+            let state = Arc::clone(&self.state);
+            let ownership = self.ownership_file();
+            TailscaleManager {
+                remote_file: self.dir.join("remote"),
+                ownership_file: self.ownership_file(),
+                config_dir: self.dir.clone(),
+                cli: OsString::from("unused-in-tests"),
+                command_timeout: Duration::from_millis(10),
+                status_attempts: 1,
+                status_delay: Duration::ZERO,
+                test_cli: Some(Box::new(move |args: &[&str]| {
+                    let ok = |stdout: String| {
+                        Ok(CliOutput {
+                            code: 0,
+                            stdout,
+                            stderr: String::new(),
+                        })
+                    };
+                    let failed = |stderr: &str| {
+                        Ok(CliOutput {
+                            code: 1,
+                            stdout: String::new(),
+                            stderr: stderr.into(),
+                        })
+                    };
+                    let mut guard = state.lock().expect("fake state");
+                    guard.log.push(args.join(" "));
+                    match args {
+                        ["status", "--json"] => ok(format!(r#"{{"Self":{{"DNSName":"{DNS}."}}}}"#)),
+                        ["serve", "status", "--json"] => {
+                            if guard.status_failures.pop_front().unwrap_or(false) {
+                                return failed("status unavailable");
+                            }
+                            ok(render_serve_config(&guard))
+                        }
+                        ["serve", "--bg", "--yes", port] => {
+                            let proxy = format!("http://127.0.0.1:{port}");
+                            let step = guard.serve_script.pop_front().unwrap_or(Serve::Apply);
+                            if matches!(
+                                step,
+                                Serve::CrashBeforeMutation | Serve::CrashAfterMutation
+                            ) {
+                                guard
+                                    .record_at_mutation
+                                    .push(fs::read_to_string(&ownership).ok());
+                            }
+                            match step {
+                                Serve::Apply => {
+                                    guard.https_443 = Some(proxy);
+                                    ok(String::new())
+                                }
+                                Serve::FailBeforeMutation => failed("serve refused"),
+                                Serve::FailAfterMutation => {
+                                    guard.https_443 = Some(proxy);
+                                    failed("serve reported failure")
+                                }
+                                Serve::Timeout => {
+                                    Err("Tailscale command timed out after 10 ms".into())
+                                }
+                                Serve::AcceptWithoutPublishing => {
+                                    guard.https_443 = None;
+                                    ok(String::new())
+                                }
+                                Serve::CrashBeforeMutation => Err("simulated crash".into()),
+                                Serve::CrashAfterMutation => {
+                                    guard.https_443 = Some(proxy);
+                                    Err("simulated crash".into())
+                                }
+                            }
+                        }
+                        ["serve", "--https=443", "off"] => {
+                            if guard.off_fails {
+                                return failed("off refused");
+                            }
+                            guard.https_443 = None;
+                            ok(String::new())
+                        }
+                        other => panic!("unexpected Tailscale command {other:?}"),
+                    }
+                })),
+            }
+        }
+
+        /// Put the record back exactly as it was when the process "died" at
+        /// the mutation boundary, discarding whatever the failure path wrote.
+        fn restore_crash_snapshot(&self) {
+            let snapshot = self
+                .state()
+                .record_at_mutation
+                .last()
+                .cloned()
+                .flatten()
+                .expect("record existed at mutation");
+            fs::write(self.ownership_file(), snapshot).expect("restore crash snapshot");
+        }
+
+        fn commit(&self, port: u16) {
+            let manager = self.manager();
+            manager
+                .write_ownership(&TailscaleOwnership::desktop(DNS, port, INSTANCE))
+                .expect("seed ownership");
+        }
+    }
+
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// A :443 root route when one is set, beside an unrelated :8443 rule that
+    /// the fake CLI offers no command to remove: anything but status, publish
+    /// and `--https=443 off` panics, so no test can pass by resetting Serve.
+    fn render_serve_config(state: &FakeState) -> String {
+        let handler = |proxy: &str| serde_json::json!({ "Handlers": { "/": { "Proxy": proxy } } });
+        let mut web = serde_json::Map::new();
+        let mut tcp = serde_json::Map::new();
+        web.insert(
+            format!("{DNS}:8443"),
+            handler("https+insecure://localhost:8443"),
         );
+        tcp.insert("8443".into(), serde_json::json!({ "HTTPS": true }));
+        if let Some(proxy) = &state.https_443 {
+            web.insert(format!("{DNS}:443"), handler(proxy));
+            tcp.insert("443".into(), serde_json::json!({ "HTTPS": true }));
+        }
+        let mut value = serde_json::json!({ "TCP": tcp, "Web": web });
+        if state.funnel {
+            let mut funnel = serde_json::Map::new();
+            funnel.insert(format!("{DNS}:443"), Value::Bool(true));
+            value["AllowFunnel"] = Value::Object(funnel);
+        }
+        value.to_string()
+    }
+
+    fn proxy(port: u16) -> Option<String> {
+        Some(format!("http://127.0.0.1:{port}"))
+    }
+
+    #[test]
+    fn records_both_routes_before_moving_an_owned_route() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::CrashBeforeMutation]);
+        fake.manager().reconcile(4002, INSTANCE);
+        let at_mutation: Value = serde_json::from_str(
+            fake.state().record_at_mutation[0]
+                .as_deref()
+                .expect("record present at mutation"),
+        )
+        .expect("record is JSON");
+        assert_eq!(at_mutation["previous"]["targetPort"], 4001);
+        assert_eq!(at_mutation["intended"]["targetPort"], 4002);
+    }
+
+    #[test]
+    fn publishes_and_then_moves_an_owned_route() {
+        let fake = Fake::new();
+        let status = fake.manager().reconcile(4001, INSTANCE);
+        assert_eq!(status.state, "active");
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.committed_port(), Some(4001));
+
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(status.target_port, Some(4002));
+        assert_eq!(fake.route(), proxy(4002));
+        assert_eq!(fake.committed_port(), Some(4002));
+    }
+
+    /// The TAIL-01 window: the record was written, the process died before
+    /// Serve changed. Serve still shows A; the next start must recognise it.
+    #[test]
+    fn recovers_a_move_interrupted_before_the_mutation() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::CrashBeforeMutation]);
+        fake.manager().reconcile(4002, INSTANCE);
+        fake.restore_crash_snapshot();
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.pending_ports(), Some((Some(4001), 4002)));
+
+        let status = fake.manager().reconcile(4003, "restarted-instance");
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.route(), proxy(4003));
+        assert_eq!(fake.committed_port(), Some(4003));
+    }
+
+    #[test]
+    fn recovers_a_move_interrupted_after_the_mutation() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::CrashAfterMutation]);
+        fake.manager().reconcile(4002, INSTANCE);
+        fake.restore_crash_snapshot();
+        assert_eq!(fake.route(), proxy(4002));
+
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.committed_port(), Some(4002));
+        assert_eq!(
+            fake.serve_calls(),
+            1,
+            "an already-live route is adopted, not re-served"
+        );
+    }
+
+    #[test]
+    fn command_failure_before_the_mutation_keeps_the_previous_owner() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::FailBeforeMutation]);
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "error");
+        assert!(status.message.unwrap().contains("serve refused"));
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.committed_port(), Some(4001));
+
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.committed_port(), Some(4002));
+    }
+
+    #[test]
+    fn command_failure_after_the_mutation_commits_the_verified_route() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::FailAfterMutation]);
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.route(), proxy(4002));
+        assert_eq!(fake.committed_port(), Some(4002));
+    }
+
+    /// A timed-out command can still land after Modus has given up on it, so
+    /// an absent route must not discard the record that would recognise it.
+    #[test]
+    fn timeout_keeps_the_transition_for_a_mutation_that_lands_late() {
+        let fake = Fake::new();
+        fake.script(&[Serve::Timeout]);
+        let status = fake.manager().reconcile(4001, INSTANCE);
+        assert_eq!(status.state, "error");
+        assert!(status.message.unwrap().contains("timed out"));
+        assert_eq!(fake.route(), None);
+        assert_eq!(fake.pending_ports(), Some((None, 4001)));
+
+        fake.set_route(Some(4001));
+
+        let status = fake.manager().reconcile(4005, "restarted-instance");
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.route(), proxy(4005));
+        assert_eq!(fake.committed_port(), Some(4005));
+    }
+
+    #[test]
+    fn unpublished_route_restores_the_previous_one() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::AcceptWithoutPublishing, Serve::Apply]);
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "error");
+        assert!(status
+            .message
+            .unwrap()
+            .contains("restored the previous Modus route"));
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.committed_port(), Some(4001));
+    }
+
+    #[test]
+    fn failed_rollback_keeps_the_pending_transition() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::AcceptWithoutPublishing, Serve::FailBeforeMutation]);
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "error");
+        assert!(status
+            .message
+            .unwrap()
+            .contains("Tailscale rollback failed"));
+        assert_eq!(fake.route(), None);
+        assert_eq!(fake.pending_ports(), Some((Some(4001), 4002)));
+
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.committed_port(), Some(4002));
+    }
+
+    #[test]
+    fn status_failure_after_the_mutation_keeps_the_pending_transition() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.state().status_failures.extend([false, true]);
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "error");
+        assert!(status.message.unwrap().contains("status unavailable"));
+        assert_eq!(fake.route(), proxy(4002));
+        assert_eq!(fake.pending_ports(), Some((Some(4001), 4002)));
+
+        let status = fake.manager().reconcile(4002, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.committed_port(), Some(4002));
+    }
+
+    #[test]
+    fn foreign_routes_are_never_touched() {
+        let fake = Fake::new().with_route(9000);
+        let status = fake.manager().reconcile(4001, INSTANCE);
+        assert_eq!(status.state, "blocked");
+        assert_eq!(fake.route(), proxy(9000));
+        assert_eq!(fake.record(), None);
+
+        // An owned port with Funnel switched on is no longer Modus's plain route.
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.state().funnel = true;
+        assert_eq!(fake.manager().reconcile(4002, INSTANCE).state, "blocked");
+        assert_eq!(fake.route(), proxy(4001));
+
+        // A transition whose routes were both replaced by someone else.
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::CrashBeforeMutation]);
+        fake.manager().reconcile(4002, INSTANCE);
+        fake.restore_crash_snapshot();
+        fake.set_route(Some(9000));
+        assert_eq!(fake.manager().reconcile(4003, INSTANCE).state, "blocked");
+        assert_eq!(fake.route(), proxy(9000));
+        assert_eq!(fake.pending_ports(), Some((Some(4001), 4002)));
+        assert_eq!(fake.manager().release(4002, INSTANCE), Ok(()));
+        assert_eq!(fake.route(), proxy(9000));
+
+        assert_eq!(
+            fake.serve_calls(),
+            1,
+            "only the interrupted move reached Serve"
+        );
+    }
+
+    #[test]
+    fn adopts_a_legacy_cli_route_through_a_recorded_transition() {
+        let fake = Fake::new();
+        fake.state().https_443 = Some("http://localhost:3779".into());
+        let status = fake.manager().reconcile(4001, INSTANCE);
+        assert_eq!(status.state, "active", "{:?}", status.message);
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.committed_port(), Some(4001));
+    }
+
+    #[test]
+    fn release_removes_only_its_own_route() {
+        let fake = Fake::new();
+        assert_eq!(fake.manager().reconcile(4001, INSTANCE).state, "active");
+
+        fake.manager()
+            .release(4001, "another-instance")
+            .expect("no-op");
+        fake.manager().release(4002, INSTANCE).expect("no-op");
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.committed_port(), Some(4001));
+
+        fake.manager().release(4001, INSTANCE).expect("release");
+        assert_eq!(fake.route(), None);
+        assert_eq!(fake.record(), None);
+    }
+
+    #[test]
+    fn failed_release_keeps_route_and_record() {
+        let fake = Fake::new();
+        assert_eq!(fake.manager().reconcile(4001, INSTANCE).state, "active");
+        fake.state().off_fails = true;
+        assert!(fake.manager().release(4001, INSTANCE).is_err());
+        assert_eq!(fake.route(), proxy(4001));
+        assert_eq!(fake.committed_port(), Some(4001));
+    }
+
+    /// Quit after a failed move still removes the route that move left live.
+    #[test]
+    fn release_settles_an_interrupted_transition() {
+        let fake = Fake::new().with_route(4001);
+        fake.commit(4001);
+        fake.script(&[Serve::CrashBeforeMutation]);
+        fake.manager().reconcile(4002, INSTANCE);
+        fake.restore_crash_snapshot();
+
+        fake.manager().release(4002, INSTANCE).expect("release");
+        assert_eq!(fake.route(), None);
+        assert_eq!(fake.record(), None);
+
+        let fake = Fake::new();
+        fake.script(&[Serve::CrashBeforeMutation]);
+        fake.manager().reconcile(4002, INSTANCE);
+        fake.restore_crash_snapshot();
+        fake.manager().release(4002, INSTANCE).expect("release");
+        assert_eq!(
+            fake.record(),
+            None,
+            "a transition that never landed is settled"
+        );
+    }
+
+    #[test]
+    fn disabled_access_never_calls_tailscale() {
+        let fake = Fake::new().with_route(4001);
+        fs::remove_file(fake.dir.join("remote")).expect("disable");
+        assert_eq!(fake.manager().reconcile(4002, INSTANCE).state, "disabled");
+        assert!(fake.state().log.is_empty());
+        assert_eq!(fake.route(), proxy(4001));
     }
 
     /// Replacement has to work without unlinking first, or removing the unlink
