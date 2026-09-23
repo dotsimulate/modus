@@ -65,9 +65,9 @@ Run checks proportionate to the change. The baseline CI commands are:
 
 ```bash
 bun test
-bun x tsc -p harness/tsconfig.json --noEmit
-bun x tsc -p harness/ui/tsconfig.app.json --noEmit
-bun x tsc -p harness/ui/tsconfig.node.json --noEmit
+node harness/node_modules/typescript/bin/tsc -p harness/tsconfig.json --noEmit
+node harness/ui/node_modules/typescript/bin/tsc -p harness/ui/tsconfig.app.json --noEmit
+node harness/ui/node_modules/typescript/bin/tsc -p harness/ui/tsconfig.node.json --noEmit
 bun run --cwd harness/ui build
 ```
 

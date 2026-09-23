@@ -104,11 +104,11 @@ jobs:
         working-directory: harness
         run: bun test
       - name: Typecheck harness
-        run: bun x tsc -p harness/tsconfig.json --noEmit
+        run: node harness/node_modules/typescript/bin/tsc -p harness/tsconfig.json --noEmit
       - name: Typecheck UI application
-        run: bun x tsc -p harness/ui/tsconfig.app.json --noEmit
+        run: node harness/ui/node_modules/typescript/bin/tsc -p harness/ui/tsconfig.app.json --noEmit
       - name: Typecheck UI build tooling
-        run: bun x tsc -p harness/ui/tsconfig.node.json --noEmit
+        run: node harness/ui/node_modules/typescript/bin/tsc -p harness/ui/tsconfig.node.json --noEmit
       - name: Build production UI
         if: needs.classify.outputs.ui_build == 'true'
         working-directory: harness/ui
