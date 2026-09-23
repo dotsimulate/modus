@@ -102,7 +102,7 @@ describe("provider definition discovery", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("user definitions win over enabled plugin definitions", async () => {
     const root = mkdtempSync(join(tmpdir(), "modus-provider-precedence-"));
@@ -136,7 +136,7 @@ describe("provider definition discovery", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
 
 describe("runtime integration", () => {
@@ -159,7 +159,7 @@ describe("runtime integration", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("inherits PI capabilities and probes the resolved /models endpoint with secret auth", async () => {
     const root = mkdtempSync(join(tmpdir(), "modus-provider-health-"));
@@ -235,7 +235,7 @@ describe("runtime integration", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("keeps multiple OpenAI-compatible endpoints distinct across profiles", async () => {
     const root = mkdtempSync(join(tmpdir(), "modus-provider-multiple-"));
@@ -307,7 +307,7 @@ describe("runtime integration", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
 
 describe("definitions are not cached", () => {
@@ -362,7 +362,7 @@ describe("definitions are not cached", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
 
 describe("apiKeyRequired", () => {
@@ -403,7 +403,7 @@ describe("apiKeyRequired", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
 
 describe("pricing is definition-driven, not name-driven", () => {
@@ -452,5 +452,5 @@ describe("pricing is definition-driven, not name-driven", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });

@@ -6,6 +6,7 @@ import { dirname, join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 import { vaultEnvironment } from "../cli-vault";
 import { canonicalVaultRoot, createVault, requireRegisteredVault } from "../vault-registry";
+import { removeTreeAfterExit } from "./fixtures/remove-tree";
 
 type BoundaryResult = {
   modusHome: string;
@@ -309,7 +310,7 @@ describe("named Vault folder boundary", () => {
       expect(existsSync(join(mainHome, "data", "boundary.db"))).toBe(false);
       expect(existsSync(join(mainHome, "runtime", "boundary.txt"))).toBe(false);
     } finally {
-      rmSync(base, { recursive: true, force: true });
+      await removeTreeAfterExit(base);
     }
   }, 30_000);
 });
