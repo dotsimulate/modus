@@ -28,13 +28,19 @@ async function withCanaries(
   passthrough: boolean,
   run: () => Promise<void>,
   overrides: Partial<Record<keyof typeof credentials, string>> = {},
+  strictGitHubEnvironment = false,
 ) {
-  const names = [...Object.keys(credentials), "MODUS_PROVIDER_ENV_PASSTHROUGH"];
+  const names = [...Object.keys(credentials), "MODUS_PROVIDER_ENV_PASSTHROUGH", "GITHUB_SHA", "SURFACE"];
   const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   try {
     Object.assign(process.env, credentials, overrides);
     if (passthrough) process.env.MODUS_PROVIDER_ENV_PASSTHROUGH = "1";
     else delete process.env.MODUS_PROVIDER_ENV_PASSTHROUGH;
+    // The pinned SDK enables an additional allowlist when GitHub sets GITHUB_SHA.
+    // Select the mode explicitly so these assertions agree on local and CI runners.
+    if (strictGitHubEnvironment) process.env.GITHUB_SHA = "synthetic-ci-sha";
+    else delete process.env.GITHUB_SHA;
+    delete process.env.SURFACE;
     await run();
   } finally {
     for (const name of names) {
@@ -174,4 +180,16 @@ describe("Gemini SDK child environments", () => {
       }, { HARNESS_TOKEN: providerShapedCanary, HARNESS_PIN: providerShapedCanary });
     });
   }
+
+  test("GitHub runner mode applies the SDK's stricter shell environment filter", async () => {
+    await withCanaries(true, async () => {
+      const options = await captureOptions();
+      const { mcpEnv, inheritedMcpEnv, shellEnv } = await sdkChildEnvironments(options);
+      expect(shellEnv.GEMINI_API_KEY).toBeUndefined();
+      expect(shellEnv.HARNESS_TOKEN).toBe(credentials.HARNESS_TOKEN);
+      expect(shellEnv.MODUS_TOKEN).toBe(credentials.MODUS_TOKEN);
+      expect(inheritedMcpEnv.HARNESS_TOKEN).toBe(credentials.HARNESS_TOKEN);
+      expect(mcpEnv.HARNESS_PIN).toBe("explicit-pin-canary");
+    }, {}, true);
+  });
 });

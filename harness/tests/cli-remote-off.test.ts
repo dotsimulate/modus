@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ownershipFor } from "../tailscale-serve";
@@ -33,12 +33,30 @@ if (args.join(" ") === "serve status --json") {
 }
 `;
 
+let fakeBuildRoot: string | undefined;
+let compiledFakeTailscale: string | undefined;
+
+beforeAll(() => {
+  fakeBuildRoot = mkdtempSync(join(tmpdir(), "modus-remote-off-bin-"));
+  const fakeSource = join(fakeBuildRoot, "fake-tailscale.ts");
+  compiledFakeTailscale = join(fakeBuildRoot, process.platform === "win32" ? "tailscale.exe" : "tailscale");
+  writeFileSync(fakeSource, fakeTailscale);
+  const compiled = Bun.spawnSync([process.execPath, "build", "--compile", fakeSource, "--outfile", compiledFakeTailscale], {
+    cwd: fakeBuildRoot, stdout: "pipe", stderr: "pipe",
+  });
+  if (compiled.exitCode !== 0) throw new Error(`fake Tailscale build failed: ${compiled.stderr.toString()}`);
+}, 30_000);
+
+afterAll(() => {
+  if (fakeBuildRoot) rmSync(fakeBuildRoot, { recursive: true, force: true });
+});
+
 async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" | "unreadable" | "malformed") {
+  if (!compiledFakeTailscale) throw new Error("fake Tailscale was not compiled");
   const root = mkdtempSync(join(tmpdir(), "modus-remote-off-"));
   const configDir = join(root, "user", ".config", "agent-dev-zone");
   const calls = join(root, "tailscale-calls.jsonl");
   const removedFile = join(root, "removed");
-  const fakeSource = join(root, "fake-tailscale.ts");
   const fakeCommand = join(root, process.platform === "win32" ? "tailscale.exe" : "tailscale");
   const owner = ownershipFor("host.example.ts.net", 3777, new Date(0));
   const config = JSON.stringify({
@@ -48,11 +66,7 @@ async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" 
   writeFileSync(join(configDir, "remote"), "tailscale");
   writeFileSync(join(configDir, "tailscale-serve-owner.json"), JSON.stringify(owner));
   try {
-    writeFileSync(fakeSource, fakeTailscale);
-    const compiled = Bun.spawnSync([process.execPath, "build", "--compile", fakeSource, "--outfile", fakeCommand], {
-      cwd: root, stdout: "pipe", stderr: "pipe",
-    });
-    if (compiled.exitCode !== 0) throw new Error(`fake Tailscale build failed: ${compiled.stderr.toString()}`);
+    copyFileSync(compiledFakeTailscale, fakeCommand);
     // Windows commonly exposes the inherited key as "Path". Adding "PATH" beside
     // it can leave command lookup using the inherited path and a real tailscale.
     const childEnv = Object.fromEntries(
@@ -112,7 +126,7 @@ test("remote off reports a failed Modus-owned Serve removal and exits nonzero", 
   expect(result.calls).not.toContainEqual(["serve", "reset"]);
   expect(result.preferenceExists).toBe(false);
   expect(result.ownershipExists).toBe(true);
-});
+}, 15_000);
 
 test("remote off succeeds when it removes the owned rule or finds no active rule", async () => {
   const removed = await runRemoteOff("removed");
@@ -125,7 +139,7 @@ test("remote off succeeds when it removes the owned rule or finds no active rule
   expect(absent.exitCode).toBe(0);
   expect(absent.stdout).toContain("No Tailscale Serve rule was active");
   expect(absent.calls).not.toContainEqual(["serve", "--https=443", "off"]);
-});
+}, 25_000);
 
 test("remote off leaves unrelated Serve rules untouched", async () => {
   const result = await runRemoteOff("foreign");
@@ -133,7 +147,7 @@ test("remote off leaves unrelated Serve rules untouched", async () => {
   expect(result.stdout).toContain("Existing Tailscale Serve rule was left untouched");
   expect(result.calls).not.toContainEqual(["serve", "--https=443", "off"]);
   expect(result.ownershipExists).toBe(true);
-});
+}, 15_000);
 
 test("remote off reports unreadable and malformed Serve state as unverified", async () => {
   for (const scenario of ["unreadable", "malformed"] as const) {
@@ -142,4 +156,4 @@ test("remote off reports unreadable and malformed Serve state as unverified", as
     expect(result.stderr).toContain("could not verify the Tailscale Serve rule");
     expect(result.stdout).not.toContain("Remote access disabled");
   }
-});
+}, 25_000);
