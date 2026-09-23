@@ -198,6 +198,8 @@ Two Google adapters exist and neither is offered in the provider picker. `antigr
 
 See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
 
+For conditional network connections, local data locations, and deliberate removal steps, see [data, network access, and removal](harness/docs/data-and-network.md).
+
 ## Profiles
 
 **Agent profiles** define how an agent behaves: model, tools, system prompt, permissions, and MCP servers. User-owned profiles live in `~/.modus/profiles/agents/`, and project-local overrides live in `<project>/.modus/profiles/agents/`.
