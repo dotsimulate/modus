@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,9 +7,10 @@ import { executeOperation, operationCapacityAvailable } from "../action-operatio
 import { operationConfigError, validateActionInputs } from "../action-operation-config";
 import type { ActionConfig } from "../action-types";
 import type { OperationReceipt } from "../action-operation-types";
+import { removeTreeAfterExit } from "./fixtures/remove-tree";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(async () => { for (const root of roots.splice(0)) await removeTreeAfterExit(root); });
 
 function setup(code?: string) {
   const root = mkdtempSync(join(tmpdir(), "modus-operation-"));
