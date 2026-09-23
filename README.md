@@ -44,7 +44,7 @@ Harness: Hono + Bun (:3777)
         v
 Providers:
   claude-code, claude-code-pty, codex, cursor, grok-build, opencode,
-  litellm, ollama, openrouter
+  openai-compat, ollama, openrouter
 
 Shared extension surfaces:
   MCP servers, moves, actions, pages, client extensions, plugins
@@ -182,11 +182,15 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
 | `grok-build` | xAI Grok Build CLI | [`grok`](https://docs.x.ai/build/overview) installed; SuperGrok or X Premium+ login, or `XAI_API_KEY` |
 | `opencode` | opencode CLI | [opencode](https://opencode.ai) installed |
-| `litellm` | LiteLLM proxy | LiteLLM running locally |
+| `openai-compat` | OpenAI-compatible endpoint (LiteLLM defaults) | A compatible local or hosted endpoint |
 | `ollama` | Ollama API | Ollama running locally |
 | `openrouter` | OpenRouter API | `OPENROUTER_API_KEY` env var |
 
-The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants, a lightweight agent loop for local models and routing services.
+The last three (`openai-compat`, `ollama`, `openrouter`) are PI agent variants, a lightweight agent loop for local models and routing services. Existing `litellm` profiles remain valid as an alias of `openai-compat`.
+
+To configure a provider, open project settings and choose its provider and model. You can add the Provider Status widget to check its prerequisites. Key-backed providers read credentials from the Modus secrets file (Main: `~/.config/agent-dev-zone/secrets.env`; a named Vault: `<Vault root>/secrets.env`) or the backend process environment. Add one `NAME=value` line using the key name in the table or [provider guide](harness/docs/providers.md), then restart the backend to reload a changed secrets file. Keep credentials out of project profiles and Git. A locally running `openai-compat` or Ollama endpoint can work without a key; hosted endpoints and other providers may require one.
+
+The Provider Status widget may contact configured provider endpoints to check readiness, including a configured key for a definition that requires one. See [provider health](harness/docs/providers.md#provider-health) before enabling it for a remote endpoint.
 
 For Grok Build, install the official CLI (`irm https://x.ai/cli/install.ps1 | iex` on Windows, or `curl -fsSL https://x.ai/cli/install.sh | bash` on macOS/Linux/WSL), then run `grok login`. Grok Build access comes with a SuperGrok or X Premium+ subscription rather than a free tier; limits and eligibility are controlled by xAI and may change. Modus also supports `XAI_API_KEY` for API-backed use, which needs no subscription.
 

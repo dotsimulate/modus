@@ -46,9 +46,9 @@ function parseEnvFile(content: string): Record<string, string> {
   return result;
 }
 
-const TEMPLATE = `# Harness secrets — API keys for MCP servers
+const TEMPLATE = `# Modus secrets — API keys for configured providers and MCP servers
 # This file is read by the harness at startup.
-# Keys here are passed ONLY to MCP server subprocesses, never to agents.
+# Configured providers and MCP servers may receive the keys they use.
 # Permissions should be 600 (owner-only read/write).
 #
 # TAVILY_API_KEY=tvly-...
