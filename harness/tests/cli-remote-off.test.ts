@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { ownershipFor } from "../tailscale-serve";
 
 const cliPath = resolve(import.meta.dir, "..", "cli.ts");
@@ -53,11 +53,16 @@ async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" 
       cwd: root, stdout: "pipe", stderr: "pipe",
     });
     if (compiled.exitCode !== 0) throw new Error(`fake Tailscale build failed: ${compiled.stderr.toString()}`);
+    // Windows commonly exposes the inherited key as "Path". Adding "PATH" beside
+    // it can leave command lookup using the inherited path and a real tailscale.
+    const childEnv = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => key.toLowerCase() !== "path"),
+    );
+    childEnv[process.platform === "win32" ? "Path" : "PATH"] = root;
     const child = Bun.spawn([process.execPath, "run", cliPath, "remote", "off"], {
       cwd: resolve(import.meta.dir, ".."),
       env: {
-        ...process.env,
-        PATH: `${root}${delimiter}${process.env.PATH ?? ""}`,
+        ...childEnv,
         HOME: join(root, "user"),
         USERPROFILE: join(root, "user"),
         MODUS_HOME: join(root, "home"),
@@ -86,9 +91,10 @@ async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" 
       child.kill();
       throw new Error("remote off CLI test timed out");
     }
+    if (!existsSync(calls)) throw new Error("fake Tailscale was not invoked");
     return {
       exitCode: result[0], stdout: result[1], stderr: result[2],
-      calls: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]) : [],
+      calls: readFileSync(calls, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string[]),
       preferenceExists: existsSync(join(configDir, "remote")),
       ownershipExists: existsSync(join(configDir, "tailscale-serve-owner.json")),
     };
