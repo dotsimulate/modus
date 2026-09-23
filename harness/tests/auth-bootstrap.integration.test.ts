@@ -326,6 +326,25 @@ describe("isolated browser authentication bootstrap", () => {
     expect(first.response.status).toBe(200);
     expect(first.token).toBeTruthy();
 
+    const ticketedFile = join(isolatedRoot, "revoked-ticket.txt");
+    writeFileSync(ticketedFile, "ticket lifetime");
+    const mintTicket = async (token: string): Promise<string> => {
+      const response = await fetch(`${baseUrl}/api/file/ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ path: ticketedFile }),
+      });
+      expect(response.status).toBe(200);
+      return ((await response.json()) as { ticket: string }).ticket;
+    };
+    const browserTicket = await mintTicket(first.token);
+    const agentTicket = await mintTicket(agentToken);
+    const readTicket = (ticket: string) => fetch(
+      `${baseUrl}/api/file/raw?path=${encodeURIComponent(ticketedFile)}&ticket=${encodeURIComponent(ticket)}`,
+    );
+    expect((await readTicket(browserTicket)).status).toBe(200);
+    expect((await readTicket(agentTicket)).status).toBe(200);
+
     const anonymousLock = await fetch(`${baseUrl}/api/auth/lock`, { method: "POST" });
     expect(anonymousLock.status).toBe(401);
     const authenticatedLock = await fetch(`${baseUrl}/api/auth/lock`, {
@@ -333,6 +352,8 @@ describe("isolated browser authentication bootstrap", () => {
       headers: { Authorization: `Bearer ${first.token}` },
     });
     expect(authenticatedLock.status).toBe(200);
+    expect((await readTicket(browserTicket)).status).toBe(401);
+    expect((await readTicket(agentTicket)).status).toBe(200);
     expect((await fetch(`${baseUrl}/api/auth/check`, {
       headers: { Authorization: `Bearer ${first.token}` },
     })).status).toBe(401);

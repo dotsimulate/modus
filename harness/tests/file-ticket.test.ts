@@ -5,6 +5,7 @@ import {
   clearFileTickets,
   isFileTicket,
   mintFileTicket,
+  revokeBrowserFileTickets,
   validateFileTicket,
 } from "../file-ticket";
 import { buildRawFileUrl } from "../ui/src/rawFileUrl";
@@ -56,6 +57,16 @@ describe("file tickets", () => {
 
   test("each mint is distinct", () => {
     expect(mintFileTicket(file)).not.toBe(mintFileTicket(file));
+  });
+
+  test("revoking one browser session invalidates only its file tickets", () => {
+    const first = mintFileTicket(file, Date.now(), 60_000, "browser-one");
+    const second = mintFileTicket(file, Date.now(), 60_000, "browser-two");
+    const agent = mintFileTicket(file);
+    revokeBrowserFileTickets(["browser-one"]);
+    expect(validateFileTicket(first, file)).toBe(false);
+    expect(validateFileTicket(second, file)).toBe(true);
+    expect(validateFileTicket(agent, file)).toBe(true);
   });
 });
 

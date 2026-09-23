@@ -29,6 +29,8 @@ type FileTicket = {
   /** Resolved absolute path. Comparison is on this, never the raw query value. */
   path: string;
   expiresAt: number;
+  /** Browser-issued tickets die with the session that minted them. */
+  browserSession?: string;
 };
 
 const tickets = new Map<string, FileTicket>();
@@ -46,12 +48,12 @@ function sweep(now: number): void {
 }
 
 /** Mint a ticket for one file. The caller must already be authorized. */
-export function mintFileTicket(filePath: string, now = Date.now(), ttlMs = DEFAULT_TTL_MS): string {
+export function mintFileTicket(filePath: string, now = Date.now(), ttlMs = DEFAULT_TTL_MS, browserSession?: string): string {
   sweep(now);
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   const ticket = TICKET_PREFIX + Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  tickets.set(ticket, { path: resolve(filePath), expiresAt: now + ttlMs });
+  tickets.set(ticket, { path: resolve(filePath), expiresAt: now + ttlMs, browserSession });
   return ticket;
 }
 
@@ -74,6 +76,15 @@ export function validateFileTicket(ticket: string, filePath: string, now = Date.
     return false;
   }
   return entry.path === resolve(filePath);
+}
+
+/** Invalidate browser-issued URLs when their authorizing browser session is revoked. */
+export function revokeBrowserFileTickets(tokens: readonly string[]): void {
+  if (tokens.length === 0) return;
+  const revoked = new Set(tokens);
+  for (const [ticket, entry] of tickets) {
+    if (entry.browserSession && revoked.has(entry.browserSession)) tickets.delete(ticket);
+  }
 }
 
 /** Test seam — the store is process-global and would otherwise leak between cases. */

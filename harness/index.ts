@@ -29,7 +29,7 @@ import { initHarnessBridge } from "./harness-bridge";
 import { cursorMcpConfigStore } from "./providers/cursor-mcp-config";
 import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
 import { isSessionMcpCredential, validateSessionMcpCredential } from "./session-mcp-credential";
-import { FILE_TICKET_TTL_MS, mintFileTicket, validateFileTicket } from "./file-ticket";
+import { FILE_TICKET_TTL_MS, mintFileTicket, revokeBrowserFileTickets, validateFileTicket } from "./file-ticket";
 import { moveAssetETag, moveAssetHeaders, moveAssetNotModified } from "./move-asset-cache";
 import { serveRangedFile } from "./http-range";
 import { formatClientTimingLog, parseClientTimingPayload } from "./client-timing";
@@ -540,6 +540,7 @@ function getPin() { return resolveSecret("HARNESS_PIN"); }
 // In-memory browser sessions die on restart and have idle + absolute ceilings.
 const browserSessions = new BrowserSessionStore();
 browserSessions.onRevoke(closeTerminalWebSockets);
+browserSessions.onRevoke(revokeBrowserFileTickets);
 const pinThrottle = new PinAttemptThrottle();
 
 function bearerToken(c: any): string {
@@ -4433,7 +4434,7 @@ app.post("/api/file/ticket", async (c) => {
   const abs = resolve(filePath);
   if (!(await Bun.file(abs).exists())) return c.json({ error: "not found" }, 404);
 
-  const ticket = mintFileTicket(abs);
+  const ticket = mintFileTicket(abs, Date.now(), FILE_TICKET_TTL_MS, browserSessionToken(c));
   return c.json({ ticket, expiresAt: Date.now() + FILE_TICKET_TTL_MS });
 });
 
