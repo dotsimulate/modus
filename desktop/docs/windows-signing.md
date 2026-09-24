@@ -111,7 +111,7 @@ artifact to a descriptive name first if it is needed as a rollback:
 
 ```powershell
 cd src-tauri\target\release\bundle\nsis
-copy Modus_0.2.0_x64-setup.exe Modus_0.2.0_x64-setup-<what-it-predates>-<date>.exe
+copy Modus_0.3.0_x64-setup.exe Modus_0.3.0_x64-setup-<what-it-predates>-<date>.exe
 ```
 
 ---
@@ -120,7 +120,7 @@ copy Modus_0.2.0_x64-setup.exe Modus_0.2.0_x64-setup-<what-it-predates>-<date>.e
 
 ```powershell
 $artifacts = @(
-  ".\src-tauri\target\release\bundle\nsis\Modus_0.2.0_x64-setup.exe"
+  ".\src-tauri\target\release\bundle\nsis\Modus_0.3.0_x64-setup.exe"
   ".\src-tauri\target\release\modus-desktop.exe"
   ".\src-tauri\target\release\modus.exe"
   ".\src-tauri\target\release\bun.exe"

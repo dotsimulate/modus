@@ -6,6 +6,7 @@ describe("Claude Code model suggestions", () => {
     const models = await fetchProviderModels("claude-code");
     const ids = models.map((model) => model.id);
 
+    expect(ids).toContain("claude-opus-5-5");
     expect(ids).toContain("claude-opus-5");
     expect(ids).toContain("claude-sonnet-5");
     expect(ids).toContain("default");
