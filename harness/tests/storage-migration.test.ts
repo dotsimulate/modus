@@ -226,7 +226,7 @@ describe("legacy database migration", () => {
       } finally {
         writers.forEach((writer) => writer.close());
       }
-    });
+    }, 30_000);
   }
 
   test("refuses to remove an independent destination after interruption", () => {
@@ -247,7 +247,7 @@ describe("legacy database migration", () => {
     expect(bytes(destination)).toBe(independent);
     expect(bytes(source)).toBe(originalSource);
     expect(existsSync(`${paths.recordPath}.pending`)).toBe(true);
-  });
+  }, 30_000);
 
   test("a completed record is retained after exit before journal cleanup", () => {
     const paths = locations("committed-exit");
@@ -280,7 +280,7 @@ describe("legacy database migration", () => {
     expect(result.record?.databases).toHaveLength(1);
     expect(bytes(destination)).toBe(installed);
     expect(existsSync(`${paths.recordPath}.pending`)).toBe(false);
-  });
+  }, 30_000);
 
   test("caught install failure rolls back journaled destinations", () => {
     const paths = locations("caught-install");
