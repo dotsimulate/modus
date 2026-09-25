@@ -2,7 +2,7 @@ import { Activity, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import type { MoveWidgetInfo, Message, TerminalInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, type LayoutNode, type WidgetBase } from "../widgets";
 import { WidgetPicker } from "./WidgetPicker";
-import { MoveWidget, evictWidgetModule, reloadMoveWidgetRegistration } from "./MoveWidget";
+import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { RightPanelContextProvider } from "./RightPanelContext";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { TerminalView } from "./TerminalView";
@@ -239,13 +239,8 @@ export function RightPanel({
       label: moveWidget.widget.label,
       title: moveWidget.widget.label,
       onReload: () => {
-        void reloadMoveWidgetRegistration(
-          moveWidget.widget, moveWidget.apiToken, moveWidget.instanceId,
-          moveWidget.sessionId, moveWidget.mountedOnAttach,
-        ).then(() => {
-          evictWidgetModule(moveWidget.widget.moduleUrl);
-          setWidgetReloadKeys(prev => ({ ...prev, [moveWidget.instanceId]: (prev[moveWidget.instanceId] ?? 0) + 1 }));
-        }).catch(error => window.alert(`Could not reload widget: ${String(error)}`));
+        evictWidgetModule(moveWidget.widget.moduleUrl);
+        setWidgetReloadKeys(prev => ({ ...prev, [moveWidget.instanceId]: (prev[moveWidget.instanceId] ?? 0) + 1 }));
       },
       onClose: () => onWidgetClose?.(moveWidget.apiToken, moveWidget.widget.moveName),
       render: () => (
