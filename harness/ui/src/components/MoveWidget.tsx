@@ -50,7 +50,6 @@ export type MoveWidgetProps = {
     error?: string;
   }>;
   submitMessage: (prompt: string) => Promise<void>;
-  reportDiagnostic?: (sessionId: string, message: string) => Promise<void>;
   /**
    * Widget-first activation: triggers gather() + message send from the widget.
    * Only available for mountOnAttach moves. Runs gather() (which reads from
@@ -147,11 +146,6 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
     });
   }, [sessionId]);
 
-  const reportDiagnostic = useCallback(async (targetSessionId: string, message: string) => {
-    const result = await modus.sendMessage(targetSessionId, message);
-    if (!result.queued) throw new Error(`Diagnostic message was not queued: ${result.status}`);
-  }, []);
-
   const activate = mountedOnAttach
     ? async (text?: string) => {
         const result = await modus.activateAttached(widget.moveName, apiToken, text);
@@ -212,7 +206,6 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
       moveName={widget.moveName}
       callOp={callOp}
       submitMessage={submitMessage}
-      reportDiagnostic={reportDiagnostic}
       activate={activate}
       subscribe={subscribe}
       attachToComposer={attachToComposer}
