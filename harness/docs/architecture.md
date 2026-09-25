@@ -355,7 +355,9 @@ open as HTTPS URLs. HTTP and HTTPS links open externally.
 
 Local file links open in the file viewer; relative links in a Markdown preview
 resolve beside the displayed file. URL-encoded paths are decoded before being
-handed to the file API, and line references are retained. Arbitrary URI schemes
+handed to the file API, and line references are retained. A leading slash before
+a Windows drive path (`/C:/...`) is removed before opening or restoring a file
+tab; POSIX and UNC absolute paths retain their prefixes. Arbitrary URI schemes
 remain subject to sanitization.
 
 Project video previews use `/api/preview/manifest` to classify the file and

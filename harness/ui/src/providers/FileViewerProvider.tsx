@@ -3,6 +3,7 @@ import { onUiEvent } from "../sessionStore";
 import { modus } from "../modusClient";
 import { onFsChange } from "../fsEvents";
 import { FileViewerContext, type FileOpenRequest, type Tab } from "./FileViewerContext";
+import { normalizeLocalFilePath } from "../local-file-path";
 
 export function FileViewerProvider({ children }: { children: ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -35,20 +36,21 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   }, [saveError]);
 
   const openFile = useCallback((path: string, opts?: Omit<FileOpenRequest, "path">) => {
-    const request: FileOpenRequest = { path, ...opts };
+    const filePath = normalizeLocalFilePath(path);
+    const request: FileOpenRequest = { path: filePath, ...opts };
     const edit = opts?.edit ?? false;
     setTabs((prev) => {
-      const existing = prev.find((t) => t.path === path);
+      const existing = prev.find((t) => t.path === filePath);
       if (existing) {
         // If requesting edit mode on an existing view-only tab, upgrade it
         if (edit && !existing.editing) {
-          return prev.map((t) => t.path === path ? { ...t, editing: true } : t);
+          return prev.map((t) => t.path === filePath ? { ...t, editing: true } : t);
         }
         return prev;
       }
-      return [...prev, { path, pinned: false, editing: edit, dirty: false, content: null }];
+      return [...prev, { path: filePath, pinned: false, editing: edit, dirty: false, content: null }];
     });
-    setActivePath(path);
+    setActivePath(filePath);
 
     // Notify panel-open listeners on every open so re-clicks can re-focus the
     // code-editor tab even when the file is already in the tab strip.
@@ -56,10 +58,10 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
 
     // Pre-load content for edit mode
     if (edit) {
-      modus.readFile(path).then((text) => {
+      modus.readFile(filePath).then((text) => {
         if (text !== null) {
           setTabs((prev) => prev.map((t) =>
-            t.path === path && t.content === null ? { ...t, content: text } : t
+            t.path === filePath && t.content === null ? { ...t, content: text } : t
           ));
         }
       }).catch(() => {});
@@ -138,13 +140,13 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   const hydrate = useCallback((hydratedTabs: Array<{ path: string; pinned: boolean; editing?: boolean; dirty?: boolean; content?: string | null }>, hydratedActivePath: string | null) => {
     // Normalize old-shape tabs (from saved UI state) to full Tab shape
     setTabs(hydratedTabs.map((t) => ({
-      path: t.path,
+      path: normalizeLocalFilePath(t.path),
       pinned: t.pinned,
       editing: t.editing ?? false,
       dirty: false, // never restore dirty state — file may have changed
       content: null, // force re-load on edit
     })));
-    setActivePath(hydratedActivePath);
+    setActivePath(hydratedActivePath ? normalizeLocalFilePath(hydratedActivePath) : null);
   }, []);
 
   const subscribeFileOpens = useCallback((fn: (request: FileOpenRequest) => void) => {

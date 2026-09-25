@@ -10,6 +10,8 @@ import {
   type LinkMenuActions,
   type LinkMenuCapabilities,
 } from "../../ui/src/markdown-links";
+import { resolveMarkdownImageTarget } from "../../ui/src/markdown-images";
+import { normalizeLocalFilePath } from "../../ui/src/local-file-path";
 
 describe("classifyLinkTarget", () => {
   it("routes session aliases before classifying filesystem paths", () => {
@@ -43,6 +45,13 @@ describe("classifyLinkTarget", () => {
     expect(classifyLinkTarget("D:/Work/app/harness/index.ts")).toMatchObject({
       kind: "local",
       absolute: true,
+    });
+    expect(resolveMarkdownLinkTarget("/D:/Work/app/gallery.html", "/other/guide.md")).toEqual({
+      kind: "local",
+      path: "D:/Work/app/gallery.html",
+      absolute: true,
+      line: undefined,
+      endLine: undefined,
     });
   });
 
@@ -118,6 +127,21 @@ describe("classifyLinkTarget", () => {
     expect(classifyLinkTarget("   ")).toEqual({ kind: "unsupported" });
     expect(classifyLinkTarget("#section-two")).toEqual({ kind: "unsupported" });
     expect(classifyLinkTarget("plainword")).toEqual({ kind: "unsupported" });
+  });
+});
+
+describe("Windows drive path normalization", () => {
+  it("removes only the URL-style slash before a drive path", () => {
+    expect(normalizeLocalFilePath("/D:/Work/app/gallery.html")).toBe("D:/Work/app/gallery.html");
+    expect(normalizeLocalFilePath("/d:\\Work\\app\\gallery.html")).toBe("d:\\Work\\app\\gallery.html");
+    expect(normalizeLocalFilePath("/srv/app/gallery.html")).toBe("/srv/app/gallery.html");
+    expect(normalizeLocalFilePath("//server/share/gallery.html")).toBe("//server/share/gallery.html");
+  });
+
+  it("keeps Markdown images on the same normalized path", () => {
+    expect(resolveMarkdownImageTarget("/D:/Work/app/frame.png")).toEqual({
+      kind: "local", path: "D:/Work/app/frame.png",
+    });
   });
 });
 

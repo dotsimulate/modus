@@ -25,6 +25,7 @@
 import type { ContextMenuItem } from "./components/ContextMenu";
 import { defaultUrlTransform } from "react-markdown";
 import { parseMarkdownNavigation } from "./markdown-navigation";
+import { normalizeLocalFilePath } from "./local-file-path";
 import type { DesktopDeepLinkTarget } from "./desktopBridge";
 
 /** `C:\src` / `C:/src` — also the reason a scheme test cannot run first. */
@@ -213,6 +214,7 @@ function localTarget(href: string): MarkdownLinkTarget {
   // Markdown encodes spaces and Unicode in hrefs; the file API takes a path.
   let path = encodedPath;
   try { path = decodeURIComponent(encodedPath); } catch { /* Keep literal percent signs. */ }
+  path = normalizeLocalFilePath(path);
   return { kind: "local", path, absolute: isAbsolutePath(path), line, endLine };
 }
 
