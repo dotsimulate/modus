@@ -84,6 +84,19 @@ export function evictWidgetModule(url: string): boolean {
   return evictMoveComponent(backendUrl(url));
 }
 
+/** Refresh server handlers as well as widget code for an attached move. */
+export async function reloadMoveWidgetRegistration(
+  widget: MoveWidgetInfo, apiToken: string, instanceId: string, sessionId: string, mountedOnAttach?: boolean,
+): Promise<void> {
+  if (!mountedOnAttach) return;
+  const cwd = new URL(widget.moduleUrl, window.location.href).searchParams.get("cwd");
+  if (!cwd) throw new Error("Move widget URL has no project directory");
+  const attached = await modus.attachMove({
+    moveName: widget.moveName, inputs: { instanceId }, cwd, sessionId,
+  });
+  if (attached.apiToken !== apiToken) throw new Error("Move widget registration changed its API token");
+}
+
 export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnAttach, pageContext }: Props) {
   const moduleUrl = backendUrl(widget.moduleUrl);
   const [Component, setComponent] = useState<ComponentType<MoveWidgetProps> | null>(

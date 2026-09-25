@@ -6,7 +6,7 @@ import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { WidgetPicker } from "./WidgetPicker";
 import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder, ScopeSelectSessionIntentBridge, ScopeBindingBridge } from "./pageScope";
 import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
-import { MoveWidget, evictWidgetModule } from "./MoveWidget";
+import { MoveWidget, evictWidgetModule, reloadMoveWidgetRegistration } from "./MoveWidget";
 import { modus } from "../modusClient";
 import { useFileViewer } from "../providers/FileViewerContext";
 import { TerminalView } from "./TerminalView";
@@ -1371,10 +1371,14 @@ function EditablePanel({
     label: tab.label,
     title: tab.label,
     onReload: () => {
-      evictWidgetModule(tab.widget.moduleUrl);
-      setDynamicTabs(prev => prev.map(t =>
-        t.id === tab.id ? { ...t, reloadKey: t.reloadKey + 1 } : t,
-      ));
+      void reloadMoveWidgetRegistration(
+        tab.widget, tab.apiToken, tab.instanceId, tab.sessionId, tab.mountedOnAttach,
+      ).then(() => {
+        evictWidgetModule(tab.widget.moduleUrl);
+        setDynamicTabs(prev => prev.map(t =>
+          t.id === tab.id ? { ...t, reloadKey: t.reloadKey + 1 } : t,
+        ));
+      }).catch(error => window.alert(`Could not reload widget: ${String(error)}`));
     },
     onClose: () => {
       setDynamicTabs(prev => prev.filter(t => t.id !== tab.id));
