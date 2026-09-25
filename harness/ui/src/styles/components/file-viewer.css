@@ -202,6 +202,11 @@
   align-items: flex-start;
 }
 
+.preview-media-body--video {
+  flex-direction: column;
+  gap: 8px;
+}
+
 .preview-image,
 .preview-video {
   max-width: 100%;

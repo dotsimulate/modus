@@ -1,6 +1,6 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-08-26
+lastUpdated: 2026-09-25
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/conversation-lenses.ts harness/ui/src/ .modus/ui/extensions/ .modus/lenses/ .modus/projections/
 ---
@@ -357,6 +357,14 @@ Local file links open in the file viewer; relative links in a Markdown preview
 resolve beside the displayed file. URL-encoded paths are decoded before being
 handed to the file API, and line references are retained. Arbitrary URI schemes
 remain subject to sanitization.
+
+Project video previews use `/api/preview/manifest` to classify the file and
+`/api/preview/file/:id` to stream it with byte-range support. The browser adds
+its revocable session credential to the media URL because a `<video>` element
+cannot send an Authorization header. If streaming fails, the UI retries a full
+authenticated download for videos up to 128 MiB and plays the resulting local
+Blob. This covers reverse proxies that discard `Range` requests; larger files
+retain streaming and show an error when the browser cannot play them.
 
 Markdown images with local paths are fetched from the backend using per-file
 tickets, so they also render in remote browsers. Windows drive paths (with or

@@ -3,6 +3,7 @@ import type { PreviewManifest } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { SandboxedHtmlFrame } from "./SandboxedHtmlFrame";
 import { FileContentViewer } from "./FileContentViewer";
+import { VideoPreview } from "./VideoPreview";
 
 type Props = {
   manifest: PreviewManifest;
@@ -89,9 +90,7 @@ export function PreviewRenderer({
     return (
       <div className="preview-panel">
         {header}
-        <div className="preview-media-body">
-          <video src={rawUrl} controls className="preview-video" preload="metadata" />
-        </div>
+        <VideoPreview key={manifest.id} manifest={manifest} rawUrl={rawUrl} />
       </div>
     );
   }
