@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerContext";
 import { usePinboard } from "../providers/PinboardContext";
 import { useProfiles } from "../providers/ProfileContext";
+import { isPreviewMediaPath } from "../preview-fallback";
 import { modus } from "../modusClient";
 import type { BrowseResult, FileSearchResponse, PreviewManifest } from "../../../sdk/index";
 import { setFsWatchRoot } from "../fsEvents";
@@ -153,6 +154,13 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
           }
         } catch (error) {
           previewFailure = error;
+        }
+        if (isPreviewMediaPath(viewingFile)) {
+          if (active) {
+            const detail = previewFailure instanceof Error ? previewFailure.message : "Preview request failed.";
+            setView({ kind: "error", message: `Could not preview this file. ${detail}` });
+          }
+          return;
         }
         try {
           const text = await modus.readFile(viewingFile);

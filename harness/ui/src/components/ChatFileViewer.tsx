@@ -5,6 +5,7 @@ import { FileContentViewer } from "./FileContentViewer";
 import { FloatingWindow } from "./FloatingWindow";
 import { PreviewRenderer } from "./PreviewRenderer";
 import { useProfiles } from "../providers/ProfileContext";
+import { isPreviewMediaPath } from "../preview-fallback";
 
 type Props = {
   path: string | null;
@@ -61,6 +62,13 @@ export function ChatFileViewer({ path, onClose }: Props) {
           }
         } catch (error) {
           previewFailure = error;
+        }
+        if (isPreviewMediaPath(activePath)) {
+          if (active) {
+            const detail = previewFailure instanceof Error ? previewFailure.message : "Preview request failed.";
+            setView({ kind: "error", message: `Could not preview this file. ${detail}` });
+          }
+          return;
         }
         try {
           const text = await modus.readFile(activePath);
