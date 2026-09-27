@@ -7,6 +7,7 @@ import {
 } from "../desktopBridge";
 import { isSessionId } from "../sessionIds";
 import { onMarkdownNavigation } from "../markdown-navigation";
+import { IS_MINI_VIEWER } from "../miniViewer";
 
 /**
  * Claim the parked cold-start link, at most once per page load.
@@ -63,7 +64,9 @@ export function useDesktopDeepLink(onLink: (target: DesktopDeepLinkTarget) => vo
   }), []);
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    // OS links belong to the main window. The mini viewer would otherwise race
+    // it for the one-shot parked link and navigate itself on every delivery.
+    if (!isTauriRuntime() || IS_MINI_VIEWER) return;
 
     let disposed = false;
     let unlisten: (() => void) | undefined;

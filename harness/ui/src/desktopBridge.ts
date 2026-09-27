@@ -81,7 +81,7 @@ export function isTauriRuntime(): boolean {
   );
 }
 
-async function invokeDesktop<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (window.__TAURI_INTERNALS__?.invoke) {
     return window.__TAURI_INTERNALS__.invoke<T>(command, args);
   }

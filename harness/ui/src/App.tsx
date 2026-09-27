@@ -14,6 +14,8 @@ import { useHashRouter } from "./hooks/useHashRouter";
 import { useDesktopDeepLink } from "./hooks/useDesktopDeepLink";
 import type { DesktopDeepLinkTarget } from "./desktopBridge";
 import { MobileNav } from "./components/MobileNav";
+import { MiniViewerShell } from "./components/MiniViewerShell";
+import { IS_MINI_VIEWER, MINI_VIEWER_LAYOUT, MINI_VIEWER_PAGE_ID, openMiniViewer } from "./miniViewer";
 import { Dashboard } from "./components/Dashboard";
 import { PageView } from "./components/PageRenderer";
 import { MovePageView } from "./components/MovePageView";
@@ -136,7 +138,7 @@ function App() {
           <FileViewerProvider>
             <PinboardProvider>
               <ClientExtensionsBoot />
-              <UpdateBanner />
+              {!IS_MINI_VIEWER && <UpdateBanner />}
               <AppShell />
             </PinboardProvider>
           </FileViewerProvider>
@@ -604,13 +606,34 @@ function AppContent({ router }: { router: HashRouter }) {
     navigate, pagesDiscoveredFor, projectCwd, userProfiles,
   ]);
 
-  // Bare #profile/chat (no session in URL) → restore last session for this profile
+  // Bare #profile/chat (no session in URL) → restore last session for this profile.
+  // The mini viewer always shows chat, so it restores whatever view it opened on.
   useEffect(() => {
-    if (view !== "chat" || hashSessionId) return;
+    if ((view !== "chat" && !IS_MINI_VIEWER) || hashSessionId) return;
     if (!restorableLastSessionId) return;
     selectSession(restorableLastSessionId);
     setUrlSession(restorableLastSessionId, activeUserProfile);
   }, [view, hashSessionId, restorableLastSessionId, selectSession, setUrlSession, activeUserProfile]);
+
+  if (IS_MINI_VIEWER) {
+    // A project page with this id replaces the built-in layout wholesale.
+    const miniPage = configPages.find((page) => page.id === MINI_VIEWER_PAGE_ID);
+    const miniSessionId = hashSessionId ?? activeSessionId;
+    const miniSession = miniSessionId ? serverSessions.find((s) => s.id === miniSessionId) : undefined;
+    return (
+      <MiniViewerShell
+        layout={(miniPage?.layout as any) ?? MINI_VIEWER_LAYOUT}
+        layouts={miniPage?.layouts as any}
+        context={(miniPage as any)?.context}
+        pageId={miniPage?.id ?? MINI_VIEWER_PAGE_ID}
+        title={miniSession?.title ?? miniSession?.project_name ?? ""}
+        hashSessionId={hashSessionId}
+        onNavigate={navigate}
+        onSelectSession={handleViewSession}
+        onActivateSession={handleActivateSession}
+      />
+    );
+  }
 
   return (
     <div className="app">
@@ -645,6 +668,18 @@ function AppContent({ router }: { router: HashRouter }) {
         )}
         <button className="top-nav-new-session" onClick={handleNewSession} title="New session">+</button>
         <div className="top-nav-spacer" />
+        {view === "chat" && hashSessionId && (
+          <button
+            className="top-nav-mini"
+            onClick={() => { void openMiniViewer().catch((error) => console.error("[modus] mini viewer:", error)); }}
+            title="Open this session in the mini viewer"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1.5" y="1.5" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+              <rect x="7" y="7" width="4" height="4" rx="0.8" fill="currentColor" />
+            </svg>
+          </button>
+        )}
         {view === "chat" && activeSessionId && !activeSessionId.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSessionId) && (
           <span className="chat-header-archived">archived</span>
         )}

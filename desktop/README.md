@@ -56,6 +56,15 @@ target per page load.
   and its desktop-owned Tailscale route remain available to browsers and
   phones.
 - **Show Modus** in the tray restores the existing window.
+- **Open Mini Viewer** in the tray, or the mini-viewer button in the chat
+  header, opens one compact second window onto a session: tabs over the
+  conversation with the composer underneath. It bootstraps like the main
+  window, so for a managed backend it attaches to the instance already running.
+  **Keep Mini Viewer on Top** (also the pin in the mini viewer's bar, on by
+  default) keeps it above other apps while they have focus; an app in exclusive
+  fullscreen can still cover it. Closing the mini viewer closes it rather than
+  hiding it to the tray, and opening it again for another session re-points the
+  existing window.
 - **Quit Modus** in the tray or backend-target panel gracefully stops the
   desktop-owned Tailscale route, gracefully stops the backend, waits a bounded
   interval, terminates any remaining Job Object descendants, verifies the

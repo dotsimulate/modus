@@ -4,6 +4,7 @@ mod backend;
 mod deep_link;
 mod job;
 mod media_permission;
+mod mini_viewer;
 mod opener;
 mod tailscale;
 mod updates;
@@ -23,10 +24,11 @@ use std::{
 use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse, DesktopVaultStatus};
 use deep_link::{DeepLinkTarget, PendingDeepLink};
 use media_permission::MicrophoneArm;
+use mini_viewer::MiniViewer;
 use serde::Deserialize;
 use tailscale::DesktopTailscaleStatus;
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager, State, WindowEvent,
 };
@@ -347,6 +349,11 @@ fn quit_modus(app: AppHandle) {
     begin_quit(app);
 }
 
+#[tauri::command]
+fn desktop_show_main_window(app: AppHandle) {
+    show_main_window(&app);
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -410,7 +417,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PendingUpdate::default())
-        .manage(PendingDeepLink::default());
+        .manage(PendingDeepLink::default())
+        .manage(MiniViewer::default());
     let app = builder
         .invoke_handler(tauri::generate_handler![
             desktop_bootstrap,
@@ -434,6 +442,10 @@ fn main() {
             desktop_check_for_update,
             desktop_install_pending_update,
             desktop_arm_microphone,
+            desktop_show_main_window,
+            mini_viewer::desktop_open_mini_viewer,
+            mini_viewer::desktop_set_mini_viewer_on_top,
+            mini_viewer::desktop_mini_viewer_on_top,
             quit_modus
         ])
         .setup(|app| {
@@ -481,8 +493,20 @@ fn main() {
             }
 
             let show = MenuItem::with_id(app, "show", "Show Modus", true, None::<&str>)?;
+            let mini = MenuItem::with_id(app, "mini", "Open Mini Viewer", true, None::<&str>)?;
+            let mini_on_top = CheckMenuItem::with_id(
+                app,
+                "mini-on-top",
+                "Keep Mini Viewer on Top",
+                true,
+                app.state::<MiniViewer>().on_top(),
+                None::<&str>,
+            )?;
+            app.state::<MiniViewer>()
+                .attach_tray_pin(mini_on_top.clone());
+            let separator = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Modus", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &mini, &mini_on_top, &separator, &quit])?;
             let icon = app
                 .default_window_icon()
                 .cloned()
@@ -493,6 +517,17 @@ fn main() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "show" => show_main_window(app),
+                    "mini" => {
+                        if let Err(error) = mini_viewer::open(app, None, None) {
+                            eprintln!("[desktop] {error}");
+                        }
+                    }
+                    "mini-on-top" => {
+                        // The check item has already toggled itself; read the
+                        // pin from state so a stale item cannot drift from it.
+                        let on_top = !app.state::<MiniViewer>().on_top();
+                        mini_viewer::set_on_top(app, on_top);
+                    }
                     "quit" => begin_quit(app.clone()),
                     _ => {}
                 })
@@ -501,7 +536,9 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                if !QUITTING.load(Ordering::SeqCst) {
+                // Only the main window hides to the tray. Closing the mini
+                // viewer really closes it, and reopening starts it fresh.
+                if window.label() == "main" && !QUITTING.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = window.hide();
                 }

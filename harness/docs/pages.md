@@ -636,6 +636,17 @@ When the active page's `fullscreen` is `true`:
 the built-in `ChatView` — the `chat` slot renders `<PageView>` with the fork's
 layout. Its `fullscreen` flag controls whether the app-level panels show.
 
+### The mini viewer
+
+A window opened with `?modusView=mini` (the chat header's mini-viewer button, or
+the desktop tray) renders a single page with no top nav or side panels. Its
+default layout is built into the client (`harness/ui/src/miniViewer.ts`): an
+editable tab panel over `session-chat`, `code-editor`, `moves`, and
+`session-history`, with `composer` beneath it. Widgets added with the panel's
+`+` persist per device under the panel id `mini-viewer-tabs`. A project page
+with id `mini-viewer` replaces the built-in layout wholesale, the same way a
+`chat-studio` fork replaces the chat surface.
+
 ---
 
 ## 10. Examples

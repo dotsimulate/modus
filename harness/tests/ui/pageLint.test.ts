@@ -373,3 +373,18 @@ describe("the harness's own pages", () => {
     expect([...unknown]).toEqual([]);
   });
 });
+
+// The mini viewer's default layout lives in code rather than `harness/pages/`,
+// because a project page with the same id replaces it. Hold it to the same bar.
+describe("the mini viewer's built-in layout", () => {
+  test("trips no error rule and uses only registered widgets", async () => {
+    const { WIDGET_META } = await import("../../ui/src/widgets/catalog");
+    const { MINI_VIEWER_LAYOUT, MINI_VIEWER_PAGE_ID } = await import("../../ui/src/miniViewer");
+    const findings = lintPage(page(MINI_VIEWER_LAYOUT, { id: MINI_VIEWER_PAGE_ID }), WIDGET_META);
+    const errors = findings.filter((f) => f.severity === "error");
+    expect(errors.length === 0 ? "" : formatFindings(errors)).toBe("");
+    expect(findings.filter((f) => f.rule === "unknown-widget")).toEqual([]);
+    const warnings = findings.filter((f) => f.severity === "warning");
+    if (warnings.length > 0) console.log(`mini viewer layout:\n${formatFindings(warnings)}`);
+  });
+});
