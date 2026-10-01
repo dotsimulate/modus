@@ -30,7 +30,6 @@ import * as missionRunner from "./mission-runner";
 import * as projectUi from "./project-ui";
 import * as sessionManager from "./session-manager";
 import * as profiles from "./profiles";
-import * as profileSchemas from "./profile-schemas";
 import * as moveRunner from "./move-runner";
 import * as sessionProjects from "./session-projects";
 import { BRIDGED_HARNESS_MODULES } from "./bridged-modules";
@@ -66,7 +65,6 @@ export function initHarnessBridge(): void {
     "project-ui": projectUi,
     "session-manager": sessionManager,
     "profiles": profiles,
-    "profile-schemas": profileSchemas,
     "move-runner": moveRunner,
     "session-projects": sessionProjects,
   };

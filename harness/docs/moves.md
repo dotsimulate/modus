@@ -58,10 +58,9 @@ host project or the harness.
 ### Harness Imports (built-in moves only)
 
 A built-in move under `harness/moves/` may import harness runtime modules by
-relative path — `modus-brain` imports `../../docs-registry`, `docs-doctor` also
-imports `../../profile-schemas`. In a dev run those resolve to the same on-disk
-modules the server already loaded, so the move shares one DB connection, one
-token store, one session manager.
+relative path — `modus-brain` imports `../../docs-registry`. In a dev run those
+resolve to the same on-disk modules the server already loaded, so the move
+shares one DB connection, one token store, one session manager.
 
 A packaged build bundles the backend into a single `server.js` and ships no
 harness sources, so each importable module needs an entry in

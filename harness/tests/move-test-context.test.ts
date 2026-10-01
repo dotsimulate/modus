@@ -176,30 +176,37 @@ describe("createTestMoveContext", () => {
 });
 
 describe("driving a real built-in move", () => {
-  // The guard against this becoming a self-satisfying mock: docs-doctor's
-  // `validate` is production code, and it resolves the path it is given against
-  // `ctx.cwd` — so the factory's cwd has to be real for this to pass at all.
-  test("docs-doctor's validate op runs on a context built by the factory", async () => {
+  // The guard against this becoming a self-satisfying mock: modus-brain's
+  // `docs_get` is production code, and the generated move-ops doc scans
+  // `<ctx.cwd>/.modus/moves` — so the factory's cwd has to be real for this to
+  // pass at all.
+  test("modus-brain's docs_get reads the factory's cwd", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "modus-move-test-ctx-"));
     try {
-      mkdirSync(join(cwd, "profiles"), { recursive: true });
-      writeFileSync(join(cwd, "profiles", "good.json"), JSON.stringify({
-        prompt: "You are a reviewer.",
-        description: "Reviews code.",
-        provider: "claude-code",
+      mkdirSync(join(cwd, ".modus", "moves", "factory-probe"), { recursive: true });
+      writeFileSync(join(cwd, ".modus", "moves", "factory-probe", "move.json"), JSON.stringify({
+        name: "factory-probe",
+        api: { ops: { ping: { description: "probe op" } } },
       }));
 
-      const { handlers } = await import("../moves/docs-doctor/context");
-      const { ctx } = createTestMoveApiContext({ cwd, moveName: "docs-doctor" });
+      const { handlers } = await import("../moves/modus-brain/context");
+      const { ctx } = createTestMoveApiContext({ cwd, moveName: "modus-brain" });
 
-      const valid = await handlers.validate!(ctx, { schema: "agent-profile", path: "profiles/good.json" });
-      expect(valid.ok).toBe(true);
+      const listed = await handlers.docs_get!(ctx, { id: "generated/move-ops" });
+      expect(listed.ok).toBe(true);
+      expect(listed.message).toContain("factory-probe");
 
-      // The move's own path guard still applies, which proves the handler is
-      // reading the factory's cwd rather than a default.
-      const escaped = await handlers.validate!(ctx, { schema: "agent-profile", path: "../outside.json" });
-      expect(escaped.ok).toBe(false);
-      expect(escaped.error).toContain("inside the project directory");
+      // A context rooted elsewhere must not see the project move, which proves
+      // the handler is reading the factory's cwd rather than a default.
+      const other = mkdtempSync(join(tmpdir(), "modus-move-test-ctx-other-"));
+      try {
+        const { ctx: otherCtx } = createTestMoveApiContext({ cwd: other, moveName: "modus-brain" });
+        const unlisted = await handlers.docs_get!(otherCtx, { id: "generated/move-ops" });
+        expect(unlisted.ok).toBe(true);
+        expect(unlisted.message).not.toContain("factory-probe");
+      } finally {
+        rmSync(other, { recursive: true, force: true });
+      }
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

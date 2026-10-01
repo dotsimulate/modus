@@ -23,8 +23,7 @@
   ],
   "integration": {
     "agentProfiles": [
-      "modus-helper",
-      "modus-docs-auditor"
+      "modus-helper"
     ],
     "pageNav": "auto"
   },

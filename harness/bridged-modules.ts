@@ -19,7 +19,6 @@ export const BRIDGED_HARNESS_MODULES = [
   "project-ui",
   "session-manager",
   "profiles",
-  "profile-schemas",
   "move-runner",
   // hints resolves a session's cwd back to the project that owns it, so a
   // cross-project recommendation can name the folder to open in.
