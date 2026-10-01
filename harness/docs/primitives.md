@@ -32,6 +32,14 @@ ui_state (JSON blob for panel/layout persistence).
 real-time event delivery. Events are persisted to DB and broadcast to
 subscribers simultaneously.
 
+Both single-session streams and `/api/events/multi` attach their live
+subscription before reading catch-up history. Live events arriving during
+replay are buffered and delivered afterward in order; the initial streaming
+snapshot is captured at the same boundary as the history query. If the replay
+buffer overflows, the connection closes so the client can reconnect from its
+last delivered cursor. Repeated user text at distinct event sequences remains
+distinct messages in the transcript.
+
 **Branching**: `POST /api/sessions/:id/branch` creates a new session forked
 from a specific message in the parent. Events are copied up to the branch
 point.

@@ -53,11 +53,26 @@ describe("eventReducer user prompt dedup", () => {
 
   test("still dedups a plain turn with no injected context", () => {
     let state = createInitialState("ses-test");
-    state.messages.push({ id: "optimistic", role: "user", content: "hello", timestamp: 1, seq: 1 });
+    state.messages.push({ id: "optimistic", role: "user", content: "hello", timestamp: 1 });
 
     state = reduceEvent(state, { type: "user", subtype: "prompt", message: { content: "hello" } }, 2);
 
     expect(state.messages.filter((m) => m.role === "user")).toHaveLength(1);
+  });
+
+  test("keeps repeated interjections with distinct durable sequences during replay", () => {
+    let state = createInitialState("ses-test");
+    const prompt = { type: "user", subtype: "prompt", message: { content: "continue" } };
+    state = reduceEvent(state, prompt, 1);
+    state = reduceEvent(state, {
+      type: "assistant", message: { content: [{ type: "text", text: "working" }] },
+    }, 2);
+    state = reduceEvent(state, prompt, 3);
+    state = reduceEvent(state, prompt, 4);
+    expect(state.messages.filter((m) => m.role === "user").map((m) => m.seq)).toEqual([1, 3, 4]);
+    // Re-delivery of the same event still folds into its existing bubble.
+    state = reduceEvent(state, prompt, 4);
+    expect(state.messages.filter((m) => m.role === "user")).toHaveLength(3);
   });
 
   test("appends a genuinely different prompt", () => {

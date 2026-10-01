@@ -89,7 +89,7 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
     case "assistant":
       return reduceAssistant(s, m, ts);
     case "user":
-      return reduceUser(s, m, ts);
+      return reduceUser(s, m, ts, seq);
     case "stream_event":
       return reduceStreamEvent(s, m, ts);
     case "tool_progress":
@@ -802,7 +802,7 @@ export function splitToolResultContent(content: unknown): { text: string; images
 
 // ── User Messages (including synthetic tool_result) ──
 
-function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
+function reduceUser(s: ReducerState, m: any, ts: number, seq: number): ReducerState {
   // Detect synthetic tool_result messages — either flagged or contains tool_result blocks
   const content = m.message?.content;
   const hasToolResults = Array.isArray(content) && content.some((b: any) => b.type === "tool_result");
@@ -925,9 +925,9 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
 
     if (!text && !attachments?.length) return s;
 
-    // Dedup: don't add if any recent user message has the same user-authored
-    // text (optimistic insert from handleSend may not be the last message
-    // anymore). Compare the authored portion, not the raw string: when a move
+    // Fold the echo into a pending optimistic message, or the same durable
+    // event. Distinct sequences are distinct sends even when the text repeats.
+    // Compare the authored portion, not the raw string: when a move
     // is attached the harness prepends its gathered context to the turn, so the
     // echoed event never equals what the composer optimistically inserted. An
     // exact-match check appended a second bubble carrying the move context —
@@ -936,6 +936,7 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
     for (let i = s.messages.length - 1; i >= 0 && i >= s.messages.length - 4; i--) {
       const prev = s.messages[i];
       if (prev.role !== "user") continue;
+      if (prev.seq && prev.seq !== seq) continue;
       if (prev.content !== text && userAuthoredMessageText(prev.content) !== authoredText) continue;
 
       // The echo carries injected context the optimistic copy lacks — adopt it
@@ -946,7 +947,7 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
         msgs[i] = {
           ...prev,
           ...(gainsMoveContext && { content: text }),
-          seq: s.lastSeq,
+          seq,
           timestamp: prev.timestamp ?? ts,
           ...(attachments && !prev.attachments && { attachments }),
         };
@@ -957,7 +958,7 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
 
     return {
       ...s,
-      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text, seq: s.lastSeq, timestamp: ts, attachments }],
+      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text, seq, timestamp: ts, attachments }],
     };
   }
 

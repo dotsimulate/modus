@@ -131,6 +131,7 @@ import { getProcessSnapshot, killProcess } from "./process-registry";
 import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cache";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
 import { onClientAbort } from "./sse-abort";
+import { createSSEReplayBuffer } from "./sse-replay-buffer";
 import {
   initShadowRepo, scheduleCommit, listCommits, onShadowCommit,
   shadowRepoPath, gitShowFile, gitDiffTree, gitHead, gitLsTree, getWorkTree,
@@ -1900,137 +1901,124 @@ function sseBrowserToken(c: any): string {
 function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
   return sseResponse(c.req.raw, async (writer, signal) => {
     const browserToken = sseBrowserToken(c);
-    // Catch-up awaits flushes before the live connection is registered.
-    const canWrite = () => !signal.aborted
+    let finished = false;
+    const canWrite = () => !finished && !signal.aborted
       && (!browserToken || browserSessions.validate(browserToken, Date.now(), false));
+    let resolve!: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
+    const finish = () => { finished = true; resolve(); };
+    const unregisterBrowser = registerBrowserConnection(c, finish, true);
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+    const keepAlive = setInterval(() => {
+      if (canWrite()) void writer.write("ping", "{}", "").catch(finish);
+    }, 30_000);
+    const liveWriter: SSEWriter = {
+      async write(event, data, seqId) {
+        if (!canWrite()) return;
+        if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
+        const t0 = Date.now();
+        await writer.write(event, data, seqId);
+        const dt = Date.now() - t0;
+        if (dt > 50) console.log(`[sse] slow write: ${event} took ${dt}ms (session=${sessionId})`);
+        // Done ends a turn. Allow a queued follow-up to reactivate the session.
+        if (event === "done" && canWrite()) graceTimer = setTimeout(finish, 5_000);
+      },
+      close: finish,
+    };
+    const replay = createSSEReplayBuffer(liveWriter, canWrite);
     const canonicalId = resolveSessionAlias(sessionId);
-    if (canonicalId !== sessionId) {
-      if (!canWrite()) return;
-      await writer.write("system", JSON.stringify(sessionRekeyedEvent(sessionId, canonicalId)), "");
-      sessionId = canonicalId;
-    }
-    // Send catch-up events from DB, bookended by catchup-start/catchup-end
-    // so the client can batch them into a single React render.
-    const _sseT0 = performance.now();
-    const pastEvents = getEvents(sessionId, afterSeq);
-    const _sseT1 = performance.now();
-    if (pastEvents.length > 0) {
-      if (!canWrite()) return;
-      await writer.write("catchup-start", "{}", "");
-      for (const evt of pastEvents) {
+    const active = getActiveSession(canonicalId);
+    const hasLiveSubscription = !!active && active.status !== "error";
+    // No await between subscription, history query, and live snapshot capture:
+    // everything after this boundary is buffered until those copies are sent.
+    const unsubscribe = hasLiveSubscription
+      ? subscribe(canonicalId, replay.writer)
+      : () => {};
+    onClientAbort(signal, finish);
+    try {
+      const _sseT0 = performance.now();
+      const pastEvents = getEvents(canonicalId, afterSeq);
+      const _sseT1 = performance.now();
+      const liveStream = active ? { ...active.liveStream } : null;
+      if (canonicalId !== sessionId) {
         if (!canWrite()) return;
-        let data = evt.data;
-        try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
-        await writer.write(evt.type, data, String(evt.seq));
+        await writer.write("system", JSON.stringify(sessionRekeyedEvent(sessionId, canonicalId)), "");
+        sessionId = canonicalId;
       }
-      if (!canWrite()) return;
-      await writer.write("catchup-end", "{}", "");
-    }
-    if (!canWrite()) return;
-    const _sseT2 = performance.now();
-    console.log(`[TIMING] SSE catch-up session=${sessionId.slice(0,8)} query=${(_sseT1-_sseT0).toFixed(1)}ms serialize+send=${(_sseT2-_sseT1).toFixed(1)}ms events=${pastEvents.length}`);
-
-    // Check if catch-up already included a "done" event (persisted by emitEvent).
-    // If the session is finished but the replay didn't include "done" (legacy sessions),
-    // we'll synthesize one below to prevent the client entering a reconnect loop.
-    const catchupHadDone = pastEvents.some((e) => e.type === "done");
-
-    // If session is active, subscribe for live events.
-    // "done" sessions stay in the active map and may receive follow-up messages
-    // (via queueMessage → _queueMessageAsync). We give them a grace period so the
-    // SSE stream stays open long enough for the async message pipeline to set
-    // status back to "running" and start emitting events.
-    const catchupLastSeq = pastEvents.length > 0
-      ? pastEvents[pastEvents.length - 1]!.seq
-      : afterSeq;
-
-    const active = getActiveSession(sessionId);
-    if (active && active.status !== "error") {
-      if (
-        active.liveStream.seq > catchupLastSeq
-        && (active.liveStream.text || active.liveStream.thinking || active.liveStream.feed)
-      ) {
+      // Send catch-up events from DB, bookended by catchup-start/catchup-end
+      // so the client can batch them into a single React render.
+      if (pastEvents.length > 0) {
         if (!canWrite()) return;
-        await writer.write("system", JSON.stringify({
-          type: "system",
-          subtype: "live_snapshot",
-          text: active.liveStream.text,
-          thinking: active.liveStream.thinking,
-          feed: active.liveStream.feed,
-        }), String(active.liveStream.seq));
-      }
-
-      let resolve: () => void;
-      const done = new Promise<void>((r) => { resolve = r; });
-      const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
-
-      const keepAlive = setInterval(async () => {
-        try { await writer.write("ping", "{}", ""); } catch { /* connection dead */ }
-      }, 30_000);
-
-      // Grace timeout for "done" sessions: if no real events arrive within 5s,
-      // close the stream. Prevents idle connections for genuinely finished sessions
-      // while giving the async message pipeline time to reactivate the session.
-      let graceTimer: ReturnType<typeof setTimeout> | null = null;
-      if (active.status === "done" && active.dispatchState !== "dispatching_followup") {
-        if (catchupHadDone) {
-          // Client already received the persisted "done" event during catch-up.
-          // No need to keep the stream open — close immediately.
-          resolve!();
-        } else {
-          graceTimer = setTimeout(async () => {
-            // Grace period expired — session is genuinely done but client never
-            // received the "done" event (e.g. it wasn't persisted in older sessions).
-            // Send a synthetic done so the client fires onDone, not onDisconnect.
-            try { await writer.write("done", "{}", "done"); } catch { /* connection dead */ }
-            resolve();
-          }, 5_000);
+        await writer.write("catchup-start", "{}", "");
+        for (const evt of pastEvents) {
+          if (!canWrite()) return;
+          let data = evt.data;
+          try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
+          await writer.write(evt.type, data, String(evt.seq));
         }
+        if (!canWrite()) return;
+        await writer.write("catchup-end", "{}", "");
       }
+      if (!canWrite()) return;
+      const _sseT2 = performance.now();
+      console.log(`[TIMING] SSE catch-up session=${sessionId.slice(0,8)} query=${(_sseT1-_sseT0).toFixed(1)}ms serialize+send=${(_sseT2-_sseT1).toFixed(1)}ms events=${pastEvents.length}`);
 
-      const sseWriter: SSEWriter = {
-        async write(event: string, data: string, seqId: string) {
-          // A real event arrived — cancel any pending grace close. If this
-          // event is "done" we'll re-arm grace below; otherwise the session
-          // is producing again and the stream stays open.
-          if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
-          const t0 = Date.now();
-          await writer.write(event, data, seqId);
-          const dt = Date.now() - t0;
-          if (dt > 50) console.log(`[sse] slow write: ${event} took ${dt}ms (session=${sessionId})`);
-          if (event === "done") {
-            // "done" ends a turn, not necessarily the session: a queued
-            // message, action retry or mission cycle can re-activate the same
-            // session moments later. Closing here would drop every following
-            // broadcast until the client reconnected, so the stream is held
-            // open for a grace window instead. Any real event arriving first
-            // cancels it via the clearTimeout above and streaming continues.
-            graceTimer = setTimeout(() => { resolve(); }, 5_000);
+      // Check if catch-up already included a "done" event (persisted by emitEvent).
+      // If the session is finished but the replay didn't include "done" (legacy sessions),
+      // we'll synthesize one below to prevent the client entering a reconnect loop.
+      const catchupHadDone = pastEvents.some((e) => e.type === "done");
+
+      const catchupLastSeq = pastEvents.length > 0
+        ? pastEvents[pastEvents.length - 1]!.seq
+        : afterSeq;
+
+      if (active && hasLiveSubscription) {
+        if (
+          liveStream && liveStream.seq > catchupLastSeq
+          && (liveStream.text || liveStream.thinking || liveStream.feed)
+        ) {
+          if (!canWrite()) return;
+          await writer.write("system", JSON.stringify({
+            type: "system",
+            subtype: "live_snapshot",
+            text: liveStream.text,
+            thinking: liveStream.thinking,
+            feed: liveStream.feed,
+          }), String(liveStream.seq));
+        }
+        await replay.flush();
+
+        // Grace timeout for "done" sessions: if no real events arrive within 5s,
+        // close the stream. Prevents idle connections for genuinely finished sessions
+        // while giving the async message pipeline time to reactivate the session.
+        if (!graceTimer && active.status === "done" && active.dispatchState !== "dispatching_followup") {
+          if (catchupHadDone) {
+            // Client already received the persisted "done" event during catch-up.
+            // No need to keep the stream open — close immediately.
+            finish();
+          } else {
+            graceTimer = setTimeout(async () => {
+              // Grace period expired — session is genuinely done but client never
+              // received the "done" event (e.g. it wasn't persisted in older sessions).
+              // Send a synthetic done so the client fires onDone, not onDisconnect.
+              try { await writer.write("done", "{}", "done"); } catch { /* connection dead */ }
+              finish();
+            }, 5_000);
           }
-        },
-        close() { resolve(); },
-      };
+        }
 
-      const unsubscribe = subscribe(sessionId, sseWriter);
-
-      // Handle client disconnect via request abort signal
-      const onAbort = () => {
-        if (graceTimer) clearTimeout(graceTimer);
-        clearInterval(keepAlive);
-        unsubscribe();
-        resolve();
-      };
-      onClientAbort(signal, onAbort);
-
-      await done;
-      signal.removeEventListener("abort", onAbort);
+        await done;
+      } else if (!catchupHadDone) {
+        // Session is not active — send synthetic done so client doesn't hang
+        if (canWrite()) await writer.write("done", "{}", "done");
+      }
+    } finally {
+      signal.removeEventListener("abort", finish);
       if (graceTimer) clearTimeout(graceTimer);
       clearInterval(keepAlive);
+      replay.dispose();
       unsubscribe();
       unregisterBrowser();
-    } else if (!catchupHadDone) {
-      // Session is not active — send synthetic done so client doesn't hang
-      if (canWrite()) await writer.write("done", "{}", "done");
     }
   });
 }
@@ -2074,12 +2062,14 @@ type MultiSpec = { id: string; after: number };
 function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
   return sseResponse(c.req.raw, async (writer, signal) => {
     const browserToken = sseBrowserToken(c);
+    let finished = false;
     // Revocation resolves done, but replay must stop before reaching that await.
-    const canWrite = () => !signal.aborted
+    const canWrite = () => !finished && !signal.aborted
       && (!browserToken || browserSessions.validate(browserToken, Date.now(), false));
     let resolve!: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
-    const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
+    const finish = () => { finished = true; resolve(); };
+    const unregisterBrowser = registerBrowserConnection(c, finish, true);
     // Serialize every write through one chain. Catch-up writes and live
     // broadcast writes from independent sessions both target the same
     // controller; without this, their byte chunks could interleave and corrupt
@@ -2091,96 +2081,97 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
       if (!canWrite()) return Promise.resolve();
       if (pendingWrites >= MAX_PENDING_WRITES) {
         console.warn(`[sse-multi] closing slow client with ${pendingWrites} queued writes`);
-        resolve();
+        finish();
         return Promise.resolve();
       }
       pendingWrites++;
       writeChain = writeChain
         .then(() => canWrite() ? writer.write(event, JSON.stringify(obj), "") : undefined)
-        .catch(() => { resolve(); })
+        .catch(finish)
         .finally(() => { pendingWrites--; });
       return writeChain;
     };
 
     const keepAlive = setInterval(() => { void send("ping", {}); }, 30_000);
     const unsubscribers: Array<() => void> = [];
+    onClientAbort(signal, finish);
 
-    for (const spec of specs) {
-      if (!canWrite()) break;
-      const sessionId = spec.id;
-      // Subscribed under an id a provider has since renamed: say so first, so
-      // the client re-keys instead of watching a transcript that stopped.
-      const canonicalId = resolveSessionAlias(sessionId);
-      if (canonicalId !== sessionId) {
-        await send("ev", { sid: sessionId, seq: 0, ev: sessionRekeyedEvent(sessionId, canonicalId) });
-      }
-      const afterSeq = Number.isFinite(spec.after) ? spec.after : 0;
-
-      // Catch-up from DB, bracketed per session so the client batch-renders it.
-      const pastEvents = getEvents(canonicalId, afterSeq);
-      if (pastEvents.length > 0) {
-        await send("catchup-start", { sid: sessionId });
-        for (const evt of pastEvents) {
-          if (!canWrite()) break;
-          let data: any = null;
-          try { data = { ...JSON.parse(evt.data), _ts: evt.created_at }; } catch { /* skip malformed */ }
-          if (data) await send("ev", { sid: sessionId, seq: evt.seq, ev: data });
-        }
+    try {
+      for (const spec of specs) {
         if (!canWrite()) break;
-        await send("catchup-end", { sid: sessionId });
-      }
-      if (!canWrite()) break;
-      const catchupLastSeq = pastEvents.length > 0 ? pastEvents[pastEvents.length - 1]!.seq : afterSeq;
-
-      const active = getActiveSession(sessionId);
-      if (active && active.status !== "error") {
-        // Restore in-flight streaming text/thinking not yet persisted.
-        if (
-          active.liveStream.seq > catchupLastSeq
-          && (active.liveStream.text || active.liveStream.thinking || active.liveStream.feed)
-        ) {
-          await send("ev", {
-            sid: sessionId,
-            seq: active.liveStream.seq,
-            ev: {
-              type: "system",
-              subtype: "live_snapshot",
-              text: active.liveStream.text,
-              thinking: active.liveStream.thinking,
-              feed: active.liveStream.feed,
-            },
-          });
-        }
-        // Live subscription — forward each broadcast event tagged with sid.
+        const sessionId = spec.id;
+        // Subscribed under an id a provider has since renamed: say so first, so
+        // the client re-keys instead of watching a transcript that stopped.
+        const canonicalId = resolveSessionAlias(sessionId);
+        const active = getActiveSession(canonicalId);
+        const hasLiveSubscription = !!active && active.status !== "error";
         const sseWriter: SSEWriter = {
-          write(event: string, data: string, seqId: string) {
+          write(event, data, seqId) {
             if (event === "done") return send("done", { sid: sessionId });
             let ev: any;
             try { ev = JSON.parse(data); } catch { return Promise.resolve(); }
             return send("ev", { sid: sessionId, seq: Number(seqId) || 0, ev });
           },
-          close() { /* per-session close is a no-op; the shared stream lives on */ },
+          close() { /* the shared stream lives on */ },
         };
-        unsubscribers.push(subscribe(sessionId, sseWriter));
-      } else {
-        // Settled / unknown session — tell the client no live events are coming
-        // for this sid so it can clear its catching-up state.
-        await send("done", { sid: sessionId });
-      }
-    }
+        // Overflow must close the whole connection so this session retries.
+        const replay = createSSEReplayBuffer(sseWriter, canWrite, finish);
+        const unsubscribe = hasLiveSubscription ? subscribe(canonicalId, replay.writer) : () => {};
+        unsubscribers.push(() => { replay.dispose(); unsubscribe(); });
+        const afterSeq = Number.isFinite(spec.after) ? spec.after : 0;
+        const pastEvents = getEvents(canonicalId, afterSeq);
+        const liveStream = active ? { ...active.liveStream } : null;
+        if (canonicalId !== sessionId) {
+          await send("ev", { sid: sessionId, seq: 0, ev: sessionRekeyedEvent(sessionId, canonicalId) });
+        }
+        // Catch-up from DB, bracketed per session so the client batch-renders it.
+        if (pastEvents.length > 0) {
+          await send("catchup-start", { sid: sessionId });
+          for (const evt of pastEvents) {
+            if (!canWrite()) break;
+            let data: any = null;
+            try { data = { ...JSON.parse(evt.data), _ts: evt.created_at }; } catch { /* skip malformed */ }
+            if (data) await send("ev", { sid: sessionId, seq: evt.seq, ev: data });
+          }
+          if (!canWrite()) break;
+          await send("catchup-end", { sid: sessionId });
+        }
+        if (!canWrite()) break;
+        const catchupLastSeq = pastEvents.length > 0 ? pastEvents[pastEvents.length - 1]!.seq : afterSeq;
 
-    const onAbort = () => {
+        if (hasLiveSubscription) {
+          // Restore in-flight streaming text/thinking not yet persisted.
+          if (
+            liveStream && liveStream.seq > catchupLastSeq
+            && (liveStream.text || liveStream.thinking || liveStream.feed)
+          ) {
+            await send("ev", {
+              sid: sessionId,
+              seq: liveStream.seq,
+              ev: {
+                type: "system",
+                subtype: "live_snapshot",
+                text: liveStream.text,
+                thinking: liveStream.thinking,
+                feed: liveStream.feed,
+              },
+            });
+          }
+          await replay.flush();
+        } else {
+          // Settled / unknown session — tell the client no live events are coming
+          // for this sid so it can clear its catching-up state.
+          await send("done", { sid: sessionId });
+        }
+      }
+
+      await done;
+    } finally {
+      signal.removeEventListener("abort", finish);
       clearInterval(keepAlive);
       for (const unsub of unsubscribers) unsub();
-      resolve();
-    };
-    onClientAbort(signal, onAbort);
-
-    await done;
-    signal.removeEventListener("abort", onAbort);
-    clearInterval(keepAlive);
-    for (const unsub of unsubscribers) unsub();
-    unregisterBrowser();
+      unregisterBrowser();
+    }
   });
 }
 
