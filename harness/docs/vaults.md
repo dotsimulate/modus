@@ -52,7 +52,6 @@ All Modus-managed named material lives below the chosen folder:
   tmp/                        named-process temporary files
   history/                    workspace-history shadows and indexes
   checkpoints/                managed checkpoints
-  modus-feedback.jsonl        Modus Brain feedback
 ```
 
 Provider executables and their native authentication, explicitly registered

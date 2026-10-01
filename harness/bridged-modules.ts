@@ -21,8 +21,6 @@ export const BRIDGED_HARNESS_MODULES = [
   "profiles",
   "profile-schemas",
   "move-runner",
-  // modus-brain's feedback ops resolve MODUS_HOME to append their JSONL.
-  "modus-home",
   // hints resolves a session's cwd back to the project that owns it, so a
   // cross-project recommendation can name the folder to open in.
   "session-projects",

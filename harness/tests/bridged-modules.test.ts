@@ -8,8 +8,8 @@ import { resolve as resolveTestSourceDir } from "node:path";
  * injects nothing.
  *
  * This suite is the local signal that failure mode otherwise does not have.
- * It regression-tests a real incident: modus-brain's feedback ops added
- * `import { MODUS_HOME } from "../../../modus-home"` without a bridge entry.
+ * It regression-tests a real incident: a built-in move added a runtime
+ * harness import without a bridge entry.
  */
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, existsSync } from "fs";
@@ -55,15 +55,6 @@ describe("built-in move harness imports", () => {
     }
 
     expect(unbridged).toEqual([]);
-  });
-
-  test("modus-brain's MODUS_HOME import is covered", () => {
-    // The specific regression: present as a runtime import, so it must be bridged.
-    const ctx = join(MOVES_DIR, "modus-brain", "context.ts");
-    if (!existsSync(ctx)) return;
-    const source = readFileSync(ctx, "utf-8");
-    if (!/from ["']\.\.\/\.\.\/modus-home["']/.test(source)) return;
-    expect([...BRIDGED_HARNESS_MODULES]).toContain("modus-home");
   });
 
   test("the bridge publishes a namespace for every declared module", async () => {

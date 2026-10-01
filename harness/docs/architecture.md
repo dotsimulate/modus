@@ -232,7 +232,7 @@ Vault registry `name`.
 may override named subdirectories only when they remain strict descendants of
 the registered root. Desktop and CLI launchers remove inherited global values.
 Named profiles, projects, plugins, skills, secrets, databases, runtime state,
-history, checkpoints, and Modus Brain feedback never fall back to Main.
+history, and checkpoints never fall back to Main.
 See [Vaults](./vaults.md) for registry, policy, API, and CLI semantics.
 
 The primary `data/` directory contains three SQLite databases:
