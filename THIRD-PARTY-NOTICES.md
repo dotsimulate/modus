@@ -1140,13 +1140,13 @@ verbatim.
 - Source: https://github.com/bowser-js/bowser
 - License text: **JAV-0063** — MIT
 
-### brace-expansion 2.1.4
+### brace-expansion 2.1.7
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/brace-expansion
 - License text: **JAV-0064** — MIT
 
-### brace-expansion 5.0.9
+### brace-expansion 5.0.12
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/brace-expansion
@@ -1603,7 +1603,7 @@ verbatim.
 - Source: https://github.com/kpdecker/jsdiff
 - License text: **JAV-0112** — BSD-3-Clause
 
-### dompurify 3.4.14
+### dompurify 3.4.16
 
 - License: `(MPL-2.0 OR Apache-2.0)`
 - Redistributed under: `Apache-2.0`
@@ -1749,7 +1749,7 @@ verbatim.
 - Source: https://github.com/dchest/fast-sha256-js
 - License text: **JAV-0131** — Unlicense
 
-### fast-uri 3.1.6
+### fast-uri 3.1.8
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/fastify/fast-uri
@@ -1953,7 +1953,7 @@ verbatim.
 - Source: https://highlightjs.org/
 - License text: **JAV-0149** — BSD-3-Clause
 
-### hono 4.13.5
+### hono 4.13.7
 
 - License: `MIT`
 - Source: https://hono.dev
@@ -2043,7 +2043,7 @@ verbatim.
 - Source: https://github.com/mbostock/internmap/
 - License text: **JAV-0159** — ISC
 
-### ip-address 10.5.0
+### ip-address 10.7.1
 
 - License: `MIT`
 - Source: https://github.com/beaugunderson/ip-address
@@ -3075,7 +3075,7 @@ verbatim.
 - Source: https://github.com/sinclairzx81/typebox
 - License text: **JAV-0237** — MIT
 
-### undici 7.29.0
+### undici 7.29.1
 
 - License: `MIT`
 - Source: https://undici.nodejs.org
@@ -3288,7 +3288,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### JAV-0004 — Apache-2.0
 
-Applies to 11 components: @aws-crypto/sha256-browser 5.2.0, @aws-crypto/supports-web-crypto 5.2.0, @chevrotain/types 11.1.2, @google/genai 1.52.0, dompurify 3.4.14, gaxios 7.1.3, gaxios 7.3.1, gcp-metadata 8.1.2, google-auth-library 10.9.0, google-logging-utils 1.1.3, long 5.3.2.
+Applies to 11 components: @aws-crypto/sha256-browser 5.2.0, @aws-crypto/supports-web-crypto 5.2.0, @chevrotain/types 11.1.2, @google/genai 1.52.0, dompurify 3.4.16, gaxios 7.1.3, gaxios 7.3.1, gcp-metadata 8.1.2, google-auth-library 10.9.0, google-logging-utils 1.1.3, long 5.3.2.
 
 ```text
 
@@ -8030,7 +8030,7 @@ Original Author, when distributed with the Software.
 
 ### JAV-0064 — MIT
 
-Applies to 1 component: brace-expansion 2.1.4.
+Applies to 1 component: brace-expansion 2.1.7.
 
 ```text
 MIT License
@@ -8058,7 +8058,7 @@ SOFTWARE.
 
 ### JAV-0065 — MIT
 
-Applies to 1 component: brace-expansion 5.0.9.
+Applies to 1 component: brace-expansion 5.0.12.
 
 ```text
 MIT License
@@ -9378,7 +9378,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### JAV-0113 — Apache-2.0 (LICENSE-MPL)
 
-Applies to 1 component: dompurify 3.4.14.
+Applies to 1 component: dompurify 3.4.16.
 
 ```text
 Mozilla Public License Version 2.0
@@ -10444,7 +10444,7 @@ For more information, please refer to <http://unlicense.org>
 
 ### JAV-0132 — BSD-3-Clause
 
-Applies to 1 component: fast-uri 3.1.6.
+Applies to 1 component: fast-uri 3.1.8.
 
 ```text
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae
@@ -10989,7 +10989,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### JAV-0150 — MIT
 
-Applies to 1 component: hono 4.13.5.
+Applies to 1 component: hono 4.13.7.
 
 ```text
 MIT License
@@ -11289,7 +11289,7 @@ THIS SOFTWARE.
 
 ### JAV-0160 — MIT
 
-Applies to 1 component: ip-address 10.5.0.
+Applies to 1 component: ip-address 10.7.1.
 
 ```text
 Copyright (C) 2011 by Beau Gunderson
@@ -13809,7 +13809,7 @@ THE SOFTWARE.
 
 ### JAV-0238 — MIT
 
-Applies to 2 components: undici 7.29.0, undici-types 7.18.2.
+Applies to 2 components: undici 7.29.1, undici-types 7.18.2.
 
 ```text
 MIT License
