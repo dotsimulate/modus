@@ -43,7 +43,7 @@ afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) {
     await backend.exited;
-    await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(backend.pid)), 100);
+    await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(backend.pid)), 200);
   }
   await removeTreeAfterExit(root);
 }, 15_000);
