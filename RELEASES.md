@@ -6,19 +6,15 @@ tag does not authorize uploading or replacing an artifact.
 
 ## Current status
 
-- `v0.3.1` is the first Windows alpha prerelease: an NSIS installer for
-  Windows x64 whose installer and Modus executables are Authenticode-signed
-  and timestamped. Its GitHub release attaches SHA-256 checksums and a
-  build-specific SBOM, and its notes list the checks that were and were not
-  performed. It has not completed the package qualification below, so treat
-  it as an alpha and back up `~/.modus` before installing over an earlier
-  build.
+- The source project is early and the public-readiness gates are still being
+  completed.
 - The old unsigned Windows `v0.1.0` asset was withdrawn. Its prerelease page
   and tag remain as historical records with zero downloadable assets.
+- No generally qualified Windows installer is currently available. Any future
+  candidate requires a new version and the qualification below.
 - macOS and Linux desktop packages have not been released.
-- The opt-in updater foundation is present, but neither ordinary builds nor
-  `v0.3.1` have an update endpoint or signature key configured; newer
-  versions are installed manually. Enabling a production channel remains
+- The opt-in updater foundation is present, but ordinary builds have no update
+  endpoint or signature key configured. Enabling a production channel remains
   blocked on install, upgrade, downgrade, rollback, uninstall, and
   data-preservation qualification. Updates are never downloaded or installed
   without user confirmation; urgency labels only change presentation.
@@ -40,8 +36,8 @@ tag does not authorize uploading or replacing an artifact.
 
 ## Package qualification
 
-A qualified package requires more than a successful compilation. Its release
-evidence should include:
+A publicly downloadable package requires more than a successful compilation.
+Its release evidence should include:
 
 - clean install plus running-process upgrade, downgrade, rollback, uninstall,
   reinstall, and user-data preservation results;
@@ -60,11 +56,6 @@ evidence should include:
 - platform-appropriate signing, including the installer and inner executable on
   Windows; and
 - independent checksum and signature verification after upload.
-
-An alpha prerelease may be published before that evidence is complete. It must
-still be built from the reviewed tag in a clean build path, signed where the
-platform supports it, and published with checksums and an SBOM. Its release
-notes state exactly which checks ran and which did not.
 
 Release credentials and signing identities must be restricted to an explicitly
 authorized protected workflow. The baseline CI workflow intentionally has

@@ -26,9 +26,8 @@ documented. Search existing issues and documentation first.
 
 - Source/browser workflows on Windows, macOS, and Linux are active development
   surfaces, not a compatibility guarantee for every distribution or provider.
-- The Windows desktop package is an alpha. Its signed installers have not
-  completed full package qualification (see [RELEASES.md](RELEASES.md)), and
-  the old unsigned `v0.1.0` asset was withdrawn.
+- The Windows desktop remains a tester surface. The old unsigned `v0.1.0`
+  asset was withdrawn, and no broadly qualified installer is currently available.
 - Packaged macOS and Linux applications have not been released.
 - Provider CLIs, model services, Tailscale, WebView runtimes, and authored local
   extensions are separate dependencies with their own support and security
