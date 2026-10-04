@@ -13,11 +13,11 @@
 > When Tailnet access is enabled, the same launch also publishes that exact
 > managed backend at the machine's stable Tailscale HTTPS URL.
 
-This is not yet a claim that every desktop release criterion is complete. The
-old unsigned `v0.1.0` tester asset was withdrawn, and no broadly qualified
-Windows installer is currently available. Provider-by-provider authorability, signing,
-upgrades, cross-platform packages, and the full lifecycle stress matrix still
-require release qualification.
+This is not yet a claim that every desktop release criterion is complete.
+Signed Windows installers are published as alpha prereleases, and the old
+unsigned `v0.1.0` tester asset was withdrawn. Provider-by-provider
+authorability, upgrades, cross-platform packages, and the full lifecycle stress
+matrix still require release qualification.
 
 ## Existing checkout data
 
@@ -190,8 +190,8 @@ now**. A configured release build checks a signed HTTPS channel and can label a
 release normal, recommended, or critical. Urgency changes presentation only:
 download and installation always require user confirmation. The endpoint and
 signature public key are compile-time release inputs and are absent from
-ordinary builds. The withdrawn unsigned `v0.1.0` build has no updater, so a
-future signed bridge release must be installed manually after qualification.
+ordinary builds and the current alpha releases, so the first release with an
+update channel must be installed manually after qualification.
 
 ## Development
 

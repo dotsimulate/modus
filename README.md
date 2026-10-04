@@ -4,12 +4,11 @@
 
 # Modus
 
-> **Early source preview.** Modus is used by a small tester group, but its
-> interfaces and security boundaries are still evolving. The old unsigned
-> Windows `v0.1.0` tester asset was withdrawn; the prerelease page/tag remains
-> for history but has no downloadable installer. Packaged macOS and Linux
-> applications have not been released. See [support scope](SUPPORT.md) and the
-> [release policy](RELEASES.md).
+> **Early alpha.** Modus's interfaces and security boundaries are still
+> evolving. Signed Windows x64 alpha installers are published on
+> [GitHub Releases](https://github.com/dotsimulate/modus/releases); packaged
+> macOS and Linux applications have not been released. See
+> [support scope](SUPPORT.md) and the [release policy](RELEASES.md).
 
 Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 
@@ -70,11 +69,13 @@ After setup, `modus` works from any directory.
 The checked-in `modus.sh` and `modus.bat` wrappers remain equivalent bootstrap
 entry points. For a fresh Mac user profile, use the full [macOS setup guide](harness/docs/macos-setup.md).
 
-These commands describe a source-checkout installation. A locally built or future
-qualified Windows NSIS package installs both Modus Desktop and its own `modus`
-console command; that command runs the same CLI and backend from packaged files,
-without a checkout or globally installed Bun. Repository maintenance commands
-(`setup`, `dev`, and `update`) remain source-checkout-only.
+These commands describe a source-checkout installation. On Windows you can
+instead install the alpha NSIS package from
+[GitHub Releases](https://github.com/dotsimulate/modus/releases). It installs
+both Modus Desktop and its own `modus` console command; that command runs the
+same CLI and backend from packaged files, without a checkout or globally
+installed Bun. Repository maintenance commands (`setup`, `dev`, and `update`)
+remain source-checkout-only.
 
 ### 2. Open a project
 
@@ -130,10 +131,10 @@ daemon or second start command is required for this desktop mode.
 
 Desktop update checks are opt-in. A configured release build may check a signed
 HTTPS update channel and show normal, recommended, or critical urgency, but it
-never downloads or installs an update without confirmation. Ordinary source and
-tester builds have no update endpoint or public key configured. The withdrawn
-`v0.1.0` build cannot update itself; a future signed bridge release must first be
-installed manually after installer and data-preservation qualification.
+never downloads or installs an update without confirmation. Source builds and
+the current alpha releases have no update endpoint or public key configured, so
+install newer versions manually. The first release with an update channel will
+also need a manual install, after installer and data-preservation qualification.
 
 ### Existing source-checkout users moving to desktop
 
