@@ -363,9 +363,9 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
 
   // Project settings. The CLI dropped --no-project-settings; --setting-sources
   // takes the list to load (user, project, local). Keep the SDK and PTY paths
-  // aligned on project-only settings when enabled and no settings when disabled.
+  // aligned on project + local settings when enabled and no settings when disabled.
   const loadSettings = opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
-  args.push("--setting-sources", loadSettings ? "project" : "");
+  args.push("--setting-sources", loadSettings ? "project,local" : "");
 
   // Build env
   const env: Record<string, string> = providerChildEnv();

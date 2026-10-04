@@ -33,12 +33,12 @@ describe("claude CLI flags", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("the PTY provider explicitly selects project-only settings in both directions", () => {
+  test("the PTY provider includes local project overrides and can disable both sources", () => {
     // The replacement takes the list of sources to load (user, project, local),
     // so the empty string is what turns settings files and CLAUDE.md discovery
     // off. Verified against CLI 2.1.215: an empty list suppresses a CLAUDE.md
     // the default invocation reads.
     const source = sourceOf("claude-code-pty.ts");
-    expect(source).toContain(`args.push("--setting-sources", loadSettings ? "project" : "")`);
+    expect(source).toContain(`args.push("--setting-sources", loadSettings ? "project,local" : "")`);
   });
 });
