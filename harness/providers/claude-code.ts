@@ -1137,12 +1137,28 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       const state = getState(session);
       if (!state) return;
       const hasMcp = !!state.sensitiveTempDir;
+      // An idle session keeps its subprocess warm and sendMessage reuses it, so
+      // sdkOptions alone would not reach the next turn. Model and effort have
+      // live controls; push them to the running query as well.
+      const liveQuery = state.drainActive && !state.interrupting ? state.queryObj : null;
 
       if (config.model !== undefined) {
-        state.sdkOptions.model = config.model || undefined;
+        const model = config.model || undefined;
+        if (liveQuery && model !== state.sdkOptions.model) {
+          void liveQuery.setModel(model).catch((err: unknown) => {
+            console.warn(`[claude-code] live setModel failed session=${session.sessionId}:`, err);
+          });
+        }
+        state.sdkOptions.model = model;
       }
       if (config.effort !== undefined) {
-        state.sdkOptions.effort = normalizeClaudeEffort(config.effort);
+        const effort = normalizeClaudeEffort(config.effort);
+        if (liveQuery && effort !== state.sdkOptions.effort) {
+          void liveQuery.applyFlagSettings({ effortLevel: (effort ?? null) as any }).catch((err: unknown) => {
+            console.warn(`[claude-code] live effort change failed session=${session.sessionId}:`, err);
+          });
+        }
+        state.sdkOptions.effort = effort;
       }
       if (config.maxTurns !== undefined) {
         state.sdkOptions.maxTurns = config.maxTurns || undefined;

@@ -336,6 +336,9 @@ the fully-resolved value.
 
 Provider-specific normalization:
 - **claude-code / claude-code-pty**: `"off"` disables thinking. Other effort values are passed to Claude Code.
+  A mid-session effort or model change on `claude-code` reaches the warm subprocess through the
+  SDK's live controls (`applyFlagSettings({ effortLevel })`, `setModel`) and applies from the next
+  turn; `claude-code-pty` restarts its process on the next turn instead.
 - **codex**: `"off"` disables reasoning. `"low"/"medium"/"high"/"xhigh"` map to Codex reasoning effort; `"max"` maps to `"xhigh"`.
 - Other providers accept the resolved effort only if their implementation uses it.
 - **grok-build**: effort is applied at ACP process startup and included in prompt metadata for compatible Grok versions.
