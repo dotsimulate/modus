@@ -13,7 +13,8 @@ import type { Message, ToolCall, ToolCallDisplayMode, ChatScrollIndicator, Commi
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
 import { navigateToGitRoute } from "../git-route";
 import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interface-settings";
-import { buildLatestMoveToolCallIds, partitionToolRun } from "../move-tool-view";
+import { partitionToolRun } from "../move-tool-view";
+import { useLatestMoveToolCallIds } from "../hooks/useLatestMoveToolCallIds";
 import { buildTurns, segmentContentBlocks } from "../turn-segments";
 import { currentTurnKey, onControlIntent, scrollIntentPixels, stepTurnKey } from "../control-intents";
 import { TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
@@ -242,10 +243,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     return undefined;
   }, [messages]);
 
-  const latestMoveToolCallIds = useMemo(
-    () => buildLatestMoveToolCallIds(messages),
-    [messages],
-  );
+  const latestMoveToolCallIds = useLatestMoveToolCallIds(messages);
 
   const turnFileEdits = useMemo(() => {
     const result = new Map<number, ToolCall[]>();
@@ -514,13 +512,18 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
   // Prose and tools are measured separately because the ruler gives each
   // its own lane, and because a tool run's call count is not recoverable
   // from its height once the transcript collapses the run.
-  const measureSpineItem = useCallback(
-    (item: ChatSpineItem): ChatSpineMeasure => {
+  const measureSpineItem = useMemo(() => {
+    // Settled messages keep their identity while the last reply streams. Keep
+    // their small measurements without retaining every prepared text prefix.
+    const measured = new WeakMap<Message, ChatSpineMeasure>();
+    return (item: ChatSpineItem): ChatSpineMeasure => {
       const width = scrollWidth || 700;
       if (item.kind === "commit") {
         return { total: 48, prose: 48, tools: 0, toolCount: 0 };
       }
       const msg = item.message;
+      const cached = measured.get(msg);
+      if (cached) return cached;
       const itemStreaming = streaming && msg.id === lastMessage?.id && msg.role === "assistant";
       const toolCount = resolvedToolCallDisplay !== "hidden"
         ? countToolCalls(msg.toolCalls) || msg.deferredToolCallCount || 0
@@ -534,10 +537,11 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
         hasThinking: showThinking && !!msg.thinking,
       }).totalHeight;
       const tools = estimateToolRowsHeight(estimatedVisibleToolRows(msg, resolvedToolCallDisplay, itemStreaming));
-      return { total: prose + tools, prose, tools, toolCount };
-    },
-    [scrollWidth, showMeta, resolvedToolCallDisplay, showThinking, fontScale, streaming, lastMessage?.id],
-  );
+      const result = { total: prose + tools, prose, tools, toolCount };
+      measured.set(msg, result);
+      return result;
+    };
+  }, [scrollWidth, showMeta, resolvedToolCallDisplay, showThinking, fontScale, streaming, lastMessage?.id]);
 
   const scrollToSpineItem = useCallback((key: string, within: number) => {
     listControlsRef.current?.scrollToKey(key, { within });

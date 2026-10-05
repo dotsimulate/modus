@@ -44,7 +44,7 @@ globalThis.ReadableStream = class extends NativeReadableStream {
           const wrapped = new Proxy(controller, {
             get(target, property) {
               if (property === "write") return (chunk: Uint8Array) => {
-                if (new TextDecoder().decode(chunk).includes("event: catchup-start") && interjections < 2) {
+                if (new TextDecoder().decode(chunk).includes("event: catchup-start") && interjections < 3) {
                   inject = true;
                 }
                 return target.write(chunk);
@@ -56,8 +56,12 @@ globalThis.ReadableStream = class extends NativeReadableStream {
                   interjections++;
                   await steerMessage(context.session.sessionId, "continue");
                   context.emitEvent({ type: "stream_event", event: {
-                    type: "content_block_delta", delta: { type: "text_delta", text: " still working" },
+                    type: "content_block_delta", delta: { type: "text_delta", text: " still working".repeat(30) },
                   } });
+                  const marker = ` stream-marker-${interjections}`;
+                  setTimeout(() => context.emitEvent({ type: "stream_event", event: {
+                    type: "content_block_delta", delta: { type: "text_delta", text: marker },
+                  } }), 100);
                 }
                 return result;
               };

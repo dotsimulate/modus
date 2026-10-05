@@ -2,11 +2,11 @@ import { Database } from "bun:sqlite";
 import { basename, isAbsolute, normalize, resolve } from "path";
 import { resolveDatabasePath } from "./database-paths";
 import {
-  estimateTurnDetailBytes,
   reconstructSessionTurns,
-  summarizeContentBlocks,
+  summarizeTurnDetails,
   type SessionHistoryEventRow,
 } from "./session-history";
+import { reconstructCachedSessionTurns } from "./session-history-cache";
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 import { buildProjectCwdScope } from "./project-cwd-scope";
 import { runStartupMaintenanceTasks } from "./startup-maintenance";
@@ -143,6 +143,13 @@ db.run(`
   )
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`);
+// History pages follow wall-clock order even when a resumed provider resets
+// its sequence. These indexes serve both page boundaries and ordered reads.
+db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_time ON events(session_id, created_at, id)
+  WHERE type IN ('user', 'assistant', 'result')`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_events_prompt_time ON events(session_id, created_at, id)
+  WHERE type = 'user' AND subtype = 'prompt'`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session_time ON messages(session_id, created_at, id)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
 // Lists filter JSON tags rather than the legacy archived column. An index led
@@ -1593,15 +1600,6 @@ function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefine
   }
 }
 
-/**
- * Turns whose thinking + tool payload exceeds this ship as a placeholder the
- * client expands on demand. Chosen so an ordinary coding turn — a handful of
- * file reads and edits — travels whole, while a turn carrying megabytes of tool
- * output does not. It remains a per-turn decision so the same turn renders the
- * same way whether it arrived in the initial page or an older page.
- */
-const DETAIL_DEFER_BYTES = 32_768;
-
 type SessionHistoryPageOptions = {
   limit?: number;
   beforeSeq?: number;
@@ -1748,7 +1746,7 @@ function getSessionMessagesFromEvents(
        ${eventOrder}`
     ).all({ $sid: sessionId }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
     return {
-      turns: reconstructSessionTurns(events, fallbackModel),
+      turns: reconstructCachedSessionTurns(events, fallbackModel, options.includeDetails !== false),
       hasMore: false,
       oldestCreatedAt: events[0]?.created_at ?? null,
       oldestId: events[0]?.id ?? null,
@@ -1833,7 +1831,7 @@ function getSessionMessagesFromEvents(
   }) as { count: number } | null;
   const olderTurnCount = older?.count ?? 0;
   return {
-    turns: reconstructSessionTurns(events, fallbackModel),
+    turns: reconstructCachedSessionTurns(events, fallbackModel, options.includeDetails !== false),
     hasMore: olderTurnCount > 0,
     oldestCreatedAt: events[0]?.created_at ?? null,
     oldestId: events[0]?.id ?? null,
@@ -2492,24 +2490,7 @@ export function getSessionMessageHistory(
     }
     return artifacts.length > 0 ? { ...turn, artifacts } : turn;
   }).map((turn) => {
-    if (options.includeDetails !== false || turn.role !== "assistant") return turn;
-    // Defer on weight, not on presence. This used to trigger on any thinking or
-    // any single tool call, which meant a 455-byte turn and a 4MB turn were
-    // treated identically and effectively every message in a loaded session
-    // became a "load N tool calls" button. Below the threshold a turn ships
-    // whole and renders exactly as it did live.
-    if (estimateTurnDetailBytes(turn) < DETAIL_DEFER_BYTES) return turn;
-    const deferredToolCallCount = turn.toolCalls?.length ?? 0;
-    const { thinking: _thinking, toolCalls: _toolCalls, ...summary } = turn;
-    return {
-      ...summary,
-      ...(turn.contentBlocks ? { contentBlocks: summarizeContentBlocks(turn.contentBlocks) } : {}),
-      detailsDeferred: true,
-      // Sent rather than inferred: the client used to guess thinking from the
-      // absence of tool calls, which is wrong for any turn that had both.
-      deferredHasThinking: !!turn.thinking,
-      ...(deferredToolCallCount > 0 ? { deferredToolCallCount } : {}),
-    };
+    return options.includeDetails === false ? summarizeTurnDetails(turn) : turn;
   });
   return {
     messages,

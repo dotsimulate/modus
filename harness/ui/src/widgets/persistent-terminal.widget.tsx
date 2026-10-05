@@ -1,4 +1,4 @@
-import { TerminalView } from "../components/TerminalView";
+import { TerminalView } from "../components/lazy-views";
 import { useProfiles } from "../providers/ProfileContext";
 import type { WidgetBase, WidgetProps } from "./types";
 

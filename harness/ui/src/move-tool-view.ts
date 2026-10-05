@@ -161,7 +161,7 @@ export function moveApiInput(tool: ToolCall): Record<string, unknown> {
 }
 
 /** Latest top-level move call per reusable token, in transcript order. */
-export function buildLatestMoveToolCallIds(messages: Message[]): Map<string, string> {
+export function buildLatestMoveToolCallIds(messages: Message[], previous?: Map<string, string>): Map<string, string> {
   const latest = new Map<string, string>();
   for (const message of messages) {
     const tools = message.toolCalls
@@ -173,6 +173,15 @@ export function buildLatestMoveToolCallIds(messages: Message[]): Map<string, str
       const token = moveApiToken(tool);
       if (token) latest.set(token, tool.id);
     }
+  }
+  if (previous?.size === latest.size) {
+    const entries = latest.entries();
+    let unchanged = true;
+    for (const [key, value] of previous) {
+      const next = entries.next().value;
+      if (!next || next[0] !== key || next[1] !== value) { unchanged = false; break; }
+    }
+    if (unchanged) return previous;
   }
   return latest;
 }

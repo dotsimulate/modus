@@ -132,6 +132,7 @@ import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cach
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
 import { onClientAbort } from "./sse-abort";
 import { createSSEReplayBuffer } from "./sse-replay-buffer";
+import { createLiveSnapshotEncoder } from "./live-snapshot-codec";
 import {
   initShadowRepo, scheduleCommit, listCommits, onShadowCommit,
   shadowRepoPath, gitShowFile, gitDiffTree, gitHead, gitLsTree, getWorkTree,
@@ -2059,8 +2060,9 @@ app.get("/api/sessions/:id/events", (c) => {
 //   event: ping           data: {}
 type MultiSpec = { id: string; after: number };
 
-function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
+function streamMultiSessionSSE(c: any, specs: MultiSpec[], liveDeltas = false) {
   return sseResponse(c.req.raw, async (writer, signal) => {
+    const encodeLive = liveDeltas ? createLiveSnapshotEncoder() : null;
     const browserToken = sseBrowserToken(c);
     let finished = false;
     // Revocation resolves done, but replay must stop before reaching that await.
@@ -2086,7 +2088,14 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
       }
       pendingWrites++;
       writeChain = writeChain
-        .then(() => canWrite() ? writer.write(event, JSON.stringify(obj), "") : undefined)
+        .then(() => {
+          if (!canWrite()) return;
+          const envelope = obj as { sid: string; seq: number; ev: unknown };
+          const data = event === "ev" && encodeLive
+            ? { ...envelope, ev: encodeLive(envelope.sid, envelope.seq, envelope.ev) }
+            : obj;
+          return writer.write(event, JSON.stringify(data), "");
+        })
         .catch(finish)
         .finally(() => { pendingWrites--; });
       return writeChain;
@@ -2192,13 +2201,13 @@ app.get("/api/events/multi", (c) => {
 // POST avoids URL-length limits when many sessions are subscribed and keeps
 // bearer credentials in headers rather than query-string logs/history.
 app.post("/api/events/multi", async (c) => {
-  const body = await c.req.json().catch(() => ({})) as { sessions?: unknown };
+  const body = await c.req.json().catch(() => ({})) as { sessions?: unknown; liveDeltas?: unknown };
   const specs: MultiSpec[] = Array.isArray(body.sessions)
     ? body.sessions
       .filter((spec: any) => spec && typeof spec.i === "string")
       .map((spec: any) => ({ id: spec.i, after: Number(spec.s) || 0 }))
     : [];
-  return streamMultiSessionSSE(c, specs);
+  return streamMultiSessionSSE(c, specs, body.liveDeltas === true);
 });
 
 // Global session lifecycle events (SSE) — used by SessionWeb for real-time updates

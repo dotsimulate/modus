@@ -9,7 +9,7 @@ import type { BrowseResult, FileSearchResponse, PreviewManifest } from "../../..
 import { setFsWatchRoot } from "../fsEvents";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser, type FileBrowserHandle } from "./FileBrowser";
-import { CodeMirrorEditor, type CodeMirrorContextInfo, type CodeMirrorEditorHandle } from "./CodeMirrorEditor";
+import { CodeMirrorEditor, type CodeMirrorContextInfo, type CodeMirrorEditorHandle } from "./lazy-views";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";

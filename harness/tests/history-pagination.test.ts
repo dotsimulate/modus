@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { addEvent, getSessionMessageHistory, insertMessage, upsertSession } from "../db";
+import { addEvent, getSessionMessageHistory, insertMessage, insertSessionArtifact, upsertSession } from "../db";
 
 function seedSimpleTurn(sessionId: string, baseSeq: number, label: string, createdAt?: number) {
   addEvent(sessionId, baseSeq, "user", "prompt", JSON.stringify({
@@ -11,6 +11,23 @@ function seedSimpleTurn(sessionId: string, baseSeq: number, label: string, creat
   }), createdAt);
   addEvent(sessionId, baseSeq + 2, "result", "success", JSON.stringify({ subtype: "success" }), createdAt);
 }
+
+test("cached history attaches newly created artifacts without changing its event rows", () => {
+  const sessionId = `history-artifact-${crypto.randomUUID()}`;
+  upsertSession({ id: sessionId, preview: "artifact cache", messageCount: 0, costUsd: 0 });
+  addEvent(sessionId, 1, "user", "prompt", JSON.stringify({ message: { content: "cached prompt" } }));
+  addEvent(sessionId, 2, "assistant", "message", JSON.stringify({ message: { content: [
+    { type: "thinking", thinking: "reasoning".repeat(10_000) }, { type: "text", text: "cached answer" },
+  ] } }));
+  addEvent(sessionId, 3, "result", "success", JSON.stringify({ subtype: "success" }));
+  const options = { limit: 12, preserveEventSequence: true, includeDetails: false };
+  const before = getSessionMessageHistory(sessionId, options);
+  expect(before.messages[1]!.artifacts).toBeUndefined();
+  const id = insertSessionArtifact({ sessionId, seq: 3, name: "fixture", mime: "text/plain", path: "fixture.txt" });
+  const after = getSessionMessageHistory(sessionId, options);
+  expect(after.messages[1]!.artifacts?.map((artifact) => artifact.id)).toEqual([id]);
+  expect(after.messages[1]!.text).toBe(before.messages[1]!.text);
+});
 
 test("history pages through a provider sequence reset by wall-clock cursor", async () => {
   const sessionId = `history-page-${crypto.randomUUID()}`;
