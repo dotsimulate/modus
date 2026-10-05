@@ -71,7 +71,8 @@ function makeTurnContext(session: any, opts: Record<string, unknown> = {}) {
 }
 
 /** Starts a turn whose subprocess stays warm after its result, as the real CLI does. */
-async function startWarmSession(opts: Record<string, unknown> = {}) {
+async function startWarmSession(opts: Record<string, unknown> = {}, profile?: Record<string, unknown>) {
+  let queryOptions: any;
   const calls: { setModel: (string | undefined)[]; flagSettings: Record<string, unknown>[] } = {
     setModel: [],
     flagSettings: [],
@@ -79,6 +80,7 @@ async function startWarmSession(opts: Record<string, unknown> = {}) {
 
   mock.module("@anthropic-ai/claude-agent-sdk", () => ({
     query({ prompt, options }: any) {
+      queryOptions = options;
       const iterator = prompt[Symbol.asyncIterator]();
       const stream = (async function* () {
         await iterator.next();
@@ -98,14 +100,45 @@ async function startWarmSession(opts: Record<string, unknown> = {}) {
   const { createClaudeCodeProvider } = await import("../../providers/claude-code");
   const session = makeSession();
   const provider = createClaudeCodeProvider({ which: () => "test-claude" });
-  provider.startTurn(makeTurnContext(session, opts));
+  const ctx = makeTurnContext(session, opts);
+  ctx.profile = profile;
+  provider.startTurn(ctx);
   for (let i = 0; i < 100 && session.status !== "idle"; i++) await Bun.sleep(10);
   expect(session.status).toBe("idle");
   expect((session._providerState as any)?.drainActive).toBe(true);
-  return { provider, session, calls };
+  return { provider, session, calls, queryOptions };
 }
 
 describe("claude-code live config", () => {
+  for (const [label, override, profileSetting, expected] of [
+    ["defaults", undefined, undefined, ["project", "local"]],
+    ["profile disables settings", undefined, false, []],
+    ["profile enables settings", undefined, true, ["project", "local"]],
+    ["session disables settings", false, true, []],
+    ["session enables settings", true, false, ["project", "local"]],
+  ] as const) {
+    test(`loads the selected settings sources at launch and profile switch: ${label}`, async () => {
+      const { provider, session, queryOptions } = await startWarmSession(
+        { loadProjectSettings: override },
+        { loadProjectSettings: profileSetting },
+      );
+      expect(queryOptions.settingSources).toEqual(expected);
+
+      // Switch through the opposite value so stale launch options cannot pass.
+      provider.switchProfile!(session, makeTurnContext(session, {
+        loadProjectSettings: expected.length === 0,
+      }), "keep");
+      expect(session._providerState.sdkOptions.settingSources).toEqual(
+        expected.length === 0 ? ["project", "local"] : [],
+      );
+
+      const ctx = makeTurnContext(session, { loadProjectSettings: override });
+      ctx.profile = { loadProjectSettings: profileSetting };
+      provider.switchProfile!(session, ctx, "keep");
+      expect(session._providerState.sdkOptions.settingSources).toEqual(expected);
+    }, 15_000);
+  }
+
   test("applies an effort change to the warm subprocess between turns", async () => {
     const { provider, session, calls } = await startWarmSession({ effort: "high" });
 

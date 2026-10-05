@@ -768,7 +768,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         disallowedTools: sdkDisallowed,
         tools: sdkTools,
         systemPrompt,
-        settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
+        settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project", "local"] : [],
         // When harness policy is bypass, use bypassPermissions and skip hooks entirely.
         // On Windows, the hook IPC stream between SDK and CLI is unreliable —
         // every tool call triggers a round-trip that can fail with "Stream closed".
@@ -1246,7 +1246,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       // Update SDK options for next resume
       state.sdkOptions.systemPrompt = systemPrompt;
       state.sdkOptions.settingSources = (ctx.opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true)
-        ? ["project"]
+        ? ["project", "local"]
         : [];
       state.sdkOptions.model = ctx.opts.model || undefined;
       state.sdkOptions.effort = normalizeClaudeEffort(ctx.opts.effort);

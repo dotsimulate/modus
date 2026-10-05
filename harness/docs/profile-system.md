@@ -148,8 +148,22 @@ where the provider exposes such a control. The profile editor labels the
 provider's actual sources and shows always-on providers as disabled rather than
 claiming the setting was applied.
 
+For Claude Code SDK and PTY sessions, this defaults to `true` and loads both
+`project` (`.claude/settings.json`) and `local` (`.claude/settings.local.json`)
+sources, including their native project instructions. User-global settings
+(`~/.claude/settings.json`) are excluded. `false` disables both sources.
+Session overrides take precedence over the profile. The SDK applies the same
+selection when switching profiles; PTY rebuilds it when restarting its process.
+
+Claude auto memory is separate from project-instruction loading. To disable it
+when project settings are enabled, set `"autoMemoryEnabled": false` in either
+project settings file. With `loadProjectSettings: false`, those files are not
+read; use profile `env: { "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1" }` instead.
+Both Claude providers pass profile environment variables to their subprocesses.
+See [Claude's settings-source contract](https://code.claude.com/docs/en/agent-sdk/claude-code-features).
+
 **`env`**: Provider-specific process environment, not a universal endpoint
-override. The Claude Code SDK and Grok Build providers consume it today; other
+override. The Claude Code SDK, Claude Code PTY, and Grok Build providers consume it today; other
 CLI providers ignore it. PI providers run in-process and instead use
 declarative provider `baseUrl`, `apiKeyName`, `headers`, and Modus secrets.
 

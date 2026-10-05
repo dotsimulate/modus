@@ -9,6 +9,7 @@ import { pendingProfileAsks, pendingProfileInjections } from "../composer-move-f
 import type { PendingAsk } from "../composer-move-forms";
 import { stageMove, type ComposerMoveAttachment } from "../composer-move-attachments";
 import { PasteBlock } from "./PasteBlock";
+import { useInputPastes, type StagedPaste } from "../inputStore";
 import type { ComposerAttachResult } from "./MoveWidget";
 import { activateComposer, registerComposer, useComposerActions, useComposerToggles } from "../client-extensions";
 import { findCompletion, loadPromptCache, usePromptCache } from "../promptCache";
@@ -26,8 +27,6 @@ const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/web
 
 const PASTE_CHAR_THRESHOLD = 400;
 const PASTE_LINE_THRESHOLD = 6;
-
-type StagedPaste = { id: string; text: string };
 
 /**
  * A skill staged on the composer. The full SKILL.md is held here rather than
@@ -203,7 +202,7 @@ export function ChatInput({
 
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [pastes, setPastes] = useState<StagedPaste[]>([]);
+  const [pastes, setPastes] = useInputPastes(sessionId ?? autoId);
   const [stagedSkills, setStagedSkills] = useState<StagedSkill[]>([]);
   const shiftHeldRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -643,7 +642,7 @@ export function ChatInput({
       }
     }
     // Otherwise let the default text paste happen
-  }, [addImageFiles]);
+  }, [addImageFiles, setPastes]);
 
   // ── Send ──
 
