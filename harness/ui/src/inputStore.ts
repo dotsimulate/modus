@@ -1,14 +1,17 @@
 /**
  * Input Store — per-session draft storage for the chat input.
  *
- * Keeps a Map<sessionId, string> so switching sessions preserves
- * unsent drafts. Components subscribe via useInputValue() which
- * only re-renders when the active session's value changes.
+ * Keeps typed text and pasted-text chips by session so switching chats
+ * preserves unsent drafts. Paste chips survive composer remounts in this
+ * browser tab, but are not persisted across page reloads.
  */
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore, type SetStateAction } from "react";
 
 const drafts = new Map<string, string>();
+export type StagedPaste = { id: string; text: string };
+const pastedDrafts = new Map<string, StagedPaste[]>();
+const EMPTY_PASTES: StagedPaste[] = [];
 let activeSessionId: string | null = null;
 let revision = 0;
 const listeners = new Set<() => void>();
@@ -71,4 +74,19 @@ function getSnapshot(): number {
 export function useInputValue(): string {
   useSyncExternalStore(subscribe, getSnapshot);
   return getInputValue();
+}
+
+/** Paste chips belong to the draft's session, including across composer remounts. */
+export function useInputPastes(sessionId: string) {
+  const getPastes = useCallback(() => pastedDrafts.get(sessionId) ?? EMPTY_PASTES, [sessionId]);
+  const pastes = useSyncExternalStore(subscribe, getPastes, getPastes);
+  const setPastes = useCallback((update: SetStateAction<StagedPaste[]>) => {
+    const previous = pastedDrafts.get(sessionId) ?? EMPTY_PASTES;
+    const next = typeof update === "function" ? update(previous) : update;
+    if (next === previous) return;
+    if (next.length) pastedDrafts.set(sessionId, next);
+    else pastedDrafts.delete(sessionId);
+    notify();
+  }, [sessionId]);
+  return [pastes, setPastes] as const;
 }

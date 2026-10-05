@@ -264,6 +264,9 @@ React app served by Vite in dev, static build in production. Key architectural
 decisions:
 - URL routing via `#userProfile/sessionId` hash
 - External session store (`Map<sessionId, SessionState>`) with `useSyncExternalStore`
+- Composer draft text and pasted-text chips are keyed by session in
+  `ui/src/inputStore.ts`. Chips survive chat switches and composer remounts
+  within the browser tab; they are not saved to the server or across reloads.
 - Two long-lived connections per tab. Chromium and WebView2 allow six HTTP/1.1
   connections per host, and every other request in the UI — including speech
   uploads — shares what is left. Transcripts for every subscribed session ride
