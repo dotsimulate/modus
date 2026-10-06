@@ -74,6 +74,79 @@ target per page load.
 - A second desktop launch focuses the existing instance and cannot create a
   second managed backend.
 
+## Opening Markdown and text files
+
+The installed desktop offers **Open with Modus** for `.md`, `.markdown`, and
+`.txt`. Markdown opens in rendered preview, with the existing Edit and Save
+controls available. Files outside registered projects also open. The header
+shows the full path and the deepest matching registered project, or **External
+file** when no project contains it. Opening a file keeps the selected project
+and conversation; it does not send content to an agent or register a new project.
+
+The main window receives file arguments both at startup and from subsequent
+launches. Multiple files become tabs in the shared editor. A fullscreen or
+custom page without an editor gets a floating file viewer. Relative Markdown
+links and images resolve beside the document. Session tab restoration finishes
+before queued OS opens are applied, so startup hydration cannot erase the file.
+
+When connected to a remote backend, a notice asks the user to switch to Local
+Modus. The desktop keeps the pending paths until a local target claims them;
+it never sends client filesystem paths to the remote backend. The mini viewer
+does not claim OS file opens. Missing files, directories, and unsupported types
+are ignored by the OS handoff rather than executed or read as text.
+
+Windows registration is additive: `file-associations.nsh` registers application
+and ProgID entries for **Open with** without changing extension defaults or
+`UserChoice`. Uninstall removes only entries whose open command still belongs
+to that installation. The Windows bundle override disables Tauri's generated
+associations, which would otherwise write extension defaults. macOS uses the
+bundle's alternate handler declarations. Registration is an installer/package
+operation; editing the checkout does not register file types in the OS.
+
+### Isolated Windows verification
+
+`desktop/tests/file-associations-smoke.ps1` compiles the registration macros into
+a small NSIS harness and exercises install, reinstall, and uninstall inside a
+unique test registry namespace. It preserves seeded default/UserChoice values
+and an entry owned by another installation. It does not alter real associations.
+Pass `-MakeNsis` if the compiler is outside Tauri's usual tools cache.
+
+`desktop/tests/file-open-e2e.mjs` drives the real Tauri WebView2 window through
+Playwright CDP. It creates isolated homes, credentials, browser data, files,
+and an OS-assigned debugging port; Tailnet access stays disabled and uses a
+fake CLI. A second desktop process exercises actual single-instance forwarding.
+No provider is started. Remote-target notification without queue claiming is
+covered separately by `harness/tests/ui/desktopFileOpen.test.ts`.
+
+Run it from a scratch checkout, after frozen dependency installs and the
+publication-boundary check. Build the UI, then build a dedicated binary with a
+unique identifier and no protocol registration. The driver rejects a normal
+desktop binary:
+
+```powershell
+bun run --cwd harness/ui build
+$env:TAURI_CONFIG = '{"identifier":"com.modus.file-open-smoke","build":{"devUrl":null},"plugins":{"deep-link":{"desktop":{"schemes":[]}}}}'
+cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked --features tauri/custom-protocol
+Remove-Item Env:TAURI_CONFIG
+Copy-Item desktop/src-tauri/target/debug/modus-desktop.exe desktop/src-tauri/target/debug/modus-file-open-smoke.exe
+```
+
+The build needs the usual non-packaging sidecar/resource fixtures described
+in CI, or staged resources. Install Playwright in a separate temporary tools
+directory and pass its `index.mjs` path with `--playwright`. Run:
+
+```powershell
+node desktop/tests/file-open-e2e.mjs --exe desktop/src-tauri/target/debug/modus-file-open-smoke.exe --repo . --bun (Get-Command bun).Source --playwright <temporary-tools>/node_modules/playwright/index.mjs
+```
+
+The driver checks rendered Markdown, project recognition, external files,
+relative links/images, sanitization, multiple and repeated opens, unsupported
+files, editing/saving, selected-session preservation, delayed tab hydration,
+fullscreen fallback, relative launch arguments, and
+no replay after reload. It quits only its own desktop instance and reports
+where it saved logs and screenshots. This does not qualify a signed installer
+or macOS/Linux behavior.
+
 ## Deep links
 
 The desktop registers the `modus://` URL scheme and understands two forms:

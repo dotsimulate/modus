@@ -41,6 +41,24 @@
     }
   },
   "bundle": {
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "description": "Markdown document",
+        "mimeType": "text/markdown",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["txt"],
+        "name": "Text document",
+        "description": "Text document",
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
     "active": true,
     "publisher": "dotsimulate",
     "copyright": "Copyright © 2026 dotsimulate",
