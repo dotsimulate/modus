@@ -329,18 +329,18 @@ try {
     }
     $brainBridgeVerified = $true
 
-    $processSnapshot = @(Get-CimInstance Win32_Process)
     $backendTreeIds = [System.Collections.Generic.HashSet[uint32]]::new()
     [void]$backendTreeIds.Add([uint32]$state.backendPid)
-    do {
-      $added = $false
-      foreach ($candidate in $processSnapshot) {
-        if ($backendTreeIds.Contains([uint32]$candidate.ParentProcessId) -and
-            $backendTreeIds.Add([uint32]$candidate.ProcessId)) {
-          $added = $true
+    $pendingBackendIds = [System.Collections.Generic.Queue[uint32]]::new()
+    $pendingBackendIds.Enqueue([uint32]$state.backendPid)
+    while ($pendingBackendIds.Count -gt 0) {
+      $ownedPid = $pendingBackendIds.Dequeue()
+      foreach ($candidate in @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ownedPid")) {
+        if ($backendTreeIds.Add([uint32]$candidate.ProcessId)) {
+          $pendingBackendIds.Enqueue([uint32]$candidate.ProcessId)
         }
       }
-    } while ($added)
+    }
     $backendVisibleWindows = @([ModusVisibleWindowProbe]::Find([uint32[]]$backendTreeIds))
     if ($backendVisibleWindows.Count -gt 0) {
       throw "Managed backend created a visible top-level window: $($backendVisibleWindows -join ', ')"
