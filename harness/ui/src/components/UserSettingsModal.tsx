@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
-import type { ChatScrollIndicator, ConversationLensId, ModusPlugin, ProviderModel, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
+import type { ChatScrollIndicator, ConversationLensId, ModusPlugin, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
+import { useProviderModels } from "../hooks/useProviderModels";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
@@ -102,7 +103,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [projectPaths, setProjectPaths] = useState<string[]>(userProfile.projects ?? []);
   const [hiddenPluginProfiles, setHiddenPluginProfiles] = useState<string[]>(userProfile.hiddenPluginProfiles ?? []);
   const projectFolder = useFolderChooser();
-  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
+  const { models: providerModels, loading: modelsLoading, error: modelsError } = useProviderModels(defaultProvider);
   const [interfaceSettings, setInterfaceSettings] = useState<ResolvedInterfaceSettings>(
     readDeviceInterfaceSettings,
   );
@@ -160,14 +161,6 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
   useEffect(() => {
     providerRef.current = defaultProvider;
-  }, [defaultProvider]);
-
-  useEffect(() => {
-    if (!defaultProvider) {
-      setProviderModels([]);
-      return;
-    }
-    modus.getProviderModels(defaultProvider).then(setProviderModels).catch(() => setProviderModels([]));
   }, [defaultProvider]);
 
   useEffect(() => {
@@ -407,6 +400,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                     options={providerModels.map((model) => ({ value: model.id }))}
                     placeholder={defaultProvider ? "select model" : "choose provider first"}
                     searchPlaceholder="search models..."
+                    emptyLabel={modelsLoading ? "loading..." : modelsError || "no models"}
                     disabled={!defaultProvider}
                     allowCustom
                     onChange={setDefaultModel}

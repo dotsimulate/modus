@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
-import type { Profile, McpServerConfig, ProviderModel } from "../../../sdk/index";
+import type { Profile, McpServerConfig } from "../../../sdk/index";
+import { useProviderModels } from "../hooks/useProviderModels";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
@@ -331,8 +332,7 @@ function ProfileForm({
    */
   const [passthrough] = useState(() => unmanagedProfileFields(profile));
   const [saving, setSaving] = useState(false);
-  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
+  const { models: providerModels, loading: modelsLoading, error: modelsError } = useProviderModels(provider || "claude-code");
   const [saveError, setSaveError] = useState("");
   const previousProviderRef = useRef(provider);
   const providerOptions = provider && !availableProviders.includes(provider)
@@ -358,15 +358,9 @@ function ProfileForm({
   useEffect(() => {
     const providerChanged = previousProviderRef.current !== provider;
     previousProviderRef.current = provider;
-    const p = provider || "claude-code";
     if (providerChanged) {
       setModel("");
-      setProviderModels([]);
     }
-    setModelsLoading(true);
-    modus.getProviderModels(p).then((models) => {
-      setProviderModels(models);
-    }).catch(() => setProviderModels([])).finally(() => setModelsLoading(false));
     const previousFamily = providerToolFamily(
       profile.provider,
       profile.provider ? providerCapabilities[profile.provider] : undefined,
@@ -446,7 +440,7 @@ function ProfileForm({
               options={providerModels.map((m) => ({ value: m.id }))}
               placeholder={modelsLoading ? "loading..." : "select model"}
               searchPlaceholder="search models..."
-              emptyLabel={modelsLoading ? "loading..." : "no models"}
+              emptyLabel={modelsLoading ? "loading..." : modelsError || "no models"}
               allowCustom
               onChange={setModel}
             />
