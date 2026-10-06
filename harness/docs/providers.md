@@ -264,6 +264,15 @@ used before Modus adds it to the suggestions. Claude Code suggestions include
 current full model IDs and its durable aliases (`default`, `best`, `opus`,
 `sonnet`, `haiku`, extended-context aliases, and `opusplan`).
 
+Cursor suggestions come from the installed `cursor-agent models` command using
+the same `CURSOR_API_KEY` secret/environment resolution as Cursor turns, or the
+CLI's saved login. Modus parses the account's live model list rather than
+substituting a static list. Failed discovery returns an API error, which model
+pickers display with sign-in or connection guidance. For a sign-in error, run
+`cursor-agent login`, then reload the picker. Updating the CLI is unnecessary
+when its `models` command already works. Model discovery runs asynchronously
+with a 15-second deadline so it does not block other backend requests.
+
 PI agent providers share a single implementation (`pi-agent.ts`) parameterized
 by provider name. They implement a lightweight tool-use agent loop with
 compaction support.

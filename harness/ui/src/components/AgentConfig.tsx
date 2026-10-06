@@ -8,7 +8,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { modus } from "../modusClient";
-import type { ProviderModel, AgentConfigState } from "../../../sdk/index";
+import type { AgentConfigState } from "../../../sdk/index";
+import { useProviderModels } from "../hooks/useProviderModels";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
@@ -96,13 +97,13 @@ export function AgentConfig({
   availableTools,
 }: Props) {
   const [toolsOpen, setToolsOpen] = useState(!toolsCollapsible);
-  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const configRef = useRef(config);
   const { providerCapabilities } = useProfiles();
   const dropdownClassName = dropdownDirection === "up"
     ? "search-dropdown--compact search-dropdown--up"
     : "search-dropdown--compact";
   const effectiveProvider = config.provider || profileProvider || "claude-code";
+  const { models: providerModels, loading: modelsLoading, error: modelsError } = useProviderModels(effectiveProvider);
   // Prefer the backend's reported built-in tools for the live provider; fall
   // back to the static catalog when capabilities haven't loaded yet.
   const builtInGroups = providerCapabilities[effectiveProvider]?.builtInToolGroups
@@ -111,10 +112,6 @@ export function AgentConfig({
   useEffect(() => {
     configRef.current = config;
   }, [config]);
-
-  useEffect(() => {
-    modus.getProviderModels(effectiveProvider).then(setProviderModels).catch(() => setProviderModels([]));
-  }, [effectiveProvider]);
 
   const update = (patch: Partial<AgentConfigState>) => {
     onChange({ ...config, ...patch });
@@ -211,6 +208,7 @@ export function AgentConfig({
               })}
             placeholder={profileModel ?? "default"}
             searchPlaceholder="search models..."
+            emptyLabel={modelsLoading ? "loading..." : modelsError || "no models"}
             allowCustom
             onChange={(model) => update({ model })}
           />

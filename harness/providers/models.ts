@@ -4,7 +4,7 @@
 
 import { readCodexModelsCache } from "./codex-model-cache";
 import { resolveSecret } from "../secrets";
-import { cursorAgentSpawnArgv0 } from "./cursor-resolve-bin";
+import { fetchCursorModels } from "./cursor-runtime";
 import { getGlobalConfig } from "../profiles";
 import { probeGrokBuildModels } from "./grok-build-runtime";
 import { getProviderDefinition } from "./provider-definitions";
@@ -48,36 +48,6 @@ const CLAUDE_MODELS: ModelInfo[] = [
 
 const GROK_BUILD_FALLBACK_MODELS: ModelInfo[] = [
   { id: "grok-4.5", owned_by: "xai", contextSource: "provider-default" },
-];
-
-/** Fetch models from cursor-agent CLI by parsing its `models` command output. */
-async function fetchCursorModels(): Promise<ModelInfo[]> {
-  try {
-    const { execFileSync } = await import("child_process");
-    const bin = cursorAgentSpawnArgv0();
-    const raw = execFileSync(bin, ["models"], {
-      timeout: 15000,
-      encoding: "utf-8",
-      windowsHide: true,
-    });
-    // Parse lines like: "composer-2-fast - Composer 2 Fast"
-    const models: ModelInfo[] = [];
-    for (const line of raw.split("\n")) {
-      const match = line.match(/^(\S+)\s+-\s+(.+)$/);
-      if (match) {
-        models.push({ id: match[1]!, owned_by: "cursor" });
-      }
-    }
-    return models.length > 0 ? models : CURSOR_FALLBACK_MODELS;
-  } catch {
-    return CURSOR_FALLBACK_MODELS;
-  }
-}
-
-const CURSOR_FALLBACK_MODELS: ModelInfo[] = [
-  { id: "composer-2-fast", owned_by: "cursor" },
-  { id: "composer-2", owned_by: "cursor" },
-  { id: "composer-1.5", owned_by: "cursor" },
 ];
 
 function positiveNumber(value: unknown): number | undefined {

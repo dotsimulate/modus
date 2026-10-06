@@ -580,8 +580,13 @@ export class ModusClient {
   async getProviderHealth(): Promise<ProviderHealthInfo[]> { return (await this.fetch("/api/provider-health")).json(); }
   /** Explicitly probes known localhost ports and returns definition proposals without registering them. */
   async detectLocalProviders(): Promise<DetectedProvider[]> { return (await this.fetchOrThrow("/api/providers/detect", { method: "POST" })).json(); }
-  /** Lists available models for a provider. Returns empty array on error. */
-  async getProviderModels(provider: string): Promise<ProviderModel[]> { const r = await this.fetch(`/api/providers/${encodeURIComponent(provider)}/models`); if (!r.ok) return []; return r.json(); }
+  /** Lists model suggestions. Set throwOnError to surface discovery failures instead of an empty array. */
+  async getProviderModels(provider: string, opts?: { throwOnError?: boolean }): Promise<ProviderModel[]> {
+    const path = `/api/providers/${encodeURIComponent(provider)}/models`;
+    const r = opts?.throwOnError ? await this.fetchOrThrow(path) : await this.fetch(path);
+    if (!r.ok) return [];
+    return r.json();
+  }
 
   // ── Text To Speech ──
   async getTextToSpeechConfig(cwd?: string): Promise<TextToSpeechConfig> {

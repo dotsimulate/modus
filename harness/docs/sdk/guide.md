@@ -656,7 +656,8 @@ try {
 ```
 
 Methods that return fallback values (not throwing):
-- `getProviderModels()` → `[]` on error
+- `getProviderModels()` → `[]` on HTTP error; pass `{ throwOnError: true }` as
+  the second argument to surface the backend's discovery error
 - `readFile()` → `null` on error
 - `gitFileContent()` → `null` on error
 - `listMoves()`, `listAmbientMoves()`, `getActiveWidgets()` → `[]` on error

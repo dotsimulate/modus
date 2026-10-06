@@ -21,7 +21,6 @@ import { getMaxSeq, getSession, getSessionMessages, updateSessionStatus, type Tu
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { APP_PATHS } from "../app-paths";
 import { logActivity } from "../activity";
-import { resolveSecret } from "../secrets";
 import {
   getGlobalConfig, getProfile,
   type McpServerConfig, type Profile,
@@ -31,7 +30,7 @@ import { cursorAgentSpawnArgv0, resolveCursorAgentExecutable } from "./cursor-re
 import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
 import { hasExited, terminateProcessTree, waitForClose } from "./process-tree";
 import { cursorMcpConfigStore } from "./cursor-mcp-config";
-import { providerChildEnv } from "./child-env";
+import { cursorEnvironment } from "./cursor-runtime";
 import { logProviderDiagnostic } from "./provider-diagnostics";
 import { createSensitiveTempDirectory, removeSensitiveTempDirectory } from "../sensitive-temp";
 import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
@@ -195,14 +194,6 @@ function buildBranchAwareUserInput(content: MessageContent, ctx: TurnContext): s
     "New user request:",
     userInput,
   ].join("\n");
-}
-
-// ── Resolve API key ──
-
-function resolveCursorApiKey(): string | undefined {
-  return resolveSecret("CURSOR_API_KEY")
-    ?? process.env.CURSOR_API_KEY
-    ?? undefined;
 }
 
 // ── NDJSON Event Types (from cursor-agent --output-format stream-json) ──
@@ -560,19 +551,13 @@ async function runTurn(
     args.push("--resume", state.sessionId);
   }
 
-  // API key via env or flag
-  const apiKey = resolveCursorApiKey();
-
   // The prompt is delivered via stdin (see below), NOT as a positional argument.
   // On Windows cursor-agent is a .cmd -> powershell shim; a multi-line positional
   // arg gets truncated at the first newline by cmd.exe, so the agent would only
   // ever receive the prompt's first line. stdin avoids that entirely.
 
   const bin = cursorAgentSpawnArgv0();
-  const env: Record<string, string> = providerChildEnv();
-  if (apiKey) {
-    env.CURSOR_API_KEY = apiKey;
-  }
+  const env = cursorEnvironment();
 
   logProviderDiagnostic(`[cursor] spawning: ${bin} -p --model ${state.model} ${isResume && state.sessionId ? `--resume ${state.sessionId}` : "(new)"}`);
 
