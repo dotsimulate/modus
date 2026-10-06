@@ -21,6 +21,8 @@
 ; build has NSIS_MAX_STRLEN=1024 and would truncate longer user PATH values.
 ; The native launcher uses dynamically-sized Win32 registry buffers instead.
 
+!include "${__FILEDIR__}\file-associations.nsh"
+
 !macro NSIS_HOOK_PREINSTALL
   ${StrCase} $R0 "$INSTDIR" "L"
 
@@ -43,6 +45,7 @@
     MessageBox MB_ICONSTOP "Modus could not safely add its console command to your user PATH. The installation will stop without rewriting PATH."
     Abort
   ${EndIf}
+  !insertmacro MODUS_REGISTER_FILE_ASSOCIATIONS
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
@@ -51,4 +54,5 @@
     MessageBox MB_ICONSTOP "Modus could not safely remove its console command from your user PATH. No files were removed; retry the uninstall."
     Abort
   ${EndIf}
+  !insertmacro MODUS_UNREGISTER_FILE_ASSOCIATIONS
 !macroend

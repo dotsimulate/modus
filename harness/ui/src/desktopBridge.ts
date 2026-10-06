@@ -263,6 +263,22 @@ export async function takePendingDeepLink(): Promise<DesktopDeepLinkTarget | nul
   return invokeDesktop<DesktopDeepLinkTarget | null>("desktop_take_pending_deep_link");
 }
 
+/** Files are drained only by the main window driving a local backend. */
+export async function takePendingDesktopFiles(): Promise<string[]> {
+  return invokeDesktop<string[]>("desktop_take_pending_files");
+}
+
+export async function hasPendingDesktopFiles(): Promise<boolean> {
+  return invokeDesktop<boolean>("desktop_has_pending_files");
+}
+
+/** The event is only a wakeup; the paths stay in Rust until claimed. */
+export async function onDesktopFileOpen(handler: () => void): Promise<() => void> {
+  const events = window.__TAURI__?.event;
+  if (!events?.listen) return () => {};
+  return events.listen("modus:open-files", handler);
+}
+
 /** Subscribe to `modus://` links delivered while the app is already running. */
 export async function onDesktopDeepLink(
   handler: (target: DesktopDeepLinkTarget) => void,

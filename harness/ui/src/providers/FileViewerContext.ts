@@ -15,7 +15,7 @@ export type FileOpenRequest = {
   line?: number;
   endLine?: number;
   highlight?: boolean;
-  source?: "file-change" | "tool-read" | "markdown" | "browser" | "ui-event";
+  source?: "file-change" | "tool-read" | "markdown" | "browser" | "ui-event" | "desktop";
 };
 
 type FileViewerContextValue = {

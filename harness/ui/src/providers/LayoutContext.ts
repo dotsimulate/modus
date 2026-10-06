@@ -44,6 +44,8 @@ type LayoutContextValue = {
 
   // Whether panels should show for the current view
   panelsEnabled: boolean;
+  /** Session tab restoration has finished; external opens can now be applied. */
+  fileViewerReady: boolean;
 };
 
 export const LayoutContext = createContext<LayoutContextValue>(null!);
