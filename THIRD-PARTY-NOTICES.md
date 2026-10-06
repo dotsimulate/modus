@@ -136,7 +136,7 @@ The desktop package does not ship `node_modules`. These dependencies are inlined
 into the bundled `server.js`, `cli.js`, workers, and `ui/dist`, so their code is distributed
 verbatim.
 
-515 components, under 248 distinct license texts.
+515 components, under 246 distinct license texts.
 
 ### @antfu/install-pkg 1.1.0
 
@@ -648,17 +648,17 @@ verbatim.
 - Source: https://silvia-odwyer.github.io/photon/
 - License text: **JAV-0038** — Apache-2.0
 
-### @simple-git/args-pathspec 1.0.3
+### @simple-git/args-pathspec 1.0.4
 
 - License: `MIT`
 - Source: https://github.com/steveukx/git-js
-- License text: **JAV-0039** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0039** — MIT
 
-### @simple-git/argv-parser 1.1.1
+### @simple-git/argv-parser 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/steveukx/git-js
-- License text: **JAV-0040** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0039** — MIT
 
 ### @smithy/core 3.33.3
 
@@ -730,878 +730,878 @@ verbatim.
 
 - License: `MIT`
 - Source: https://github.com/StableLib/stablelib/tree/master/packages/base64
-- License text: **JAV-0041** — MIT
+- License text: **JAV-0040** — MIT
 
 ### @types/d3 7.4.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-array 3.2.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-array
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-axis 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-axis
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-brush 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-brush
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-chord 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-chord
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-color 3.1.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-color
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-contour 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-contour
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-delaunay 6.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-delaunay
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-dispatch 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-dispatch
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-drag 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-drag
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-dsv 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-dsv
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-ease 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-ease
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-fetch 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-fetch
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-force 3.0.10
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-force
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-format 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-format
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-geo 3.1.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-geo
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-hierarchy 3.1.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-hierarchy
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-interpolate 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-interpolate
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-path 3.1.1
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-path
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-polygon 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-polygon
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-quadtree 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-quadtree
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-random 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-random
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-scale 4.0.9
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-scale-chromatic 3.1.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-scale-chromatic
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-selection 3.0.11
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-selection
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-shape 3.1.8
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-shape
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-time 3.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-time-format 4.0.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-time-format
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-timer 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-timer
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-transition 3.0.9
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-transition
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/d3-zoom 3.0.8
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/d3-zoom
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/debug 4.1.13
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/debug
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/estree 1.0.9
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/estree-jsx 1.0.5
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/estree-jsx
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/geojson 7946.0.16
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/geojson
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/hast 3.0.5
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/hast
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/mdast 4.0.4
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/mdast
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/ms 2.1.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ms
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/node 25.3.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/react 19.2.18
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/retry 0.12.0
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped
-- License text: **JAV-0043** — MIT
+- License text: **JAV-0042** — MIT
 
 ### @types/trusted-types 2.0.7
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/unist 2.0.11
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @types/unist 3.0.3
 
 - License: `MIT`
 - Source: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/unist
-- License text: **JAV-0042** — MIT
+- License text: **JAV-0041** — MIT
 
 ### @ungap/structured-clone 1.3.3
 
 - License: `ISC`
 - Source: https://github.com/ungap/structured-clone#readme
-- License text: **JAV-0044** — ISC
+- License text: **JAV-0043** — ISC
 
 ### @upsetjs/venn.js 2.0.0
 
 - License: `MIT`
 - Source: https://github.com/upsetjs/venn.js
-- License text: **JAV-0045** — MIT
+- License text: **JAV-0044** — MIT
 
 ### @xterm/addon-clipboard 0.2.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-clipboard
-- License text: **JAV-0046** — MIT
+- License text: **JAV-0045** — MIT
 
 ### @xterm/addon-fit 0.11.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-fit
-- License text: **JAV-0047** — MIT
+- License text: **JAV-0046** — MIT
 
 ### @xterm/addon-search 0.16.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-search
-- License text: **JAV-0048** — MIT
+- License text: **JAV-0047** — MIT
 
 ### @xterm/addon-unicode11 0.9.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-unicode11
-- License text: **JAV-0047** — MIT
+- License text: **JAV-0046** — MIT
 
 ### @xterm/addon-web-links 0.12.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-web-links
-- License text: **JAV-0048** — MIT
+- License text: **JAV-0047** — MIT
 
 ### @xterm/addon-webgl 0.19.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js/tree/master/addons/addon-webgl
-- License text: **JAV-0049** — MIT
+- License text: **JAV-0048** — MIT
 
 ### @xterm/xterm 6.0.0
 
 - License: `MIT`
 - Source: https://github.com/xtermjs/xterm.js
-- License text: **JAV-0050** — MIT
+- License text: **JAV-0049** — MIT
 
 ### accepts 2.0.0
 
 - License: `MIT`
 - Source: jshttp/accepts
-- License text: **JAV-0051** — MIT
+- License text: **JAV-0050** — MIT
 
 ### agent-base 7.1.4
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/proxy-agents
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0051** — MIT
 
 ### ajv 8.18.0
 
 - License: `MIT`
 - Source: https://ajv.js.org
-- License text: **JAV-0053** — MIT
+- License text: **JAV-0052** — MIT
 
 ### ajv-formats 3.0.1
 
 - License: `MIT`
 - Source: https://github.com/ajv-validator/ajv-formats#readme
-- License text: **JAV-0054** — MIT
+- License text: **JAV-0053** — MIT
 
 ### ansi-regex 5.0.1
 
 - License: `MIT`
 - Source: chalk/ansi-regex
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### ansi-regex 6.2.2
 
 - License: `MIT`
 - Source: chalk/ansi-regex
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### ansi-styles 4.3.0
 
 - License: `MIT`
 - Source: chalk/ansi-styles
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### ansi-styles 6.2.3
 
 - License: `MIT`
 - Source: chalk/ansi-styles
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### bail 2.0.2
 
 - License: `MIT`
 - Source: wooorm/bail
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### balanced-match 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/balanced-match
-- License text: **JAV-0058** — MIT
+- License text: **JAV-0057** — MIT
 
 ### balanced-match 4.0.4
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/balanced-match
-- License text: **JAV-0059** — MIT
+- License text: **JAV-0058** — MIT
 
 ### base64-js 1.5.1
 
 - License: `MIT`
 - Source: https://github.com/beatgammit/base64-js
-- License text: **JAV-0060** — MIT
+- License text: **JAV-0059** — MIT
 
 ### bignumber.js 9.3.1
 
 - License: `MIT`
 - Source: https://github.com/MikeMcl/bignumber.js
-- License text: **JAV-0061** — MIT
+- License text: **JAV-0060** — MIT
 
 ### body-parser 2.3.0
 
 - License: `MIT`
 - Source: expressjs/body-parser
-- License text: **JAV-0062** — MIT
+- License text: **JAV-0061** — MIT
 
 ### bowser 2.14.1
 
 - License: `MIT`
 - Source: https://github.com/bowser-js/bowser
-- License text: **JAV-0063** — MIT
+- License text: **JAV-0062** — MIT
 
 ### brace-expansion 2.1.7
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/brace-expansion
-- License text: **JAV-0064** — MIT
+- License text: **JAV-0063** — MIT
 
 ### brace-expansion 5.0.12
 
 - License: `MIT`
 - Source: https://github.com/juliangruber/brace-expansion
-- License text: **JAV-0065** — MIT
+- License text: **JAV-0064** — MIT
 
 ### buffer-equal-constant-time 1.0.1
 
 - License: `BSD-3-Clause`
 - Source: git@github.com:goinstant/buffer-equal-constant-time
-- License text: **JAV-0066** — BSD-3-Clause
+- License text: **JAV-0065** — BSD-3-Clause
 
 ### bun-pty 0.4.8
 
 - License: `MIT`
 - Source: https://github.com/sursaone/bun-pty#readme
-- License text: **JAV-0067** — MIT
+- License text: **JAV-0066** — MIT
 
 ### bytes 3.1.2
 
 - License: `MIT`
 - Source: visionmedia/bytes.js
-- License text: **JAV-0068** — MIT
+- License text: **JAV-0067** — MIT
 
 ### call-bind-apply-helpers 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/ljharb/call-bind-apply-helpers#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### call-bound 1.0.4
 
 - License: `MIT`
 - Source: https://github.com/ljharb/call-bound#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### ccount 2.0.1
 
 - License: `MIT`
 - Source: wooorm/ccount
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### chalk 5.6.2
 
 - License: `MIT`
 - Source: chalk/chalk
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### character-entities 2.0.2
 
 - License: `MIT`
 - Source: wooorm/character-entities
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### character-entities-html4 2.1.0
 
 - License: `MIT`
 - Source: wooorm/character-entities-html4
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### character-entities-legacy 3.0.0
 
 - License: `MIT`
 - Source: wooorm/character-entities-legacy
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### character-reference-invalid 2.0.1
 
 - License: `MIT`
 - Source: wooorm/character-reference-invalid
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### color-convert 2.0.1
 
 - License: `MIT`
 - Source: Qix-/color-convert
-- License text: **JAV-0070** — MIT
+- License text: **JAV-0069** — MIT
 
 ### color-name 1.1.4
 
 - License: `MIT`
 - Source: https://github.com/colorjs/color-name
-- License text: **JAV-0071** — MIT
+- License text: **JAV-0070** — MIT
 
 ### comma-separated-tokens 2.0.3
 
 - License: `MIT`
 - Source: wooorm/comma-separated-tokens
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### commander 7.2.0
 
 - License: `MIT`
 - Source: https://github.com/tj/commander.js
-- License text: **JAV-0073** — MIT
+- License text: **JAV-0072** — MIT
 
 ### commander 8.3.0
 
 - License: `MIT`
 - Source: https://github.com/tj/commander.js
-- License text: **JAV-0073** — MIT
+- License text: **JAV-0072** — MIT
 
 ### content-disposition 1.0.1
 
 - License: `MIT`
 - Source: jshttp/content-disposition
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0073** — MIT
 
 ### content-type 1.0.5
 
 - License: `MIT`
 - Source: jshttp/content-type
-- License text: **JAV-0075** — MIT
+- License text: **JAV-0074** — MIT
 
 ### content-type 2.1.0
 
 - License: `MIT`
 - Source: jshttp/content-type
-- License text: **JAV-0075** — MIT
+- License text: **JAV-0074** — MIT
 
 ### cookie 0.7.2
 
 - License: `MIT`
 - Source: jshttp/cookie
-- License text: **JAV-0076** — MIT
+- License text: **JAV-0075** — MIT
 
 ### cookie-signature 1.2.2
 
 - License: `MIT`
 - Source: https://github.com/visionmedia/node-cookie-signature
-- License text: **JAV-0077** — MIT
+- License text: **JAV-0076** — MIT
 
 ### cors 2.8.6
 
 - License: `MIT`
 - Source: expressjs/cors
-- License text: **JAV-0078** — MIT
+- License text: **JAV-0077** — MIT
 
 ### cose-base 1.0.3
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/cose-base#readme
-- License text: **JAV-0079** — MIT
+- License text: **JAV-0078** — MIT
 
 ### cose-base 2.2.0
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/cose-base#readme
-- License text: **JAV-0079** — MIT
+- License text: **JAV-0078** — MIT
 
 ### crelt 1.0.7
 
 - License: `MIT`
 - Source: https://code.haverbeke.berlin/marijn/crelt
-- License text: **JAV-0080** — MIT
+- License text: **JAV-0079** — MIT
 
 ### cross-spawn 7.0.6
 
 - License: `MIT`
 - Source: https://github.com/moxystudio/node-cross-spawn
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0080** — MIT
 
 ### csstype 3.2.3
 
 - License: `MIT`
 - Source: https://github.com/frenic/csstype
-- License text: **JAV-0082** — MIT
+- License text: **JAV-0081** — MIT
 
 ### cytoscape 3.34.0
 
 - License: `MIT`
 - Source: http://js.cytoscape.org
-- License text: **JAV-0083** — MIT (LICENSE)
-- License text: **JAV-0084** — MIT (license-update.mjs)
+- License text: **JAV-0082** — MIT (LICENSE)
+- License text: **JAV-0083** — MIT (license-update.mjs)
 
 ### cytoscape-cose-bilkent 4.1.0
 
 - License: `MIT`
 - Source: https://github.com/cytoscape/cytoscape.js-cose-bilkent
-- License text: **JAV-0085** — MIT
+- License text: **JAV-0084** — MIT
 
 ### cytoscape-fcose 2.2.0
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/cytoscape.js-fcose
-- License text: **JAV-0086** — MIT
+- License text: **JAV-0085** — MIT
 
 ### d3 7.9.0
 
 - License: `ISC`
 - Source: https://d3js.org
-- License text: **JAV-0087** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-array 2.12.1
 
 - License: `BSD-3-Clause`
 - Source: https://d3js.org/d3-array/
-- License text: **JAV-0088** — BSD-3-Clause
+- License text: **JAV-0087** — BSD-3-Clause
 
 ### d3-array 3.2.4
 
 - License: `ISC`
 - Source: https://d3js.org/d3-array/
-- License text: **JAV-0087** — ISC
+- License text: **JAV-0086** — ISC
 
 ### d3-axis 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-axis/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-brush 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-brush/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-chord 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-chord/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-color 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-color/
-- License text: **JAV-0090** — ISC
+- License text: **JAV-0089** — ISC
 
 ### d3-contour 4.0.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-contour/
-- License text: **JAV-0091** — ISC
+- License text: **JAV-0090** — ISC
 
 ### d3-delaunay 6.0.4
 
 - License: `ISC`
 - Source: https://github.com/d3/d3-delaunay
-- License text: **JAV-0092** — ISC
+- License text: **JAV-0091** — ISC
 
 ### d3-dispatch 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-dispatch/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-drag 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-drag/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-dsv 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-dsv/
-- License text: **JAV-0093** — ISC
+- License text: **JAV-0092** — ISC
 
 ### d3-ease 3.0.1
 
 - License: `BSD-3-Clause`
 - Source: https://d3js.org/d3-ease/
-- License text: **JAV-0094** — BSD-3-Clause
+- License text: **JAV-0093** — BSD-3-Clause
 
 ### d3-fetch 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-fetch/
-- License text: **JAV-0095** — ISC
+- License text: **JAV-0094** — ISC
 
 ### d3-force 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-force/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-format 3.1.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-format/
-- License text: **JAV-0096** — ISC
+- License text: **JAV-0095** — ISC
 
 ### d3-geo 3.1.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-geo/
-- License text: **JAV-0097** — ISC
+- License text: **JAV-0096** — ISC
 
 ### d3-hierarchy 3.1.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-hierarchy/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-interpolate 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-interpolate/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-path 1.0.9
 
 - License: `BSD-3-Clause`
 - Source: https://d3js.org/d3-path/
-- License text: **JAV-0098** — BSD-3-Clause
+- License text: **JAV-0097** — BSD-3-Clause
 
 ### d3-path 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-path/
-- License text: **JAV-0099** — ISC
+- License text: **JAV-0098** — ISC
 
 ### d3-polygon 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-polygon/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-quadtree 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-quadtree/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-random 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-random/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-sankey 0.12.3
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/d3/d3-sankey
-- License text: **JAV-0100** — BSD-3-Clause
+- License text: **JAV-0099** — BSD-3-Clause
 
 ### d3-scale 4.0.2
 
 - License: `ISC`
 - Source: https://d3js.org/d3-scale/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-scale-chromatic 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-scale-chromatic/
-- License text: **JAV-0101** — ISC
+- License text: **JAV-0100** — ISC
 
 ### d3-selection 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-selection/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-shape 1.3.7
 
 - License: `BSD-3-Clause`
 - Source: https://d3js.org/d3-shape/
-- License text: **JAV-0102** — BSD-3-Clause
+- License text: **JAV-0101** — BSD-3-Clause
 
 ### d3-shape 3.2.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-shape/
-- License text: **JAV-0090** — ISC
+- License text: **JAV-0089** — ISC
 
 ### d3-time 3.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-time/
-- License text: **JAV-0090** — ISC
+- License text: **JAV-0089** — ISC
 
 ### d3-time-format 4.1.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-time-format/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-timer 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-timer/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-transition 3.0.1
 
 - License: `ISC`
 - Source: https://d3js.org/d3-transition/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### d3-zoom 3.0.0
 
 - License: `ISC`
 - Source: https://d3js.org/d3-zoom/
-- License text: **JAV-0089** — ISC
+- License text: **JAV-0088** — ISC
 
 ### dagre-d3-es 7.0.14
 
 - License: `MIT`
 - Source: https://github.com/tbo47/dagre-es
-- License text: **JAV-0103** — MIT
+- License text: **JAV-0102** — MIT
 
 ### data-uri-to-buffer 4.0.1
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/node-data-uri-to-buffer
-- License text: **JAV-0104** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0103** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### dayjs 1.11.21
 
 - License: `MIT`
 - Source: https://day.js.org
-- License text: **JAV-0105** — MIT
+- License text: **JAV-0104** — MIT
 
 ### debug 4.4.3
 
 - License: `MIT`
 - Source: https://github.com/debug-js/debug
-- License text: **JAV-0106** — MIT
+- License text: **JAV-0105** — MIT
 
 ### decode-named-character-reference 1.3.0
 
 - License: `MIT`
 - Source: wooorm/decode-named-character-reference
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### delaunator 5.1.0
 
 - License: `ISC`
 - Source: https://github.com/mapbox/delaunator
-- License text: **JAV-0108** — ISC
+- License text: **JAV-0107** — ISC
 
 ### depd 2.0.0
 
 - License: `MIT`
 - Source: dougwilson/nodejs-depd
-- License text: **JAV-0109** — MIT
+- License text: **JAV-0108** — MIT
 
 ### dequal 2.0.3
 
 - License: `MIT`
 - Source: lukeed/dequal
-- License text: **JAV-0110** — MIT
+- License text: **JAV-0109** — MIT
 
 ### devlop 1.1.0
 
 - License: `MIT`
 - Source: wooorm/devlop
-- License text: **JAV-0111** — MIT
+- License text: **JAV-0110** — MIT
 
 ### diff 8.0.4
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/kpdecker/jsdiff
-- License text: **JAV-0112** — BSD-3-Clause
+- License text: **JAV-0111** — BSD-3-Clause
 
 ### dompurify 3.4.16
 
@@ -1609,199 +1609,199 @@ verbatim.
 - Redistributed under: `Apache-2.0`
 - Source: https://github.com/cure53/DOMPurify
 - License text: **JAV-0004** — Apache-2.0 (LICENSE)
-- License text: **JAV-0113** — Apache-2.0 (LICENSE-MPL)
+- License text: **JAV-0112** — Apache-2.0 (LICENSE-MPL)
 
 ### dunder-proto 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/es-shims/dunder-proto#readme
-- License text: **JAV-0114** — MIT
+- License text: **JAV-0113** — MIT
 
 ### eastasianwidth 0.2.0
 
 - License: `MIT`
 - Source: https://github.com/komagata/eastasianwidth
-- License text: **JAV-0115** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0114** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### ecdsa-sig-formatter 1.0.11
 
 - License: `Apache-2.0`
 - Source: https://github.com/Brightspace/node-ecdsa-sig-formatter#readme
-- License text: **JAV-0116** — Apache-2.0
+- License text: **JAV-0115** — Apache-2.0
 
 ### ee-first 1.1.1
 
 - License: `MIT`
 - Source: jonathanong/ee-first
-- License text: **JAV-0117** — MIT
+- License text: **JAV-0116** — MIT
 
 ### emoji-regex 8.0.0
 
 - License: `MIT`
 - Source: https://mths.be/emoji-regex
-- License text: **JAV-0118** — MIT
+- License text: **JAV-0117** — MIT
 
 ### emoji-regex 9.2.2
 
 - License: `MIT`
 - Source: https://mths.be/emoji-regex
-- License text: **JAV-0118** — MIT
+- License text: **JAV-0117** — MIT
 
 ### encodeurl 2.0.0
 
 - License: `MIT`
 - Source: pillarjs/encodeurl
-- License text: **JAV-0119** — MIT
+- License text: **JAV-0118** — MIT
 
 ### entities 6.0.1
 
 - License: `BSD-2-Clause`
 - Source: https://github.com/fb55/entities
-- License text: **JAV-0120** — BSD-2-Clause
+- License text: **JAV-0119** — BSD-2-Clause
 
 ### es-define-property 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/es-define-property#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### es-errors 1.3.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/es-errors#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### es-object-atoms 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/es-object-atoms#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### es-toolkit 1.49.0
 
 - License: `MIT`
 - Source: https://es-toolkit.dev
-- License text: **JAV-0121** — MIT
+- License text: **JAV-0120** — MIT
 
 ### escape-html 1.0.3
 
 - License: `MIT`
 - Source: component/escape-html
-- License text: **JAV-0122** — MIT
+- License text: **JAV-0121** — MIT
 
 ### escape-string-regexp 5.0.0
 
 - License: `MIT`
 - Source: sindresorhus/escape-string-regexp
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### estree-util-is-identifier-name 3.0.0
 
 - License: `MIT`
 - Source: syntax-tree/estree-util-is-identifier-name
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### etag 1.8.1
 
 - License: `MIT`
 - Source: jshttp/etag
-- License text: **JAV-0124** — MIT
+- License text: **JAV-0123** — MIT
 
 ### eventsource 3.0.7
 
 - License: `MIT`
 - Source: https://github.com/EventSource/eventsource#readme
-- License text: **JAV-0125** — MIT
+- License text: **JAV-0124** — MIT
 
 ### eventsource-parser 3.0.6
 
 - License: `MIT`
 - Source: https://github.com/rexxars/eventsource-parser#readme
-- License text: **JAV-0126** — MIT
+- License text: **JAV-0125** — MIT
 
 ### express 5.2.1
 
 - License: `MIT`
 - Source: https://expressjs.com/
-- License text: **JAV-0127** — MIT
+- License text: **JAV-0126** — MIT
 
 ### express-rate-limit 8.3.0
 
 - License: `MIT`
 - Source: https://github.com/express-rate-limit/express-rate-limit
-- License text: **JAV-0128** — MIT
+- License text: **JAV-0127** — MIT
 
 ### extend 3.0.2
 
 - License: `MIT`
 - Source: https://github.com/justmoon/node-extend
-- License text: **JAV-0129** — MIT
+- License text: **JAV-0128** — MIT
 
 ### fast-deep-equal 3.1.3
 
 - License: `MIT`
 - Source: https://github.com/epoberezkin/fast-deep-equal#readme
-- License text: **JAV-0130** — MIT
+- License text: **JAV-0129** — MIT
 
 ### fast-sha256 1.3.0
 
 - License: `Unlicense`
 - Source: https://github.com/dchest/fast-sha256-js
-- License text: **JAV-0131** — Unlicense
+- License text: **JAV-0130** — Unlicense
 
 ### fast-uri 3.1.8
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/fastify/fast-uri
-- License text: **JAV-0132** — BSD-3-Clause
+- License text: **JAV-0131** — BSD-3-Clause
 
 ### fastdom 1.0.12
 
 - License: `MIT`
 - Source: https://github.com/wilsonpage/fastdom
-- License text: **JAV-0133** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0132** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### fetch-blob 3.2.0
 
 - License: `MIT`
 - Source: https://github.com/node-fetch/fetch-blob#readme
-- License text: **JAV-0134** — MIT
+- License text: **JAV-0133** — MIT
 
 ### finalhandler 2.1.1
 
 - License: `MIT`
 - Source: pillarjs/finalhandler
-- License text: **JAV-0135** — MIT
+- License text: **JAV-0134** — MIT
 
 ### foreground-child 3.3.1
 
 - License: `ISC`
 - Source: https://github.com/tapjs/foreground-child
-- License text: **JAV-0136** — ISC
+- License text: **JAV-0135** — ISC
 
 ### formdata-polyfill 4.0.10
 
 - License: `MIT`
 - Source: https://github.com/jimmywarting/FormData#readme
-- License text: **JAV-0137** — MIT
+- License text: **JAV-0136** — MIT
 
 ### forwarded 0.2.0
 
 - License: `MIT`
 - Source: jshttp/forwarded
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0073** — MIT
 
 ### fresh 2.0.0
 
 - License: `MIT`
 - Source: jshttp/fresh
-- License text: **JAV-0138** — MIT
+- License text: **JAV-0137** — MIT
 
 ### function-bind 1.1.2
 
 - License: `MIT`
 - Source: https://github.com/Raynos/function-bind
-- License text: **JAV-0139** — MIT
+- License text: **JAV-0138** — MIT
 
 ### gaxios 7.1.3
 
@@ -1825,31 +1825,31 @@ verbatim.
 
 - License: `MIT`
 - Source: sindresorhus/get-east-asian-width
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### get-intrinsic 1.3.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/get-intrinsic#readme
-- License text: **JAV-0140** — MIT
+- License text: **JAV-0139** — MIT
 
 ### get-proto 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/get-proto#readme
-- License text: **JAV-0141** — MIT
+- License text: **JAV-0140** — MIT
 
 ### glob 10.5.0
 
 - License: `ISC`
 - Source: https://github.com/isaacs/node-glob
-- License text: **JAV-0142** — ISC
+- License text: **JAV-0141** — ISC
 
 ### glob 13.0.6
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/node-glob
-- License text: **JAV-0143** — BlueOak-1.0.0
+- License text: **JAV-0142** — BlueOak-1.0.0
 
 ### google-auth-library 10.9.0
 
@@ -1867,331 +1867,331 @@ verbatim.
 
 - License: `MIT`
 - Source: https://github.com/ljharb/gopd#readme
-- License text: **JAV-0144** — MIT
+- License text: **JAV-0143** — MIT
 
 ### graceful-fs 4.2.11
 
 - License: `ISC`
 - Source: https://github.com/isaacs/node-graceful-fs
-- License text: **JAV-0145** — ISC
+- License text: **JAV-0144** — ISC
 
 ### hachure-fill 0.5.2
 
 - License: `MIT`
 - Source: https://github.com/pshihn/hachure-fill#readme
-- License text: **JAV-0146** — MIT
+- License text: **JAV-0145** — MIT
 
 ### has-symbols 1.1.0
 
 - License: `MIT`
 - Source: https://github.com/ljharb/has-symbols#readme
-- License text: **JAV-0147** — MIT
+- License text: **JAV-0146** — MIT
 
 ### hasown 2.0.2
 
 - License: `MIT`
 - Source: https://github.com/inspect-js/hasOwn#readme
-- License text: **JAV-0148** — MIT
+- License text: **JAV-0147** — MIT
 
 ### hast-util-from-parse5 8.0.3
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-from-parse5
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### hast-util-parse-selector 4.0.0
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-parse-selector
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### hast-util-raw 9.1.0
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-raw
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### hast-util-sanitize 5.0.2
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-sanitize
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### hast-util-to-jsx-runtime 2.3.6
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-to-jsx-runtime
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### hast-util-to-parse5 8.0.1
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-to-parse5
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### hast-util-whitespace 3.0.0
 
 - License: `MIT`
 - Source: syntax-tree/hast-util-whitespace
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### hastscript 9.0.1
 
 - License: `MIT`
 - Source: syntax-tree/hastscript
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### highlight.js 10.7.3
 
 - License: `BSD-3-Clause`
 - Source: https://highlightjs.org/
-- License text: **JAV-0149** — BSD-3-Clause
+- License text: **JAV-0148** — BSD-3-Clause
 
 ### highlight.js 11.12.0
 
 - License: `BSD-3-Clause`
 - Source: https://highlightjs.org/
-- License text: **JAV-0149** — BSD-3-Clause
+- License text: **JAV-0148** — BSD-3-Clause
 
 ### hono 4.13.7
 
 - License: `MIT`
 - Source: https://hono.dev
-- License text: **JAV-0150** — MIT
+- License text: **JAV-0149** — MIT
 
 ### hosted-git-info 9.0.3
 
 - License: `ISC`
 - Source: https://github.com/npm/hosted-git-info
-- License text: **JAV-0151** — ISC
+- License text: **JAV-0150** — ISC
 
 ### html-url-attributes 3.0.1
 
 - License: `MIT`
 - Source: https://github.com/rehypejs/rehype-minify/tree/main/packages/html-url-attributes
-- License text: **JAV-0152** — MIT
+- License text: **JAV-0151** — MIT
 
 ### html-void-elements 3.0.0
 
 - License: `MIT`
 - Source: wooorm/html-void-elements
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### http-errors 2.0.1
 
 - License: `MIT`
 - Source: jshttp/http-errors
-- License text: **JAV-0153** — MIT
+- License text: **JAV-0152** — MIT
 
 ### http-proxy-agent 7.0.2
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/proxy-agents
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0051** — MIT
 
 ### https-proxy-agent 7.0.6
 
 - License: `MIT`
 - Source: https://github.com/TooTallNate/proxy-agents
-- License text: **JAV-0052** — MIT
+- License text: **JAV-0051** — MIT
 
 ### iconv-lite 0.6.3
 
 - License: `MIT`
 - Source: https://github.com/ashtuchkin/iconv-lite
-- License text: **JAV-0154** — MIT
+- License text: **JAV-0153** — MIT
 
 ### iconv-lite 0.7.2
 
 - License: `MIT`
 - Source: https://github.com/pillarjs/iconv-lite
-- License text: **JAV-0154** — MIT
+- License text: **JAV-0153** — MIT
 
 ### ignore 7.0.5
 
 - License: `MIT`
 - Source: git@github.com:kaelzhang/node-ignore
-- License text: **JAV-0155** — MIT
+- License text: **JAV-0154** — MIT
 
 ### import-meta-resolve 4.2.0
 
 - License: `MIT`
 - Source: wooorm/import-meta-resolve
-- License text: **JAV-0156** — MIT
+- License text: **JAV-0155** — MIT
 
 ### inherits 2.0.4
 
 - License: `ISC`
 - Source: https://github.com/isaacs/inherits
-- License text: **JAV-0157** — ISC
+- License text: **JAV-0156** — ISC
 
 ### inline-style-parser 0.2.7
 
 - License: `MIT`
 - Source: https://github.com/remarkablemark/inline-style-parser
-- License text: **JAV-0158** — MIT
+- License text: **JAV-0157** — MIT
 
 ### internmap 1.0.1
 
 - License: `ISC`
 - Source: https://github.com/mbostock/internmap/
-- License text: **JAV-0159** — ISC
+- License text: **JAV-0158** — ISC
 
 ### internmap 2.0.3
 
 - License: `ISC`
 - Source: https://github.com/mbostock/internmap/
-- License text: **JAV-0159** — ISC
+- License text: **JAV-0158** — ISC
 
 ### ip-address 10.7.1
 
 - License: `MIT`
 - Source: https://github.com/beaugunderson/ip-address
-- License text: **JAV-0160** — MIT
+- License text: **JAV-0159** — MIT
 
 ### ipaddr.js 1.9.1
 
 - License: `MIT`
 - Source: https://github.com/whitequark/ipaddr.js
-- License text: **JAV-0161** — MIT
+- License text: **JAV-0160** — MIT
 
 ### is-alphabetical 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-alphabetical
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### is-alphanumerical 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-alphanumerical
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### is-decimal 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-decimal
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### is-fullwidth-code-point 3.0.0
 
 - License: `MIT`
 - Source: sindresorhus/is-fullwidth-code-point
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### is-hexadecimal 2.0.1
 
 - License: `MIT`
 - Source: wooorm/is-hexadecimal
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### is-plain-obj 4.1.0
 
 - License: `MIT`
 - Source: sindresorhus/is-plain-obj
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### is-promise 4.0.0
 
 - License: `MIT`
 - Source: https://github.com/then/is-promise
-- License text: **JAV-0162** — MIT
+- License text: **JAV-0161** — MIT
 
 ### isexe 2.0.0
 
 - License: `ISC`
 - Source: https://github.com/isaacs/isexe#readme
-- License text: **JAV-0163** — ISC
+- License text: **JAV-0162** — ISC
 
 ### jackspeak 3.4.3
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/jackspeak
-- License text: **JAV-0164** — BlueOak-1.0.0
+- License text: **JAV-0163** — BlueOak-1.0.0
 
 ### jiti 2.7.0
 
 - License: `MIT`
 - Source: unjs/jiti
-- License text: **JAV-0165** — MIT
+- License text: **JAV-0164** — MIT
 
 ### jose 6.2.0
 
 - License: `MIT`
 - Source: https://github.com/panva/jose
-- License text: **JAV-0166** — MIT
+- License text: **JAV-0165** — MIT
 
 ### js-base64 3.9.1
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dankogai/js-base64
-- License text: **JAV-0167** — BSD-3-Clause
+- License text: **JAV-0166** — BSD-3-Clause
 
 ### json-bigint 1.0.0
 
 - License: `MIT`
 - Source: git@github.com:sidorares/json-bigint
-- License text: **JAV-0168** — MIT
+- License text: **JAV-0167** — MIT
 
 ### json-schema-to-ts 3.1.1
 
 - License: `MIT`
 - Source: https://github.com/ThomasAribart/json-schema-to-ts#readme
-- License text: **JAV-0169** — MIT
+- License text: **JAV-0168** — MIT
 
 ### json-schema-traverse 1.0.0
 
 - License: `MIT`
 - Source: https://github.com/epoberezkin/json-schema-traverse#readme
-- License text: **JAV-0130** — MIT
+- License text: **JAV-0129** — MIT
 
 ### json-schema-typed 8.0.2
 
 - License: `BSD-2-Clause`
 - Source: https://github.com/RemyRylan/json-schema-typed/tree/main/dist/node
-- License text: **JAV-0170** — BSD-2-Clause
+- License text: **JAV-0169** — BSD-2-Clause
 
 ### jwa 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/brianloveswords/node-jwa
-- License text: **JAV-0171** — MIT
+- License text: **JAV-0170** — MIT
 
 ### jws 4.0.1
 
 - License: `MIT`
 - Source: https://github.com/brianloveswords/node-jws
-- License text: **JAV-0171** — MIT
+- License text: **JAV-0170** — MIT
 
-### katex 0.16.47
+### katex 0.18.2
 
 - License: `MIT`
 - Source: https://katex.org
-- License text: **JAV-0172** — MIT
+- License text: **JAV-0171** — MIT
 
 ### khroma 2.1.0
 
 - License: `MIT`
 - Source: github:fabiospampinato/khroma
-- License text: **JAV-0173** — MIT
+- License text: **JAV-0172** — MIT
 
 ### layout-base 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/layout-base#readme
-- License text: **JAV-0174** — MIT
+- License text: **JAV-0173** — MIT
 
 ### layout-base 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/iVis-at-Bilkent/layout-base#readme
-- License text: **JAV-0174** — MIT
+- License text: **JAV-0173** — MIT
 
 ### lodash-es 4.18.1
 
 - License: `MIT`
 - Source: https://lodash.com/custom-builds
-- License text: **JAV-0175** — MIT
+- License text: **JAV-0174** — MIT
 
 ### long 5.3.2
 
@@ -2203,1033 +2203,1033 @@ verbatim.
 
 - License: `MIT`
 - Source: wooorm/longest-streak
-- License text: **JAV-0176** — MIT
+- License text: **JAV-0175** — MIT
 
 ### lru-cache 10.4.3
 
 - License: `ISC`
 - Source: https://github.com/isaacs/node-lru-cache
-- License text: **JAV-0177** — ISC
+- License text: **JAV-0176** — ISC
 
 ### lru-cache 11.2.6
 
 - License: `BlueOak-1.0.0`
 - Source: ssh://git@github.com/isaacs/node-lru-cache
-- License text: **JAV-0178** — BlueOak-1.0.0
+- License text: **JAV-0177** — BlueOak-1.0.0
 
 ### lucide-react 0.577.0
 
 - License: `ISC`
 - Source: https://lucide.dev
-- License text: **JAV-0179** — ISC
+- License text: **JAV-0178** — ISC
 
 ### markdown-table 3.0.4
 
 - License: `MIT`
 - Source: wooorm/markdown-table
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### marked 16.4.2
 
 - License: `MIT`
 - Source: https://marked.js.org
-- License text: **JAV-0180** — MIT
+- License text: **JAV-0179** — MIT
 
 ### marked 18.0.5
 
 - License: `MIT`
 - Source: https://marked.js.org
-- License text: **JAV-0180** — MIT
+- License text: **JAV-0179** — MIT
 
 ### math-intrinsics 1.1.0
 
 - License: `MIT`
 - Source: https://github.com/es-shims/math-intrinsics#readme
-- License text: **JAV-0114** — MIT
+- License text: **JAV-0113** — MIT
 
 ### mdast-util-find-and-replace 3.0.2
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-find-and-replace
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### mdast-util-from-markdown 2.0.3
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-from-markdown
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### mdast-util-gfm 3.1.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### mdast-util-gfm-autolink-literal 2.0.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-autolink-literal
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-gfm-footnote 2.1.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-footnote
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### mdast-util-gfm-strikethrough 2.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-strikethrough
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-gfm-table 2.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-table
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-gfm-task-list-item 2.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-gfm-task-list-item
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-mdx-expression 2.0.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-mdx-expression
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-mdx-jsx 3.2.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-mdx-jsx
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-mdxjs-esm 2.0.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-mdxjs-esm
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### mdast-util-phrasing 4.1.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-phrasing
-- License text: **JAV-0181** — MIT
+- License text: **JAV-0180** — MIT
 
 ### mdast-util-to-hast 13.2.1
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-to-hast
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### mdast-util-to-markdown 2.1.2
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-to-markdown
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### mdast-util-to-string 4.0.0
 
 - License: `MIT`
 - Source: syntax-tree/mdast-util-to-string
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### media-typer 1.1.0
 
 - License: `MIT`
 - Source: jshttp/media-typer
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0073** — MIT
 
 ### merge-descriptors 2.0.0
 
 - License: `MIT`
 - Source: sindresorhus/merge-descriptors
-- License text: **JAV-0182** — MIT
+- License text: **JAV-0181** — MIT
 
 ### mermaid 11.17.0
 
 - License: `MIT`
 - Source: https://github.com/mermaid-js/mermaid
-- License text: **JAV-0183** — MIT
+- License text: **JAV-0182** — MIT
 
 ### micromark 4.0.2
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-core-commonmark 2.0.3
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-extension-gfm 3.0.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### micromark-extension-gfm-autolink-literal 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-autolink-literal
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### micromark-extension-gfm-footnote 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-footnote
-- License text: **JAV-0184** — MIT
+- License text: **JAV-0183** — MIT
 
 ### micromark-extension-gfm-strikethrough 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-strikethrough
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### micromark-extension-gfm-table 2.1.1
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-table
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-extension-gfm-tagfilter 2.0.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-tagfilter
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### micromark-extension-gfm-task-list-item 2.1.0
 
 - License: `MIT`
 - Source: micromark/micromark-extension-gfm-task-list-item
-- License text: **JAV-0123** — MIT
+- License text: **JAV-0122** — MIT
 
 ### micromark-factory-destination 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-destination
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-factory-label 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-label
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-factory-space 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-space
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-factory-title 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-title
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-factory-whitespace 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-factory-whitespace
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-character 2.1.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-character
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-chunked 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-chunked
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-classify-character 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-classify-character
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-combine-extensions 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-combine-extensions
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-decode-numeric-character-reference 2.0.2
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-numeric-character-reference
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-decode-string 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-string
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-encode 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-encode
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-html-tag-name 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-html-tag-name
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-normalize-identifier 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-normalize-identifier
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-resolve-all 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-resolve-all
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-sanitize-uri 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-subtokenize 2.1.0
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-subtokenize
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-symbol 2.0.1
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### micromark-util-types 2.0.2
 
 - License: `MIT`
 - Source: https://github.com/micromark/micromark/tree/main/packages/micromark-util-types
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### mime-db 1.54.0
 
 - License: `MIT`
 - Source: jshttp/mime-db
-- License text: **JAV-0185** — MIT
+- License text: **JAV-0184** — MIT
 
 ### mime-types 3.0.2
 
 - License: `MIT`
 - Source: jshttp/mime-types
-- License text: **JAV-0051** — MIT
+- License text: **JAV-0050** — MIT
 
 ### minimatch 10.2.4
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/minimatch
-- License text: **JAV-0164** — BlueOak-1.0.0
+- License text: **JAV-0163** — BlueOak-1.0.0
 
 ### minimatch 10.2.5
 
 - License: `BlueOak-1.0.0`
 - Source: git@github.com:isaacs/minimatch
-- License text: **JAV-0164** — BlueOak-1.0.0
+- License text: **JAV-0163** — BlueOak-1.0.0
 
 ### minimatch 9.0.9
 
 - License: `ISC`
 - Source: https://github.com/isaacs/minimatch
-- License text: **JAV-0186** — ISC
+- License text: **JAV-0185** — ISC
 
 ### minipass 7.1.3
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/minipass
-- License text: **JAV-0178** — BlueOak-1.0.0
+- License text: **JAV-0177** — BlueOak-1.0.0
 
 ### ms 2.1.3
 
 - License: `MIT`
 - Source: vercel/ms
-- License text: **JAV-0187** — MIT
+- License text: **JAV-0186** — MIT
 
 ### negotiator 1.0.0
 
 - License: `MIT`
 - Source: jshttp/negotiator
-- License text: **JAV-0188** — MIT
+- License text: **JAV-0187** — MIT
 
 ### node-domexception 1.0.0
 
 - License: `MIT`
 - Source: https://github.com/jimmywarting/node-domexception#readme
-- License text: **JAV-0189** — MIT
+- License text: **JAV-0188** — MIT
 
 ### node-fetch 3.3.2
 
 - License: `MIT`
 - Source: https://github.com/node-fetch/node-fetch
-- License text: **JAV-0190** — MIT
+- License text: **JAV-0189** — MIT
 
 ### object-assign 4.1.1
 
 - License: `MIT`
 - Source: sindresorhus/object-assign
-- License text: **JAV-0191** — MIT
+- License text: **JAV-0190** — MIT
 
 ### object-inspect 1.13.4
 
 - License: `MIT`
 - Source: https://github.com/inspect-js/object-inspect
-- License text: **JAV-0192** — MIT
+- License text: **JAV-0191** — MIT
 
 ### on-finished 2.4.1
 
 - License: `MIT`
 - Source: jshttp/on-finished
-- License text: **JAV-0193** — MIT
+- License text: **JAV-0192** — MIT
 
 ### once 1.4.0
 
 - License: `ISC`
 - Source: https://github.com/isaacs/once
-- License text: **JAV-0163** — ISC
+- License text: **JAV-0162** — ISC
 
 ### openai 6.26.0
 
 - License: `Apache-2.0`
 - Source: github:openai/openai-node
-- License text: **JAV-0194** — Apache-2.0
+- License text: **JAV-0193** — Apache-2.0
 
 ### p-retry 4.6.2
 
 - License: `MIT`
 - Source: sindresorhus/p-retry
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### package-json-from-dist 1.0.1
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/package-json-from-dist
-- License text: **JAV-0143** — BlueOak-1.0.0
+- License text: **JAV-0142** — BlueOak-1.0.0
 
 ### package-manager-detector 1.8.0
 
 - License: `MIT`
 - Source: https://github.com/antfu-collective/package-manager-detector#readme
-- License text: **JAV-0195** — MIT
+- License text: **JAV-0194** — MIT
 
 ### parse-entities 4.0.2
 
 - License: `MIT`
 - Source: wooorm/parse-entities
-- License text: **JAV-0196** — MIT
+- License text: **JAV-0195** — MIT
 
 ### parse5 7.3.0
 
 - License: `MIT`
 - Source: https://parse5.js.org
-- License text: **JAV-0197** — MIT
+- License text: **JAV-0196** — MIT
 
 ### parseurl 1.3.3
 
 - License: `MIT`
 - Source: pillarjs/parseurl
-- License text: **JAV-0198** — MIT
+- License text: **JAV-0197** — MIT
 
 ### partial-json 0.1.7
 
 - License: `MIT`
 - Source: https://promplate.dev/partial-json-parser
-- License text: **JAV-0199** — MIT
+- License text: **JAV-0198** — MIT
 
 ### path-data-parser 0.1.0
 
 - License: `MIT`
 - Source: https://github.com/pshihn/path-data-parser#readme
-- License text: **JAV-0200** — MIT
+- License text: **JAV-0199** — MIT
 
 ### path-key 3.1.1
 
 - License: `MIT`
 - Source: sindresorhus/path-key
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### path-scurry 1.11.1
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/path-scurry
-- License text: **JAV-0178** — BlueOak-1.0.0
+- License text: **JAV-0177** — BlueOak-1.0.0
 
 ### path-scurry 2.0.2
 
 - License: `BlueOak-1.0.0`
 - Source: https://github.com/isaacs/path-scurry
-- License text: **JAV-0178** — BlueOak-1.0.0
+- License text: **JAV-0177** — BlueOak-1.0.0
 
 ### path-to-regexp 8.4.0
 
 - License: `MIT`
 - Source: https://github.com/pillarjs/path-to-regexp
-- License text: **JAV-0201** — MIT
+- License text: **JAV-0200** — MIT
 
 ### pkce-challenge 5.0.1
 
 - License: `MIT`
 - Source: https://github.com/crouchcd/pkce-challenge#readme
-- License text: **JAV-0202** — MIT
+- License text: **JAV-0201** — MIT
 
 ### points-on-curve 0.2.0
 
 - License: `MIT`
 - Source: https://github.com/pshihn/bezier-points#readme
-- License text: **JAV-0200** — MIT
+- License text: **JAV-0199** — MIT
 
 ### points-on-path 0.2.1
 
 - License: `MIT`
 - Source: https://github.com/pshihn/points-on-path#readme
-- License text: **JAV-0203** — MIT
+- License text: **JAV-0202** — MIT
 
 ### proper-lockfile 4.1.2
 
 - License: `MIT`
 - Source: https://github.com/moxystudio/node-proper-lockfile
-- License text: **JAV-0081** — MIT
+- License text: **JAV-0080** — MIT
 
 ### property-information 7.2.0
 
 - License: `MIT`
 - Source: wooorm/property-information
-- License text: **JAV-0196** — MIT
+- License text: **JAV-0195** — MIT
 
 ### protobufjs 7.6.5
 
 - License: `BSD-3-Clause`
 - Source: https://protobufjs.github.io/protobuf.js/
-- License text: **JAV-0204** — BSD-3-Clause
+- License text: **JAV-0203** — BSD-3-Clause
 
-### proxy-addr 2.0.7
+### proxy-addr 2.0.8
 
 - License: `MIT`
 - Source: jshttp/proxy-addr
-- License text: **JAV-0124** — MIT
+- License text: **JAV-0123** — MIT
 
 ### qs 6.16.0
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/ljharb/qs
-- License text: **JAV-0205** — BSD-3-Clause
+- License text: **JAV-0204** — BSD-3-Clause
 
 ### range-parser 1.2.1
 
 - License: `MIT`
 - Source: jshttp/range-parser
-- License text: **JAV-0206** — MIT
+- License text: **JAV-0205** — MIT
 
 ### raw-body 3.0.2
 
 - License: `MIT`
 - Source: stream-utils/raw-body
-- License text: **JAV-0207** — MIT
+- License text: **JAV-0206** — MIT
 
 ### react 19.2.8
 
 - License: `MIT`
 - Source: https://react.dev/
-- License text: **JAV-0208** — MIT
+- License text: **JAV-0207** — MIT
 
 ### react-dom 19.2.8
 
 - License: `MIT`
 - Source: https://react.dev/
-- License text: **JAV-0208** — MIT
+- License text: **JAV-0207** — MIT
 
 ### react-markdown 10.1.0
 
 - License: `MIT`
 - Source: remarkjs/react-markdown
-- License text: **JAV-0209** — MIT
+- License text: **JAV-0208** — MIT
 
 ### rehype-raw 7.0.0
 
 - License: `MIT`
 - Source: rehypejs/rehype-raw
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### rehype-sanitize 6.0.0
 
 - License: `MIT`
 - Source: rehypejs/rehype-sanitize
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### remark-gfm 4.0.1
 
 - License: `MIT`
 - Source: remarkjs/remark-gfm
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### remark-parse 11.0.0
 
 - License: `MIT`
 - Source: https://remark.js.org
-- License text: **JAV-0210** — MIT
+- License text: **JAV-0209** — MIT
 
 ### remark-rehype 11.1.2
 
 - License: `MIT`
 - Source: remarkjs/remark-rehype
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### remark-stringify 11.0.0
 
 - License: `MIT`
 - Source: https://remark.js.org
-- License text: **JAV-0210** — MIT
+- License text: **JAV-0209** — MIT
 
 ### require-from-string 2.0.2
 
 - License: `MIT`
 - Source: floatdrop/require-from-string
-- License text: **JAV-0211** — MIT
+- License text: **JAV-0210** — MIT
 
 ### retry 0.12.0
 
 - License: `MIT`
 - Source: https://github.com/tim-kos/node-retry
-- License text: **JAV-0212** — MIT
+- License text: **JAV-0211** — MIT
 
 ### retry 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/tim-kos/node-retry
-- License text: **JAV-0212** — MIT
+- License text: **JAV-0211** — MIT
 
 ### rimraf 5.0.10
 
 - License: `ISC`
 - Source: https://github.com/isaacs/rimraf
-- License text: **JAV-0186** — ISC
+- License text: **JAV-0185** — ISC
 
 ### robust-predicates 3.0.3
 
 - License: `Unlicense`
 - Source: https://github.com/mourner/robust-predicates
-- License text: **JAV-0131** — Unlicense
+- License text: **JAV-0130** — Unlicense
 
 ### roughjs 4.6.6
 
 - License: `MIT`
 - Source: https://roughjs.com
-- License text: **JAV-0213** — MIT
+- License text: **JAV-0212** — MIT
 
 ### router 2.2.0
 
 - License: `MIT`
 - Source: pillarjs/router
-- License text: **JAV-0214** — MIT
+- License text: **JAV-0213** — MIT
 
 ### rw 1.3.3
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/mbostock/rw
-- License text: **JAV-0215** — BSD-3-Clause
+- License text: **JAV-0214** — BSD-3-Clause
 
 ### safe-buffer 5.2.1
 
 - License: `MIT`
 - Source: https://github.com/feross/safe-buffer
-- License text: **JAV-0216** — MIT
+- License text: **JAV-0215** — MIT
 
 ### safer-buffer 2.1.2
 
 - License: `MIT`
 - Source: https://github.com/ChALkeR/safer-buffer
-- License text: **JAV-0217** — MIT
+- License text: **JAV-0216** — MIT
 
 ### scheduler 0.27.0
 
 - License: `MIT`
 - Source: https://react.dev/
-- License text: **JAV-0208** — MIT
+- License text: **JAV-0207** — MIT
 
 ### send 1.2.1
 
 - License: `MIT`
 - Source: pillarjs/send
-- License text: **JAV-0218** — MIT
+- License text: **JAV-0217** — MIT
 
 ### serve-static 2.2.1
 
 - License: `MIT`
 - Source: expressjs/serve-static
-- License text: **JAV-0219** — MIT
+- License text: **JAV-0218** — MIT
 
 ### setprototypeof 1.2.0
 
 - License: `ISC`
 - Source: https://github.com/wesleytodd/setprototypeof
-- License text: **JAV-0220** — ISC
+- License text: **JAV-0219** — ISC
 
 ### shebang-command 2.0.0
 
 - License: `MIT`
 - Source: kevva/shebang-command
-- License text: **JAV-0221** — MIT
+- License text: **JAV-0220** — MIT
 
 ### shebang-regex 3.0.0
 
 - License: `MIT`
 - Source: sindresorhus/shebang-regex
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### side-channel 1.1.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel#readme
-- License text: **JAV-0222** — MIT
+- License text: **JAV-0221** — MIT
 
 ### side-channel-list 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-list#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### side-channel-map 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-map#readme
-- License text: **JAV-0069** — MIT
+- License text: **JAV-0068** — MIT
 
 ### side-channel-weakmap 1.0.2
 
 - License: `MIT`
 - Source: https://github.com/ljharb/side-channel-weakmap#readme
-- License text: **JAV-0222** — MIT
+- License text: **JAV-0221** — MIT
 
 ### signal-exit 3.0.7
 
 - License: `ISC`
 - Source: https://github.com/tapjs/signal-exit
-- License text: **JAV-0223** — ISC
+- License text: **JAV-0222** — ISC
 
 ### signal-exit 4.1.0
 
 - License: `ISC`
 - Source: https://github.com/tapjs/signal-exit
-- License text: **JAV-0224** — ISC
+- License text: **JAV-0223** — ISC
 
-### simple-git 3.36.0
+### simple-git 4.0.1
 
 - License: `MIT`
 - Source: https://github.com/steveukx/git-js
-- License text: **JAV-0225** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0039** — MIT
 
 ### space-separated-tokens 2.0.2
 
 - License: `MIT`
 - Source: wooorm/space-separated-tokens
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### standardwebhooks 1.0.0
 
 - License: `MIT`
 - Source: https://github.com/standard-webhooks/standard-webhooks/tree/main/libraries/javascript
-- License text: **JAV-0226** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0224** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### statuses 2.0.2
 
 - License: `MIT`
 - Source: jshttp/statuses
-- License text: **JAV-0227** — MIT
+- License text: **JAV-0225** — MIT
 
 ### strictdom 1.0.1
 
 - License: `MIT`
 - Source: https://github.com/wilsonpage/strictdom
-- License text: **JAV-0133** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **JAV-0132** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### string-width 4.2.3
 
 - License: `MIT`
 - Source: sindresorhus/string-width
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### string-width 5.1.2
 
 - License: `MIT`
 - Source: sindresorhus/string-width
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### stringify-entities 4.0.4
 
 - License: `MIT`
 - Source: wooorm/stringify-entities
-- License text: **JAV-0176** — MIT
+- License text: **JAV-0175** — MIT
 
 ### strip-ansi 6.0.1
 
 - License: `MIT`
 - Source: chalk/strip-ansi
-- License text: **JAV-0055** — MIT
+- License text: **JAV-0054** — MIT
 
 ### strip-ansi 7.2.0
 
 - License: `MIT`
 - Source: chalk/strip-ansi
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### style-mod 4.1.3
 
 - License: `MIT`
 - Source: https://github.com/marijnh/style-mod
-- License text: **JAV-0228** — MIT
+- License text: **JAV-0226** — MIT
 
 ### style-to-js 1.1.21
 
 - License: `MIT`
 - Source: https://github.com/remarkablemark/style-to-js
-- License text: **JAV-0229** — MIT
+- License text: **JAV-0227** — MIT
 
 ### style-to-object 1.0.14
 
 - License: `MIT`
 - Source: https://github.com/remarkablemark/style-to-object
-- License text: **JAV-0230** — MIT
+- License text: **JAV-0228** — MIT
 
 ### stylis 4.4.0
 
 - License: `MIT`
 - Source: https://github.com/thysultan/stylis.js
-- License text: **JAV-0231** — MIT
+- License text: **JAV-0229** — MIT
 
 ### tinyexec 1.2.4
 
 - License: `MIT`
 - Source: https://github.com/tinylibs/tinyexec#readme
-- License text: **JAV-0232** — MIT
+- License text: **JAV-0230** — MIT
 
 ### toidentifier 1.0.1
 
 - License: `MIT`
 - Source: component/toidentifier
-- License text: **JAV-0233** — MIT
+- License text: **JAV-0231** — MIT
 
 ### trim-lines 3.0.1
 
 - License: `MIT`
 - Source: wooorm/trim-lines
-- License text: **JAV-0176** — MIT
+- License text: **JAV-0175** — MIT
 
 ### trough 2.2.0
 
 - License: `MIT`
 - Source: wooorm/trough
-- License text: **JAV-0234** — MIT
+- License text: **JAV-0232** — MIT
 
 ### ts-algebra 2.0.0
 
 - License: `MIT`
 - Source: https://github.com/ThomasAribart/ts-algebra#readme
-- License text: **JAV-0169** — MIT
+- License text: **JAV-0168** — MIT
 
 ### ts-dedent 2.3.0
 
 - License: `MIT`
 - Source: https://github.com/tamino-martinius/node-ts-dedent
-- License text: **JAV-0235** — MIT
+- License text: **JAV-0233** — MIT
 
 ### tslib 2.8.1
 
 - License: `0BSD`
 - Source: https://www.typescriptlang.org/
-- License text: **JAV-0236** — 0BSD
+- License text: **JAV-0234** — 0BSD
 
 ### type-is 2.0.1
 
 - License: `MIT`
 - Source: jshttp/type-is
-- License text: **JAV-0062** — MIT
+- License text: **JAV-0061** — MIT
 
 ### type-is 2.1.0
 
 - License: `MIT`
 - Source: jshttp/type-is
-- License text: **JAV-0062** — MIT
+- License text: **JAV-0061** — MIT
 
 ### typebox 1.1.38
 
 - License: `MIT`
 - Source: https://github.com/sinclairzx81/typebox
-- License text: **JAV-0237** — MIT
+- License text: **JAV-0235** — MIT
 
 ### undici 7.29.1
 
 - License: `MIT`
 - Source: https://undici.nodejs.org
-- License text: **JAV-0238** — MIT
+- License text: **JAV-0236** — MIT
 
 ### undici-types 7.18.2
 
 - License: `MIT`
 - Source: https://undici.nodejs.org
-- License text: **JAV-0238** — MIT
+- License text: **JAV-0236** — MIT
 
 ### unified 11.0.5
 
 - License: `MIT`
 - Source: https://unifiedjs.com
-- License text: **JAV-0239** — MIT
+- License text: **JAV-0237** — MIT
 
 ### unist-util-is 6.0.1
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-is
-- License text: **JAV-0240** — MIT
+- License text: **JAV-0238** — MIT
 
 ### unist-util-position 5.0.0
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-position
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### unist-util-stringify-position 4.0.0
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-stringify-position
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### unist-util-visit 5.1.0
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-visit
-- License text: **JAV-0057** — MIT
+- License text: **JAV-0056** — MIT
 
 ### unist-util-visit-parents 6.0.2
 
 - License: `MIT`
 - Source: syntax-tree/unist-util-visit-parents
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### unpipe 1.0.0
 
 - License: `MIT`
 - Source: stream-utils/unpipe
-- License text: **JAV-0241** — MIT
+- License text: **JAV-0239** — MIT
 
 ### uuid 11.1.1
 
 - License: `MIT`
 - Source: https://github.com/uuidjs/uuid
-- License text: **JAV-0242** — MIT
+- License text: **JAV-0240** — MIT
 
 ### vary 1.1.2
 
 - License: `MIT`
 - Source: jshttp/vary
-- License text: **JAV-0074** — MIT
+- License text: **JAV-0073** — MIT
 
 ### vfile 6.0.3
 
 - License: `MIT`
 - Source: vfile/vfile
-- License text: **JAV-0239** — MIT
+- License text: **JAV-0237** — MIT
 
 ### vfile-location 5.0.3
 
 - License: `MIT`
 - Source: vfile/vfile-location
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### vfile-message 4.0.3
 
 - License: `MIT`
 - Source: vfile/vfile-message
-- License text: **JAV-0107** — MIT
+- License text: **JAV-0106** — MIT
 
 ### w3c-keyname 2.2.8
 
 - License: `MIT`
 - Source: https://github.com/marijnh/w3c-keyname#readme
-- License text: **JAV-0243** — MIT
+- License text: **JAV-0241** — MIT
 
 ### web-namespaces 2.0.1
 
 - License: `MIT`
 - Source: wooorm/web-namespaces
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ### web-streams-polyfill 3.3.3
 
 - License: `MIT`
 - Source: https://github.com/MattiasBuelens/web-streams-polyfill#readme
-- License text: **JAV-0244** — MIT
+- License text: **JAV-0242** — MIT
 
 ### which 2.0.2
 
 - License: `ISC`
 - Source: https://github.com/isaacs/node-which
-- License text: **JAV-0163** — ISC
+- License text: **JAV-0162** — ISC
 
 ### wrap-ansi 7.0.0
 
 - License: `MIT`
 - Source: chalk/wrap-ansi
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### wrap-ansi 8.1.0
 
 - License: `MIT`
 - Source: chalk/wrap-ansi
-- License text: **JAV-0056** — MIT
+- License text: **JAV-0055** — MIT
 
 ### wrappy 1.0.2
 
 - License: `ISC`
 - Source: https://github.com/npm/wrappy
-- License text: **JAV-0163** — ISC
+- License text: **JAV-0162** — ISC
 
 ### ws 8.21.3
 
 - License: `MIT`
 - Source: https://github.com/websockets/ws
-- License text: **JAV-0245** — MIT
+- License text: **JAV-0243** — MIT
 
 ### yaml 2.9.0
 
 - License: `ISC`
 - Source: https://eemeli.org/yaml/
-- License text: **JAV-0246** — ISC
+- License text: **JAV-0244** — ISC
 
 ### zod 4.4.3
 
 - License: `MIT`
 - Source: https://zod.dev
-- License text: **JAV-0247** — MIT
+- License text: **JAV-0245** — MIT
 
 ### zod-to-json-schema 3.25.1
 
 - License: `ISC`
 - Source: https://github.com/StefanTerdell/zod-to-json-schema
-- License text: **JAV-0248** — ISC
+- License text: **JAV-0246** — ISC
 
 ### zwitch 2.0.4
 
 - License: `MIT`
 - Source: wooorm/zwitch
-- License text: **JAV-0072** — MIT
+- License text: **JAV-0071** — MIT
 
 ## JavaScript components — license texts
 
@@ -7337,61 +7337,34 @@ Applies to 1 component: @silvia-odwyer/photon-node 0.3.4.
    limitations under the License.
 ```
 
-### JAV-0039 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0039 — MIT
 
-Applies to 1 component: @simple-git/args-pathspec 1.0.3.
-
-```text
-Copyright (c) the @simple-git/args-pathspec authors
-
-MIT License
-
-Copyright (c) <year> <copyright holders>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0040 — MIT — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: @simple-git/argv-parser 1.1.1.
+Applies to 3 components: @simple-git/args-pathspec 1.0.4, @simple-git/argv-parser 2.0.1, simple-git 4.0.1.
 
 ```text
-Copyright (c) the @simple-git/argv-parser authors
+The MIT License (MIT)
 
-MIT License
+Copyright (c) 2025 Steve King
 
-Copyright (c) <year> <copyright holders>
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0041 — MIT
+### JAV-0040 — MIT
 
 Applies to 1 component: @stablelib/base64 1.0.1.
 
@@ -7419,7 +7392,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0042 — MIT
+### JAV-0041 — MIT
 
 Applies to 43 components: @types/d3 7.4.3, @types/d3-array 3.2.2, @types/d3-axis 3.0.6, @types/d3-brush 3.0.6, @types/d3-chord 3.0.6, @types/d3-color 3.1.3, @types/d3-contour 3.0.6, @types/d3-delaunay 6.0.4, @types/d3-dispatch 3.0.7, @types/d3-drag 3.0.7, @types/d3-dsv 3.0.7, @types/d3-ease 3.0.2, @types/d3-fetch 3.0.7, @types/d3-force 3.0.10, @types/d3-format 3.0.4, @types/d3-geo 3.1.0, @types/d3-hierarchy 3.1.7, @types/d3-interpolate 3.0.4, @types/d3-path 3.1.1, @types/d3-polygon 3.0.2, @types/d3-quadtree 3.0.6, @types/d3-random 3.0.4, @types/d3-scale 4.0.9, @types/d3-scale-chromatic 3.1.0, @types/d3-selection 3.0.11, @types/d3-shape 3.1.8, @types/d3-time 3.0.4, @types/d3-time-format 4.0.3, @types/d3-timer 3.0.2, @types/d3-transition 3.0.9, @types/d3-zoom 3.0.8, @types/debug 4.1.13, @types/estree 1.0.9, @types/estree-jsx 1.0.5, @types/geojson 7946.0.16, @types/hast 3.0.5, @types/mdast 4.0.4, @types/ms 2.1.0, @types/node 25.3.3, @types/react 19.2.18, @types/trusted-types 2.0.7, @types/unist 2.0.11, @types/unist 3.0.3.
 
@@ -7447,7 +7420,7 @@ Applies to 43 components: @types/d3 7.4.3, @types/d3-array 3.2.2, @types/d3-axis
     SOFTWARE
 ```
 
-### JAV-0043 — MIT
+### JAV-0042 — MIT
 
 Applies to 1 component: @types/retry 0.12.0.
 
@@ -7475,7 +7448,7 @@ Applies to 1 component: @types/retry 0.12.0.
     SOFTWARE
 ```
 
-### JAV-0044 — ISC
+### JAV-0043 — ISC
 
 Applies to 1 component: @ungap/structured-clone 1.3.3.
 
@@ -7497,7 +7470,7 @@ OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0045 — MIT
+### JAV-0044 — MIT
 
 Applies to 1 component: @upsetjs/venn.js 2.0.0.
 
@@ -7526,7 +7499,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0046 — MIT
+### JAV-0045 — MIT
 
 Applies to 1 component: @xterm/addon-clipboard 0.2.0.
 
@@ -7552,7 +7525,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0047 — MIT
+### JAV-0046 — MIT
 
 Applies to 2 components: @xterm/addon-fit 0.11.0, @xterm/addon-unicode11 0.9.0.
 
@@ -7578,7 +7551,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0048 — MIT
+### JAV-0047 — MIT
 
 Applies to 2 components: @xterm/addon-search 0.16.0, @xterm/addon-web-links 0.12.0.
 
@@ -7604,7 +7577,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0049 — MIT
+### JAV-0048 — MIT
 
 Applies to 1 component: @xterm/addon-webgl 0.19.0.
 
@@ -7630,7 +7603,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0050 — MIT
+### JAV-0049 — MIT
 
 Applies to 1 component: @xterm/xterm 6.0.0.
 
@@ -7658,7 +7631,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0051 — MIT
+### JAV-0050 — MIT
 
 Applies to 2 components: accepts 2.0.0, mime-types 3.0.2.
 
@@ -7688,7 +7661,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0052 — MIT
+### JAV-0051 — MIT
 
 Applies to 3 components: agent-base 7.1.4, http-proxy-agent 7.0.2, https-proxy-agent 7.0.6.
 
@@ -7717,7 +7690,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0053 — MIT
+### JAV-0052 — MIT
 
 Applies to 1 component: ajv 8.18.0.
 
@@ -7745,7 +7718,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0054 — MIT
+### JAV-0053 — MIT
 
 Applies to 1 component: ajv-formats 3.0.1.
 
@@ -7773,7 +7746,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0055 — MIT
+### JAV-0054 — MIT
 
 Applies to 8 components: ansi-regex 5.0.1, ansi-styles 4.3.0, is-fullwidth-code-point 3.0.0, p-retry 4.6.2, path-key 3.1.1, shebang-regex 3.0.0, string-width 4.2.3, strip-ansi 6.0.1.
 
@@ -7789,7 +7762,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0056 — MIT
+### JAV-0055 — MIT
 
 Applies to 10 components: ansi-regex 6.2.2, ansi-styles 6.2.3, chalk 5.6.2, escape-string-regexp 5.0.0, get-east-asian-width 1.6.0, is-plain-obj 4.1.0, string-width 5.1.2, strip-ansi 7.2.0, wrap-ansi 7.0.0, wrap-ansi 8.1.0.
 
@@ -7805,7 +7778,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0057 — MIT
+### JAV-0056 — MIT
 
 Applies to 9 components: bail 2.0.2, ccount 2.0.1, character-entities 2.0.2, character-entities-html4 2.1.0, character-entities-legacy 3.0.0, character-reference-invalid 2.0.1, mdast-util-to-string 4.0.0, unist-util-position 5.0.0, unist-util-visit 5.1.0.
 
@@ -7834,7 +7807,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0058 — MIT
+### JAV-0057 — MIT
 
 Applies to 1 component: balanced-match 1.0.2.
 
@@ -7862,7 +7835,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0059 — MIT
+### JAV-0058 — MIT
 
 Applies to 1 component: balanced-match 4.0.4.
 
@@ -7892,7 +7865,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0060 — MIT
+### JAV-0059 — MIT
 
 Applies to 1 component: base64-js 1.5.1.
 
@@ -7920,7 +7893,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0061 — MIT
+### JAV-0060 — MIT
 
 Applies to 1 component: bignumber.js 9.3.1.
 
@@ -7952,7 +7925,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0062 — MIT
+### JAV-0061 — MIT
 
 Applies to 3 components: body-parser 2.3.0, type-is 2.0.1, type-is 2.1.0.
 
@@ -7982,7 +7955,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0063 — MIT
+### JAV-0062 — MIT
 
 Applies to 1 component: bowser 2.14.1.
 
@@ -8028,7 +8001,7 @@ programs and associated documentation files created by the
 Original Author, when distributed with the Software.
 ```
 
-### JAV-0064 — MIT
+### JAV-0063 — MIT
 
 Applies to 1 component: brace-expansion 2.1.7.
 
@@ -8056,7 +8029,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0065 — MIT
+### JAV-0064 — MIT
 
 Applies to 1 component: brace-expansion 5.0.12.
 
@@ -8086,7 +8059,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0066 — BSD-3-Clause
+### JAV-0065 — BSD-3-Clause
 
 Applies to 1 component: buffer-equal-constant-time 1.0.1.
 
@@ -8105,7 +8078,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0067 — MIT
+### JAV-0066 — MIT
 
 Applies to 1 component: bun-pty 0.4.8.
 
@@ -8133,7 +8106,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0068 — MIT
+### JAV-0067 — MIT
 
 Applies to 1 component: bytes 3.1.2.
 
@@ -8163,7 +8136,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0069 — MIT
+### JAV-0068 — MIT
 
 Applies to 7 components: call-bind-apply-helpers 1.0.2, call-bound 1.0.4, es-define-property 1.0.1, es-errors 1.3.0, es-object-atoms 1.1.1, side-channel-list 1.0.1, side-channel-map 1.0.1.
 
@@ -8191,7 +8164,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0070 — MIT
+### JAV-0069 — MIT
 
 Applies to 1 component: color-convert 2.0.1.
 
@@ -8218,7 +8191,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0071 — MIT
+### JAV-0070 — MIT
 
 Applies to 1 component: color-name 1.1.4.
 
@@ -8233,7 +8206,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0072 — MIT
+### JAV-0071 — MIT
 
 Applies to 17 components: comma-separated-tokens 2.0.3, hast-util-parse-selector 4.0.0, hast-util-whitespace 3.0.0, html-void-elements 3.0.0, is-alphabetical 2.0.1, is-alphanumerical 2.0.1, is-decimal 2.0.1, is-hexadecimal 2.0.1, mdast-util-to-hast 13.2.1, rehype-raw 7.0.0, rehype-sanitize 6.0.0, space-separated-tokens 2.0.2, unist-util-stringify-position 4.0.0, unist-util-visit-parents 6.0.2, vfile-location 5.0.3, web-namespaces 2.0.1, zwitch 2.0.4.
 
@@ -8262,7 +8235,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0073 — MIT
+### JAV-0072 — MIT
 
 Applies to 2 components: commander 7.2.0, commander 8.3.0.
 
@@ -8291,7 +8264,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0074 — MIT
+### JAV-0073 — MIT
 
 Applies to 4 components: content-disposition 1.0.1, forwarded 0.2.0, media-typer 1.1.0, vary 1.1.2.
 
@@ -8320,7 +8293,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0075 — MIT
+### JAV-0074 — MIT
 
 Applies to 2 components: content-type 1.0.5, content-type 2.1.0.
 
@@ -8349,7 +8322,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0076 — MIT
+### JAV-0075 — MIT
 
 Applies to 1 component: cookie 0.7.2.
 
@@ -8379,7 +8352,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0077 — MIT
+### JAV-0076 — MIT
 
 Applies to 1 component: cookie-signature 1.2.2.
 
@@ -8408,7 +8381,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0078 — MIT
+### JAV-0077 — MIT
 
 Applies to 1 component: cors 2.8.6.
 
@@ -8437,7 +8410,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0079 — MIT
+### JAV-0078 — MIT
 
 Applies to 2 components: cose-base 1.0.3, cose-base 2.2.0.
 
@@ -8465,7 +8438,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0080 — MIT
+### JAV-0079 — MIT
 
 Applies to 1 component: crelt 1.0.7.
 
@@ -8491,7 +8464,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0081 — MIT
+### JAV-0080 — MIT
 
 Applies to 2 components: cross-spawn 7.0.6, proper-lockfile 4.1.2.
 
@@ -8519,7 +8492,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0082 — MIT
+### JAV-0081 — MIT
 
 Applies to 1 component: csstype 3.2.3.
 
@@ -8545,7 +8518,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0083 — MIT (LICENSE)
+### JAV-0082 — MIT (LICENSE)
 
 Applies to 1 component: cytoscape 3.34.0.
 
@@ -8571,7 +8544,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0084 — MIT (license-update.mjs)
+### JAV-0083 — MIT (license-update.mjs)
 
 Applies to 1 component: cytoscape 3.34.0.
 
@@ -8610,7 +8583,7 @@ SOFTWARE.`;
 fs.writeFileSync(path.join(__dirname, 'LICENSE'), license);
 ```
 
-### JAV-0085 — MIT
+### JAV-0084 — MIT
 
 Applies to 1 component: cytoscape-cose-bilkent 4.1.0.
 
@@ -8638,7 +8611,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0086 — MIT
+### JAV-0085 — MIT
 
 Applies to 1 component: cytoscape-fcose 2.2.0.
 
@@ -8664,7 +8637,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0087 — ISC
+### JAV-0086 — ISC
 
 Applies to 2 components: d3 7.9.0, d3-array 3.2.4.
 
@@ -8684,7 +8657,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0088 — BSD-3-Clause
+### JAV-0087 — BSD-3-Clause
 
 Applies to 1 component: d3-array 2.12.1.
 
@@ -8718,7 +8691,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0089 — ISC
+### JAV-0088 — ISC
 
 Applies to 17 components: d3-axis 3.0.0, d3-brush 3.0.0, d3-chord 3.0.1, d3-dispatch 3.0.1, d3-drag 3.0.0, d3-force 3.0.0, d3-hierarchy 3.1.2, d3-interpolate 3.0.1, d3-polygon 3.0.1, d3-quadtree 3.0.1, d3-random 3.0.1, d3-scale 4.0.2, d3-selection 3.0.0, d3-time-format 4.1.0, d3-timer 3.0.1, d3-transition 3.0.1, d3-zoom 3.0.0.
 
@@ -8738,7 +8711,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0090 — ISC
+### JAV-0089 — ISC
 
 Applies to 3 components: d3-color 3.1.0, d3-shape 3.2.0, d3-time 3.1.0.
 
@@ -8758,7 +8731,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0091 — ISC
+### JAV-0090 — ISC
 
 Applies to 1 component: d3-contour 4.0.2.
 
@@ -8778,7 +8751,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0092 — ISC
+### JAV-0091 — ISC
 
 Applies to 1 component: d3-delaunay 6.0.4.
 
@@ -8799,7 +8772,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0093 — ISC
+### JAV-0092 — ISC
 
 Applies to 1 component: d3-dsv 3.0.1.
 
@@ -8819,7 +8792,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0094 — BSD-3-Clause
+### JAV-0093 — BSD-3-Clause
 
 Applies to 1 component: d3-ease 3.0.1.
 
@@ -8854,7 +8827,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0095 — ISC
+### JAV-0094 — ISC
 
 Applies to 1 component: d3-fetch 3.0.1.
 
@@ -8874,7 +8847,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0096 — ISC
+### JAV-0095 — ISC
 
 Applies to 1 component: d3-format 3.1.2.
 
@@ -8894,7 +8867,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0097 — ISC
+### JAV-0096 — ISC
 
 Applies to 1 component: d3-geo 3.1.1.
 
@@ -8935,7 +8908,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0098 — BSD-3-Clause
+### JAV-0097 — BSD-3-Clause
 
 Applies to 1 component: d3-path 1.0.9.
 
@@ -8969,7 +8942,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0099 — ISC
+### JAV-0098 — ISC
 
 Applies to 1 component: d3-path 3.1.0.
 
@@ -8989,7 +8962,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0100 — BSD-3-Clause
+### JAV-0099 — BSD-3-Clause
 
 Applies to 1 component: d3-sankey 0.12.3.
 
@@ -9023,7 +8996,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0101 — ISC
+### JAV-0100 — ISC
 
 Applies to 1 component: d3-scale-chromatic 3.1.0.
 
@@ -9058,7 +9031,7 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 ```
 
-### JAV-0102 — BSD-3-Clause
+### JAV-0101 — BSD-3-Clause
 
 Applies to 1 component: d3-shape 1.3.7.
 
@@ -9092,7 +9065,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0103 — MIT
+### JAV-0102 — MIT
 
 Applies to 1 component: dagre-d3-es 7.0.14.
 
@@ -9122,7 +9095,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0104 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0103 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: data-uri-to-buffer 4.0.1.
 
@@ -9149,7 +9122,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0105 — MIT
+### JAV-0104 — MIT
 
 Applies to 1 component: dayjs 1.11.21.
 
@@ -9177,7 +9150,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0106 — MIT
+### JAV-0105 — MIT
 
 Applies to 1 component: debug 4.4.3.
 
@@ -9203,7 +9176,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0107 — MIT
+### JAV-0106 — MIT
 
 Applies to 38 components: decode-named-character-reference 1.3.0, hast-util-from-parse5 8.0.3, hast-util-raw 9.1.0, hast-util-sanitize 5.0.2, hast-util-to-jsx-runtime 2.3.6, hast-util-to-parse5 8.0.1, hastscript 9.0.1, markdown-table 3.0.4, mdast-util-find-and-replace 3.0.2, mdast-util-from-markdown 2.0.3, mdast-util-gfm 3.1.0, mdast-util-gfm-footnote 2.1.0, mdast-util-to-markdown 2.1.2, micromark 4.0.2, micromark-core-commonmark 2.0.3, micromark-extension-gfm-table 2.1.1, micromark-factory-destination 2.0.1, micromark-factory-label 2.0.1, micromark-factory-space 2.0.1, micromark-factory-title 2.0.1, micromark-factory-whitespace 2.0.1, micromark-util-character 2.1.1, micromark-util-chunked 2.0.1, micromark-util-classify-character 2.0.1, micromark-util-combine-extensions 2.0.1, micromark-util-decode-numeric-character-reference 2.0.2, micromark-util-decode-string 2.0.1, micromark-util-encode 2.0.1, micromark-util-html-tag-name 2.0.1, micromark-util-normalize-identifier 2.0.1, micromark-util-resolve-all 2.0.1, micromark-util-sanitize-uri 2.0.1, micromark-util-subtokenize 2.1.0, micromark-util-symbol 2.0.1, micromark-util-types 2.0.2, remark-gfm 4.0.1, remark-rehype 11.1.2, vfile-message 4.0.3.
 
@@ -9232,7 +9205,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0108 — ISC
+### JAV-0107 — ISC
 
 Applies to 1 component: delaunator 5.1.0.
 
@@ -9254,7 +9227,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0109 — MIT
+### JAV-0108 — MIT
 
 Applies to 1 component: depd 2.0.0.
 
@@ -9283,7 +9256,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0110 — MIT
+### JAV-0109 — MIT
 
 Applies to 1 component: dequal 2.0.3.
 
@@ -9311,7 +9284,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0111 — MIT
+### JAV-0110 — MIT
 
 Applies to 1 component: devlop 1.1.0.
 
@@ -9340,7 +9313,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0112 — BSD-3-Clause
+### JAV-0111 — BSD-3-Clause
 
 Applies to 1 component: diff 8.0.4.
 
@@ -9376,7 +9349,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0113 — Apache-2.0 (LICENSE-MPL)
+### JAV-0112 — Apache-2.0 (LICENSE-MPL)
 
 Applies to 1 component: dompurify 3.4.16.
 
@@ -9756,7 +9729,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### JAV-0114 — MIT
+### JAV-0113 — MIT
 
 Applies to 2 components: dunder-proto 1.0.1, math-intrinsics 1.1.0.
 
@@ -9784,7 +9757,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0115 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0114 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: eastasianwidth 0.2.0.
 
@@ -9811,7 +9784,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0116 — Apache-2.0
+### JAV-0115 — Apache-2.0
 
 Applies to 1 component: ecdsa-sig-formatter 1.0.11.
 
@@ -10019,7 +9992,7 @@ Apache License
    limitations under the License.
 ```
 
-### JAV-0117 — MIT
+### JAV-0116 — MIT
 
 Applies to 1 component: ee-first 1.1.1.
 
@@ -10048,7 +10021,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0118 — MIT
+### JAV-0117 — MIT
 
 Applies to 2 components: emoji-regex 8.0.0, emoji-regex 9.2.2.
 
@@ -10075,7 +10048,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0119 — MIT
+### JAV-0118 — MIT
 
 Applies to 1 component: encodeurl 2.0.0.
 
@@ -10104,7 +10077,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0120 — BSD-2-Clause
+### JAV-0119 — BSD-2-Clause
 
 Applies to 1 component: entities 6.0.1.
 
@@ -10122,7 +10095,7 @@ THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRE
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0121 — MIT
+### JAV-0120 — MIT
 
 Applies to 1 component: es-toolkit 1.49.0.
 
@@ -10150,7 +10123,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0122 — MIT
+### JAV-0121 — MIT
 
 Applies to 1 component: escape-html 1.0.3.
 
@@ -10181,7 +10154,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0123 — MIT
+### JAV-0122 — MIT
 
 Applies to 13 components: estree-util-is-identifier-name 3.0.0, mdast-util-gfm-autolink-literal 2.0.1, mdast-util-gfm-strikethrough 2.0.0, mdast-util-gfm-table 2.0.0, mdast-util-gfm-task-list-item 2.0.0, mdast-util-mdx-expression 2.0.1, mdast-util-mdx-jsx 3.2.0, mdast-util-mdxjs-esm 2.0.1, micromark-extension-gfm 3.0.0, micromark-extension-gfm-autolink-literal 2.1.0, micromark-extension-gfm-strikethrough 2.1.0, micromark-extension-gfm-tagfilter 2.0.0, micromark-extension-gfm-task-list-item 2.1.0.
 
@@ -10210,9 +10183,9 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0124 — MIT
+### JAV-0123 — MIT
 
-Applies to 2 components: etag 1.8.1, proxy-addr 2.0.7.
+Applies to 2 components: etag 1.8.1, proxy-addr 2.0.8.
 
 ```text
 (The MIT License)
@@ -10239,7 +10212,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0125 — MIT
+### JAV-0124 — MIT
 
 Applies to 1 component: eventsource 3.0.7.
 
@@ -10268,7 +10241,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0126 — MIT
+### JAV-0125 — MIT
 
 Applies to 1 component: eventsource-parser 3.0.6.
 
@@ -10296,7 +10269,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0127 — MIT
+### JAV-0126 — MIT
 
 Applies to 1 component: express 5.2.1.
 
@@ -10327,7 +10300,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0128 — MIT
+### JAV-0127 — MIT
 
 Applies to 1 component: express-rate-limit 8.3.0.
 
@@ -10354,7 +10327,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0129 — MIT
+### JAV-0128 — MIT
 
 Applies to 1 component: extend 3.0.2.
 
@@ -10383,7 +10356,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0130 — MIT
+### JAV-0129 — MIT
 
 Applies to 2 components: fast-deep-equal 3.1.3, json-schema-traverse 1.0.0.
 
@@ -10411,7 +10384,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0131 — Unlicense
+### JAV-0130 — Unlicense
 
 Applies to 2 components: fast-sha256 1.3.0, robust-predicates 3.0.3.
 
@@ -10442,7 +10415,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org>
 ```
 
-### JAV-0132 — BSD-3-Clause
+### JAV-0131 — BSD-3-Clause
 
 Applies to 1 component: fast-uri 3.1.8.
 
@@ -10479,7 +10452,7 @@ The complete list of contributors can be found at:
 - https://github.com/garycourt/uri-js/graphs/contributors
 ```
 
-### JAV-0133 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0132 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 2 components: fastdom 1.0.12, strictdom 1.0.1.
 
@@ -10506,7 +10479,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0134 — MIT
+### JAV-0133 — MIT
 
 Applies to 1 component: fetch-blob 3.2.0.
 
@@ -10534,7 +10507,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0135 — MIT
+### JAV-0134 — MIT
 
 Applies to 1 component: finalhandler 2.1.1.
 
@@ -10563,7 +10536,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0136 — ISC
+### JAV-0135 — ISC
 
 Applies to 1 component: foreground-child 3.3.1.
 
@@ -10585,7 +10558,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0137 — MIT
+### JAV-0136 — MIT
 
 Applies to 1 component: formdata-polyfill 4.0.10.
 
@@ -10613,7 +10586,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0138 — MIT
+### JAV-0137 — MIT
 
 Applies to 1 component: fresh 2.0.0.
 
@@ -10643,7 +10616,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0139 — MIT
+### JAV-0138 — MIT
 
 Applies to 1 component: function-bind 1.1.2.
 
@@ -10669,7 +10642,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0140 — MIT
+### JAV-0139 — MIT
 
 Applies to 1 component: get-intrinsic 1.3.0.
 
@@ -10697,7 +10670,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0141 — MIT
+### JAV-0140 — MIT
 
 Applies to 1 component: get-proto 1.0.1.
 
@@ -10725,7 +10698,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0142 — ISC
+### JAV-0141 — ISC
 
 Applies to 1 component: glob 10.5.0.
 
@@ -10747,7 +10720,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0143 — BlueOak-1.0.0
+### JAV-0142 — BlueOak-1.0.0
 
 Applies to 2 components: glob 13.0.6, package-json-from-dist 1.0.1.
 
@@ -10817,7 +10790,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### JAV-0144 — MIT
+### JAV-0143 — MIT
 
 Applies to 1 component: gopd 1.2.0.
 
@@ -10845,7 +10818,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0145 — ISC
+### JAV-0144 — ISC
 
 Applies to 1 component: graceful-fs 4.2.11.
 
@@ -10867,7 +10840,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0146 — MIT
+### JAV-0145 — MIT
 
 Applies to 1 component: hachure-fill 0.5.2.
 
@@ -10895,7 +10868,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0147 — MIT
+### JAV-0146 — MIT
 
 Applies to 1 component: has-symbols 1.1.0.
 
@@ -10923,7 +10896,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0148 — MIT
+### JAV-0147 — MIT
 
 Applies to 1 component: hasown 2.0.2.
 
@@ -10951,7 +10924,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0149 — BSD-3-Clause
+### JAV-0148 — BSD-3-Clause
 
 Applies to 2 components: highlight.js 10.7.3, highlight.js 11.12.0.
 
@@ -10987,7 +10960,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0150 — MIT
+### JAV-0149 — MIT
 
 Applies to 1 component: hono 4.13.7.
 
@@ -11015,7 +10988,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0151 — ISC
+### JAV-0150 — ISC
 
 Applies to 1 component: hosted-git-info 9.0.3.
 
@@ -11035,7 +11008,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0152 — MIT
+### JAV-0151 — MIT
 
 Applies to 1 component: html-url-attributes 3.0.1.
 
@@ -11063,7 +11036,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0153 — MIT
+### JAV-0152 — MIT
 
 Applies to 1 component: http-errors 2.0.1.
 
@@ -11093,7 +11066,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0154 — MIT
+### JAV-0153 — MIT
 
 Applies to 2 components: iconv-lite 0.6.3, iconv-lite 0.7.2.
 
@@ -11120,7 +11093,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0155 — MIT
+### JAV-0154 — MIT
 
 Applies to 1 component: ignore 7.0.5.
 
@@ -11148,7 +11121,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0156 — MIT
+### JAV-0155 — MIT
 
 Applies to 1 component: import-meta-resolve 4.2.0.
 
@@ -11229,7 +11202,7 @@ IN THE SOFTWARE.
 """
 ```
 
-### JAV-0157 — ISC
+### JAV-0156 — ISC
 
 Applies to 1 component: inherits 2.0.4.
 
@@ -11251,7 +11224,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0158 — MIT
+### JAV-0157 — MIT
 
 Applies to 1 component: inline-style-parser 0.2.7.
 
@@ -11267,7 +11240,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0159 — ISC
+### JAV-0158 — ISC
 
 Applies to 2 components: internmap 1.0.1, internmap 2.0.3.
 
@@ -11287,7 +11260,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0160 — MIT
+### JAV-0159 — MIT
 
 Applies to 1 component: ip-address 10.7.1.
 
@@ -11313,7 +11286,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0161 — MIT
+### JAV-0160 — MIT
 
 Applies to 1 component: ipaddr.js 1.9.1.
 
@@ -11339,7 +11312,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0162 — MIT
+### JAV-0161 — MIT
 
 Applies to 1 component: is-promise 4.0.0.
 
@@ -11365,7 +11338,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0163 — ISC
+### JAV-0162 — ISC
 
 Applies to 4 components: isexe 2.0.0, once 1.4.0, which 2.0.2, wrappy 1.0.2.
 
@@ -11387,7 +11360,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0164 — BlueOak-1.0.0
+### JAV-0163 — BlueOak-1.0.0
 
 Applies to 3 components: jackspeak 3.4.3, minimatch 10.2.4, minimatch 10.2.5.
 
@@ -11449,7 +11422,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 ```
 
-### JAV-0165 — MIT
+### JAV-0164 — MIT
 
 Applies to 1 component: jiti 2.7.0.
 
@@ -11477,7 +11450,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0166 — MIT
+### JAV-0165 — MIT
 
 Applies to 1 component: jose 6.2.0.
 
@@ -11505,7 +11478,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0167 — BSD-3-Clause
+### JAV-0166 — BSD-3-Clause
 
 Applies to 1 component: js-base64 3.9.1.
 
@@ -11539,7 +11512,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0168 — MIT
+### JAV-0167 — MIT
 
 Applies to 1 component: json-bigint 1.0.0.
 
@@ -11566,7 +11539,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0169 — MIT
+### JAV-0168 — MIT
 
 Applies to 2 components: json-schema-to-ts 3.1.1, ts-algebra 2.0.0.
 
@@ -11594,7 +11567,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0170 — BSD-2-Clause
+### JAV-0169 — BSD-2-Clause
 
 Applies to 1 component: json-schema-typed 8.0.2.
 
@@ -11658,7 +11631,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0171 — MIT
+### JAV-0170 — MIT
 
 Applies to 2 components: jwa 2.0.1, jws 4.0.1.
 
@@ -11682,9 +11655,9 @@ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TOR
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0172 — MIT
+### JAV-0171 — MIT
 
-Applies to 1 component: katex 0.16.47.
+Applies to 1 component: katex 0.18.2.
 
 ```text
 The MIT License (MIT)
@@ -11710,7 +11683,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0173 — MIT
+### JAV-0172 — MIT
 
 Applies to 1 component: khroma 2.1.0.
 
@@ -11738,7 +11711,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0174 — MIT
+### JAV-0173 — MIT
 
 Applies to 2 components: layout-base 1.0.2, layout-base 2.0.1.
 
@@ -11766,7 +11739,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0175 — MIT
+### JAV-0174 — MIT
 
 Applies to 1 component: lodash-es 4.18.1.
 
@@ -11820,7 +11793,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 ```
 
-### JAV-0176 — MIT
+### JAV-0175 — MIT
 
 Applies to 3 components: longest-streak 3.1.0, stringify-entities 4.0.4, trim-lines 3.0.1.
 
@@ -11849,7 +11822,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0177 — ISC
+### JAV-0176 — ISC
 
 Applies to 1 component: lru-cache 10.4.3.
 
@@ -11871,7 +11844,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0178 — BlueOak-1.0.0
+### JAV-0177 — BlueOak-1.0.0
 
 Applies to 4 components: lru-cache 11.2.6, minipass 7.1.3, path-scurry 1.11.1, path-scurry 2.0.2.
 
@@ -11933,7 +11906,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### JAV-0179 — ISC
+### JAV-0178 — ISC
 
 Applies to 1 component: lucide-react 0.577.0.
 
@@ -11979,7 +11952,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0180 — MIT
+### JAV-0179 — MIT
 
 Applies to 2 components: marked 16.4.2, marked 18.0.5.
 
@@ -12030,7 +12003,7 @@ Redistribution and use in source and binary forms, with or without modification,
 This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 ```
 
-### JAV-0181 — MIT
+### JAV-0180 — MIT
 
 Applies to 1 component: mdast-util-phrasing 4.1.0.
 
@@ -12060,7 +12033,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0182 — MIT
+### JAV-0181 — MIT
 
 Applies to 1 component: merge-descriptors 2.0.0.
 
@@ -12078,7 +12051,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0183 — MIT
+### JAV-0182 — MIT
 
 Applies to 1 component: mermaid 11.17.0.
 
@@ -12106,7 +12079,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0184 — MIT
+### JAV-0183 — MIT
 
 Applies to 1 component: micromark-extension-gfm-footnote 2.1.0.
 
@@ -12135,7 +12108,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0185 — MIT
+### JAV-0184 — MIT
 
 Applies to 1 component: mime-db 1.54.0.
 
@@ -12165,7 +12138,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0186 — ISC
+### JAV-0185 — ISC
 
 Applies to 2 components: minimatch 9.0.9, rimraf 5.0.10.
 
@@ -12187,7 +12160,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0187 — MIT
+### JAV-0186 — MIT
 
 Applies to 1 component: ms 2.1.3.
 
@@ -12215,7 +12188,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0188 — MIT
+### JAV-0187 — MIT
 
 Applies to 1 component: negotiator 1.0.0.
 
@@ -12246,7 +12219,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0189 — MIT
+### JAV-0188 — MIT
 
 Applies to 1 component: node-domexception 1.0.0.
 
@@ -12274,7 +12247,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0190 — MIT
+### JAV-0189 — MIT
 
 Applies to 1 component: node-fetch 3.3.2.
 
@@ -12302,7 +12275,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0191 — MIT
+### JAV-0190 — MIT
 
 Applies to 1 component: object-assign 4.1.1.
 
@@ -12330,7 +12303,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0192 — MIT
+### JAV-0191 — MIT
 
 Applies to 1 component: object-inspect 1.13.4.
 
@@ -12358,7 +12331,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0193 — MIT
+### JAV-0192 — MIT
 
 Applies to 1 component: on-finished 2.4.1.
 
@@ -12388,7 +12361,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0194 — Apache-2.0
+### JAV-0193 — Apache-2.0
 
 Applies to 1 component: openai 6.26.0.
 
@@ -12596,7 +12569,7 @@ Applies to 1 component: openai 6.26.0.
    limitations under the License.
 ```
 
-### JAV-0195 — MIT
+### JAV-0194 — MIT
 
 Applies to 1 component: package-manager-detector 1.8.0.
 
@@ -12624,7 +12597,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0196 — MIT
+### JAV-0195 — MIT
 
 Applies to 2 components: parse-entities 4.0.2, property-information 7.2.0.
 
@@ -12653,7 +12626,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0197 — MIT
+### JAV-0196 — MIT
 
 Applies to 1 component: parse5 7.3.0.
 
@@ -12679,7 +12652,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0198 — MIT
+### JAV-0197 — MIT
 
 Applies to 1 component: parseurl 1.3.3.
 
@@ -12710,7 +12683,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0199 — MIT
+### JAV-0198 — MIT
 
 Applies to 1 component: partial-json 0.1.7.
 
@@ -12738,7 +12711,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0200 — MIT
+### JAV-0199 — MIT
 
 Applies to 2 components: path-data-parser 0.1.0, points-on-curve 0.2.0.
 
@@ -12766,7 +12739,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0201 — MIT
+### JAV-0200 — MIT
 
 Applies to 1 component: path-to-regexp 8.4.0.
 
@@ -12794,7 +12767,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0202 — MIT
+### JAV-0201 — MIT
 
 Applies to 1 component: pkce-challenge 5.0.1.
 
@@ -12822,7 +12795,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0203 — MIT
+### JAV-0202 — MIT
 
 Applies to 1 component: points-on-path 0.2.1.
 
@@ -12850,7 +12823,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0204 — BSD-3-Clause
+### JAV-0203 — BSD-3-Clause
 
 Applies to 1 component: protobufjs 7.6.5.
 
@@ -12896,7 +12869,7 @@ standalone and requires a support library to be linked with it. This
 support library is itself covered by the above license.
 ```
 
-### JAV-0205 — BSD-3-Clause
+### JAV-0204 — BSD-3-Clause
 
 Applies to 1 component: qs 6.16.0.
 
@@ -12932,7 +12905,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0206 — MIT
+### JAV-0205 — MIT
 
 Applies to 1 component: range-parser 1.2.1.
 
@@ -12962,7 +12935,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0207 — MIT
+### JAV-0206 — MIT
 
 Applies to 1 component: raw-body 3.0.2.
 
@@ -12991,7 +12964,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0208 — MIT
+### JAV-0207 — MIT
 
 Applies to 3 components: react 19.2.8, react-dom 19.2.8, scheduler 0.27.0.
 
@@ -13019,7 +12992,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0209 — MIT
+### JAV-0208 — MIT
 
 Applies to 1 component: react-markdown 10.1.0.
 
@@ -13047,7 +13020,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0210 — MIT
+### JAV-0209 — MIT
 
 Applies to 2 components: remark-parse 11.0.0, remark-stringify 11.0.0.
 
@@ -13075,7 +13048,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0211 — MIT
+### JAV-0210 — MIT
 
 Applies to 1 component: require-from-string 2.0.2.
 
@@ -13103,7 +13076,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0212 — MIT
+### JAV-0211 — MIT
 
 Applies to 2 components: retry 0.12.0, retry 0.13.1.
 
@@ -13131,7 +13104,7 @@ Felix Geisendörfer (felix@debuggable.com)
  THE SOFTWARE.
 ```
 
-### JAV-0213 — MIT
+### JAV-0212 — MIT
 
 Applies to 1 component: roughjs 4.6.6.
 
@@ -13159,7 +13132,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0214 — MIT
+### JAV-0213 — MIT
 
 Applies to 1 component: router 2.2.0.
 
@@ -13189,7 +13162,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0215 — BSD-3-Clause
+### JAV-0214 — BSD-3-Clause
 
 Applies to 1 component: rw 1.3.3.
 
@@ -13222,7 +13195,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### JAV-0216 — MIT
+### JAV-0215 — MIT
 
 Applies to 1 component: safe-buffer 5.2.1.
 
@@ -13250,7 +13223,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0217 — MIT
+### JAV-0216 — MIT
 
 Applies to 1 component: safer-buffer 2.1.2.
 
@@ -13278,7 +13251,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0218 — MIT
+### JAV-0217 — MIT
 
 Applies to 1 component: send 1.2.1.
 
@@ -13308,7 +13281,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0219 — MIT
+### JAV-0218 — MIT
 
 Applies to 1 component: serve-static 2.2.1.
 
@@ -13340,7 +13313,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0220 — ISC
+### JAV-0219 — ISC
 
 Applies to 1 component: setprototypeof 1.2.0.
 
@@ -13360,7 +13333,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0221 — MIT
+### JAV-0220 — MIT
 
 Applies to 1 component: shebang-command 2.0.0.
 
@@ -13376,7 +13349,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0222 — MIT
+### JAV-0221 — MIT
 
 Applies to 2 components: side-channel 1.1.1, side-channel-weakmap 1.0.2.
 
@@ -13404,7 +13377,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0223 — ISC
+### JAV-0222 — ISC
 
 Applies to 1 component: signal-exit 3.0.7.
 
@@ -13427,7 +13400,7 @@ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0224 — ISC
+### JAV-0223 — ISC
 
 Applies to 1 component: signal-exit 4.1.0.
 
@@ -13450,34 +13423,7 @@ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0225 — MIT — text not published by this component; attribution derived from its package metadata
-
-Applies to 1 component: simple-git 3.36.0.
-
-```text
-Copyright (c) Steve King <steve@mydev.co>
-
-MIT License
-
-Copyright (c) <year> <copyright holders>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-associated documentation files (the "Software"), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-### JAV-0226 — MIT — text not published by this component; attribution derived from its package metadata
+### JAV-0224 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: standardwebhooks 1.0.0.
 
@@ -13504,7 +13450,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0227 — MIT
+### JAV-0225 — MIT
 
 Applies to 1 component: statuses 2.0.2.
 
@@ -13534,7 +13480,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0228 — MIT
+### JAV-0226 — MIT
 
 Applies to 1 component: style-mod 4.1.3.
 
@@ -13560,7 +13506,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0229 — MIT
+### JAV-0227 — MIT
 
 Applies to 1 component: style-to-js 1.1.21.
 
@@ -13589,7 +13535,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0230 — MIT
+### JAV-0228 — MIT
 
 Applies to 1 component: style-to-object 1.0.14.
 
@@ -13618,7 +13564,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0231 — MIT
+### JAV-0229 — MIT
 
 Applies to 1 component: stylis 4.4.0.
 
@@ -13646,7 +13592,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0232 — MIT
+### JAV-0230 — MIT
 
 Applies to 1 component: tinyexec 1.2.4.
 
@@ -13674,7 +13620,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0233 — MIT
+### JAV-0231 — MIT
 
 Applies to 1 component: toidentifier 1.0.1.
 
@@ -13702,7 +13648,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0234 — MIT
+### JAV-0232 — MIT
 
 Applies to 1 component: trough 2.2.0.
 
@@ -13730,7 +13676,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0235 — MIT
+### JAV-0233 — MIT
 
 Applies to 1 component: ts-dedent 2.3.0.
 
@@ -13758,7 +13704,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0236 — 0BSD
+### JAV-0234 — 0BSD
 
 Applies to 1 component: tslib 2.8.1.
 
@@ -13777,7 +13723,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### JAV-0237 — MIT
+### JAV-0235 — MIT
 
 Applies to 1 component: typebox 1.1.38.
 
@@ -13807,7 +13753,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0238 — MIT
+### JAV-0236 — MIT
 
 Applies to 2 components: undici 7.29.1, undici-types 7.18.2.
 
@@ -13835,7 +13781,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0239 — MIT
+### JAV-0237 — MIT
 
 Applies to 2 components: unified 11.0.5, vfile 6.0.3.
 
@@ -13863,7 +13809,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0240 — MIT
+### JAV-0238 — MIT
 
 Applies to 1 component: unist-util-is 6.0.1.
 
@@ -13892,7 +13838,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0241 — MIT
+### JAV-0239 — MIT
 
 Applies to 1 component: unpipe 1.0.0.
 
@@ -13921,7 +13867,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0242 — MIT
+### JAV-0240 — MIT
 
 Applies to 1 component: uuid 11.1.1.
 
@@ -13937,7 +13883,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0243 — MIT
+### JAV-0241 — MIT
 
 Applies to 1 component: w3c-keyname 2.2.8.
 
@@ -13963,7 +13909,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### JAV-0244 — MIT
+### JAV-0242 — MIT
 
 Applies to 1 component: web-streams-polyfill 3.3.3.
 
@@ -13992,7 +13938,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0245 — MIT
+### JAV-0243 — MIT
 
 Applies to 1 component: ws 8.21.3.
 
@@ -14019,7 +13965,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### JAV-0246 — ISC
+### JAV-0244 — ISC
 
 Applies to 1 component: yaml 2.9.0.
 
@@ -14039,7 +13985,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### JAV-0247 — MIT
+### JAV-0245 — MIT
 
 Applies to 1 component: zod 4.4.3.
 
@@ -14067,7 +14013,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### JAV-0248 — ISC
+### JAV-0246 — ISC
 
 Applies to 1 component: zod-to-json-schema 3.25.1.
 

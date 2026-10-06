@@ -20,6 +20,10 @@ const executable = option("--exe");
 assert.equal(basename(executable), "modus-file-open-smoke.exe", "refusing a normal desktop executable");
 assert(readFileSync(executable).includes(Buffer.from("com.modus.file-open-smoke")), "build the dedicated smoke identifier first; refusing a production identifier");
 const repo = option("--repo");
+const packaged = args.includes("--package") ? option("--package") : undefined;
+const resources = packaged ? join(packaged, "modus") : join(repo, "harness");
+const server = join(resources, packaged ? "server.js" : "index.ts");
+assert(readFileSync(server).length > 0, "backend entry is missing or empty");
 const bun = option("--bun");
 const { chromium } = await import(pathToFileURL(option("--playwright")).href);
 const root = realpathSync.native(mkdtempSync(join(tmpdir(), "modus-file-open-e2e-")));
@@ -41,7 +45,7 @@ for (const [name, displayName, path] of [["project", "Project", project], ["nest
 const first = join(nested, "notes with spaces.MD");
 const second = join(external, "outside.markdown");
 const plain = join(external, "plain.txt");
-writeFileSync(first, "# Desktop Markdown\n\n**Rendered preview**\n\n[Sibling](sibling.md)\n\n![Local image](pixel.png)\n\n<script>window.fileOpenInjected = true</script>\n");
+writeFileSync(first, "# Desktop Markdown\n\n**Rendered preview**\n\n[Sibling](sibling.md)\n\n![Local image](pixel.png)\n\n```mermaid\nflowchart LR\n  File --> Preview\n```\n\n<script>window.fileOpenInjected = true</script>\n");
 writeFileSync(join(nested, "sibling.md"), "# Sibling document\n");
 writeFileSync(join(nested, "pixel.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=", "base64"));
 writeFileSync(second, "# Outside project\n\nExternal Markdown document.\n");
@@ -59,8 +63,8 @@ const env = Object.fromEntries(["PATH", "SystemRoot", "COMSPEC", "PATHEXT", "TEM
 Object.assign(env, {
   MODUS_HOME: home,
   HARNESS_SECRETS_FILE: join(root, "secrets.env"),
-  MODUS_DESKTOP_SERVER: join(repo, "harness", "index.ts"),
-  MODUS_DESKTOP_RESOURCES_DIR: join(repo, "harness"),
+  MODUS_DESKTOP_SERVER: server,
+  MODUS_DESKTOP_RESOURCES_DIR: resources,
   MODUS_DESKTOP_BUN: bun,
   MODUS_DESKTOP_MODE: "managed-local",
   MODUS_DESKTOP_SMOKE_QUIT_MS: "180000",
@@ -106,6 +110,7 @@ try {
   await waitFor(async () => /Nested project/.test(await page.locator(".fcv-location:visible").textContent()), "project recognition");
   assert.equal(await page.evaluate(() => window.fileOpenInjected), undefined);
   await waitFor(() => page.locator('img[alt="Local image"]:visible').evaluate((image) => image.complete && image.naturalWidth > 0), "file-relative image");
+  await page.locator('.fcv-markdown .mermaid-diagram svg:visible').waitFor();
   await page.screenshot({ path: join(root, "markdown-preview.png") });
   await page.locator('.fcv-markdown a:visible').filter({ hasText: "Sibling" }).click();
   await heading("Sibling document").waitFor();
@@ -174,7 +179,7 @@ try {
   await page.locator('.app').waitFor();
   assert.equal(await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("desktop_has_pending_files")), false, "reload replayed a claimed file");
   await page.screenshot({ path: join(root, "desktop-file-open.png") });
-  console.log("PASS: native cold start, second-instance forwarding, multiple files, duplicate tabs, project recognition, external Markdown, relative links/images, script sanitization, unsupported/missing files, edit/save, selected-session preservation, delayed startup hydration, fullscreen fallback, relative launch paths, and no replay.");
+  console.log("PASS: native cold start, second-instance forwarding, multiple files, duplicate tabs, project recognition, external Markdown, Mermaid rendering, relative links/images, script sanitization, unsupported/missing files, edit/save, selected-session preservation, delayed startup hydration, fullscreen fallback, relative launch paths, and no replay.");
 } catch (error) {
   if (page) {
     writeFileSync(join(root, "failure.html"), await page.content().catch(() => ""));

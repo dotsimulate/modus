@@ -139,6 +139,12 @@ directory and pass its `index.mjs` path with `--playwright`. Run:
 node desktop/tests/file-open-e2e.mjs --exe desktop/src-tauri/target/debug/modus-file-open-smoke.exe --repo . --bun (Get-Command bun).Source --playwright <temporary-tools>/node_modules/playwright/index.mjs
 ```
 
+To exercise an installer payload, add `--package <extracted-installer-directory>`
+and pass its `bun.exe` with `--bun`. This uses the extracted backend and resources
+with the dedicated smoke shell. Confirm that the shell's embedded UI assets
+match the packaged assets; the normal signed shell remains covered by lifecycle
+smokes using an isolated home and the explicit parallel-smoke mode.
+
 The driver checks rendered Markdown, project recognition, external files,
 relative links/images, sanitization, multiple and repeated opens, unsupported
 files, editing/saving, selected-session preservation, delayed tab hydration,
