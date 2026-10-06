@@ -5,9 +5,9 @@
   "metadata": {
     "component": {
       "type": "application",
-      "bom-ref": "pkg:generic/modus@0.3.2-alpha.2",
+      "bom-ref": "pkg:generic/modus@0.3.2-alpha.3",
       "name": "Modus",
-      "version": "0.3.2-alpha.2",
+      "version": "0.3.2-alpha.3",
       "licenses": [
         {
           "license": {
@@ -15,7 +15,7 @@
           }
         }
       ],
-      "purl": "pkg:generic/modus@0.3.2-alpha.2"
+      "purl": "pkg:generic/modus@0.3.2-alpha.3"
     },
     "properties": [
       {
@@ -12051,10 +12051,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls@0.23.42",
+      "bom-ref": "pkg:cargo/rustls@0.23.45",
       "name": "rustls",
-      "version": "0.23.42",
-      "purl": "pkg:cargo/rustls@0.23.42",
+      "version": "0.23.45",
+      "purl": "pkg:cargo/rustls@0.23.45",
       "licenses": [
         {
           "expression": "Apache-2.0 OR ISC OR MIT"
@@ -12105,10 +12105,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls-webpki@0.103.13",
+      "bom-ref": "pkg:cargo/rustls-webpki@0.103.15",
       "name": "rustls-webpki",
-      "version": "0.103.13",
-      "purl": "pkg:cargo/rustls-webpki@0.103.13",
+      "version": "0.103.15",
+      "purl": "pkg:cargo/rustls-webpki@0.103.15",
       "licenses": [
         {
           "expression": "ISC"

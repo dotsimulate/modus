@@ -15072,7 +15072,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - Source: https://github.com/rust-lang/rustc-hash
 - License text: **RUS-0001** — MIT
 
-### rustls 0.23.42
+### rustls 0.23.45
 
 - License: `Apache-2.0 OR ISC OR MIT`
 - Redistributed under: `MIT`
@@ -15093,7 +15093,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - Source: https://github.com/rustls/rustls-platform-verifier
 - License text: **RUS-0090** — MIT
 
-### rustls-webpki 0.103.13
+### rustls-webpki 0.103.15
 
 - License: `ISC`
 - Source: https://github.com/rustls/webpki
@@ -18813,7 +18813,7 @@ THE SOFTWARE.
 
 ### RUS-0053 — MIT
 
-Applies to 2 components: hyper-rustls 0.27.9, rustls 0.23.42.
+Applies to 2 components: hyper-rustls 0.27.9, rustls 0.23.45.
 
 ```text
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
@@ -20535,7 +20535,7 @@ SOFTWARE.
 
 ### RUS-0091 — ISC
 
-Applies to 1 component: rustls-webpki 0.103.13.
+Applies to 1 component: rustls-webpki 0.103.15.
 
 ```text
 Except as otherwise noted, this project is licensed under the following
