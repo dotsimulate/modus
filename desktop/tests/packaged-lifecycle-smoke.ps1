@@ -159,6 +159,7 @@ $claudeOpus5Listed = $null
 $backendVisibleWindows = @()
 try {
   $desktop = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -WindowStyle Hidden -PassThru
+  $desktopLaunchedUtc = [DateTime]::UtcNow
   $statePath = Join-Path $runtime 'desktop-supervisor.json'
   $deadline = [DateTime]::UtcNow.AddSeconds(45)
   while ([DateTime]::UtcNow -lt $deadline -and !$desktop.HasExited) {
@@ -433,7 +434,11 @@ public static class ModusWindowSmoke {
     } while ($backend -and [DateTime]::UtcNow -lt $deadline)
     if ($backend) { throw 'Job Object left the managed backend running' }
   } else {
-    if (!$desktop.WaitForExit(20000)) { throw 'Explicit Quit did not exit the desktop' }
+    # The scheduled Quit fires a fixed delay after launch, not after these checks;
+    # shutdown then has the backend grace period plus forced-termination waits.
+    $quitDeadline = $desktopLaunchedUtc.AddMilliseconds([int]$env:MODUS_DESKTOP_SMOKE_QUIT_MS + 20000)
+    $quitWaitMs = [Math]::Max(0, [int]($quitDeadline - [DateTime]::UtcNow).TotalMilliseconds)
+    if (!$desktop.WaitForExit($quitWaitMs)) { throw 'Explicit Quit did not exit the desktop' }
     if ($state.backendPid -and (Get-Process -Id ([int]$state.backendPid) -ErrorAction SilentlyContinue)) {
       throw 'Explicit Quit left the managed backend running'
     }
