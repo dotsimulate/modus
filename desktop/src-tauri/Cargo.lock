@@ -2100,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "modus-desktop"
-version = "0.3.2-alpha.4"
+version = "0.3.3"
 dependencies = [
  "serde",
  "serde_json",
