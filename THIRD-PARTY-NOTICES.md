@@ -564,7 +564,7 @@ verbatim.
 - Source: https://github.com/mistralai/client-ts
 - License text: **JAV-0032** — Apache-2.0
 
-### @modelcontextprotocol/sdk 1.30.0
+### @modelcontextprotocol/sdk 1.31.0
 
 - License: `MIT`
 - Source: https://modelcontextprotocol.io
@@ -6100,7 +6100,7 @@ Applies to 1 component: @mistralai/mistralai 2.2.1.
 
 ### JAV-0033 — MIT
 
-Applies to 1 component: @modelcontextprotocol/sdk 1.30.0.
+Applies to 1 component: @modelcontextprotocol/sdk 1.31.0.
 
 ```text
 MIT License
