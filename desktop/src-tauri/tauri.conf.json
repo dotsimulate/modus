@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Modus",
-  "version": "0.3.0",
+  "version": "0.3.2-alpha.2",
   "identifier": "com.modus.desktop",
   "build": {
     "beforeDevCommand": "bun run stage-managed-backend.ts --dev",
@@ -41,6 +41,24 @@
     }
   },
   "bundle": {
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "description": "Markdown document",
+        "mimeType": "text/markdown",
+        "role": "Editor",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["txt"],
+        "name": "Text document",
+        "description": "Text document",
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
     "active": true,
     "publisher": "dotsimulate",
     "copyright": "Copyright © 2026 dotsimulate",

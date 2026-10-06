@@ -44,6 +44,7 @@ function Invoke-PackagedCli([string[]]$Arguments) {
 
 try {
   New-Item -ItemType Directory -Path $project, $config -Force | Out-Null
+  Push-Location -LiteralPath $project
   $env:USERPROFILE = $smokeRoot
   $env:HOME = $smokeRoot
   $env:MODUS_HOME = Join-Path $smokeRoot 'home'
@@ -102,6 +103,7 @@ try {
     vaultStatus = 'ok'
   } | Format-List
 } finally {
+  Pop-Location
   foreach ($name in $environmentNames) {
     $value = $originalEnvironment[$name]
     if ($null -eq $value) {

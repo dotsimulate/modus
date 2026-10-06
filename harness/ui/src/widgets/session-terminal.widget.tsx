@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { WidgetProps } from "./types";
-import { TerminalView } from "../components/TerminalView";
+import { TerminalView } from "../components/lazy-views";
 import { useProfiles } from "../providers/ProfileContext";
 import { useOptionalRightPanelContext } from "../components/RightPanelContext";
 import { ensureSubscribed } from "../sessionStore";

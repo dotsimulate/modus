@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { createLiveSnapshotEncoder } from "../../live-snapshot-codec";
 
 let streams: typeof import("../../ui/src/multiEventStream");
 const originalFetch = globalThis.fetch;
@@ -6,7 +7,7 @@ const originalSetTimeout = globalThis.setTimeout;
 const originalClearTimeout = globalThis.clearTimeout;
 const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
 const timers = new Map<number, { delay: number; run: () => void }>();
-const requests: Array<{ signal: AbortSignal; body: ReadableStreamDefaultController<Uint8Array> }> = [];
+const requests: Array<{ signal: AbortSignal; body: ReadableStreamDefaultController<Uint8Array>; payload: any }> = [];
 let nextTimer = 0;
 
 function installStorage() {
@@ -33,7 +34,7 @@ beforeEach(() => {
   globalThis.fetch = ((_input: RequestInfo | URL, init: RequestInit) => {
     let body!: ReadableStreamDefaultController<Uint8Array>;
     const stream = new ReadableStream<Uint8Array>({ start(controller) { body = controller; } });
-    requests.push({ signal: init.signal!, body });
+    requests.push({ signal: init.signal!, body, payload: JSON.parse(String(init.body)) });
     init.signal!.addEventListener("abort", () => body.error(new DOMException("aborted", "AbortError")));
     return Promise.resolve(new Response(stream));
   }) as typeof fetch;
@@ -67,6 +68,35 @@ function subscribe(id = "session-a") {
 }
 
 describe("multiplexed stream recovery", () => {
+  test("negotiates deltas, delivers complete snapshots, and starts fresh after reconnect", async () => {
+    const received: any[] = [];
+    streams.multiSubscribe("session-a", 0, { onEvent: (event) => received.push(event), onDone() {} });
+    await fire(40);
+    expect(requests[0]!.payload.liveDeltas).toBe(true);
+    const encode = createLiveSnapshotEncoder();
+    const first = { type: "system", subtype: "live_snapshot", text: "x".repeat(500), thinking: "", feed: "" };
+    const second = { ...first, text: first.text + " next" };
+    for (const [seq, event] of [[1, first], [2, second]] as const) {
+      requests[0]!.body.enqueue(new TextEncoder().encode(`event: ev\ndata: ${JSON.stringify({ sid: "session-a", seq, ev: encode("session-a", seq, event) })}\n\n`));
+    }
+    await flush();
+    expect(received).toEqual([first, second]);
+    streams.multiReconnect();
+    await fire(40);
+    expect(requests[1]!.payload.sessions).toEqual([{ i: "session-a", s: 2 }]);
+    // A delta from the previous connection must cause recovery, not corrupt text.
+    const third = { ...second, text: second.text + " third" };
+    requests[1]!.body.enqueue(new TextEncoder().encode(`event: ev\ndata: ${JSON.stringify({ sid: "session-a", seq: 3, ev: encode("session-a", 3, third) })}\n\n`));
+    await flush();
+    expect(received).toHaveLength(2);
+    await fire(500);
+    expect(requests[2]!.payload.sessions).toEqual([{ i: "session-a", s: 2 }]);
+    // A legacy backend can ignore the option and send ordinary full snapshots.
+    requests[2]!.body.enqueue(new TextEncoder().encode(`event: ev\ndata: ${JSON.stringify({ sid: "session-a", seq: 3, ev: third })}\n\n`));
+    await flush();
+    expect(received).toEqual([first, second, third]);
+  });
+
   test("a stale stream reconnects after its watchdog aborts it", async () => {
     subscribe();
     await fire(40);

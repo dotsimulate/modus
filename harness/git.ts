@@ -1,4 +1,4 @@
-import simpleGit from "simple-git";
+import { simpleGit } from "simple-git";
 import { readFile } from "fs/promises";
 import { join } from "path";
 

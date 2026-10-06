@@ -104,6 +104,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uiCache = useRef<Map<string, Record<string, unknown>>>(new Map());
   const prevSessionIdRef = useRef<string | null>(null);
+  const [restoredSessionId, setRestoredSessionId] = useState<string | null>(null);
   const fileViewerTabsRef = useRef(fileViewerTabs);
   const fileViewerActivePathRef = useRef(fileViewerActivePath);
   const rightPanelBrowserPathRef = useRef(rightPanelBrowserPath);
@@ -179,6 +180,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
         : [];
       const savedActivePath = typeof state.fileViewerActivePath === "string" ? state.fileViewerActivePath : null;
       hydrateFileViewer(savedTabs, savedActivePath);
+      setRestoredSessionId(id);
       if (typeof state.scrollTop === "number" && state.scrollTop > 0) {
         requestAnimationFrame(() => {
           const scrollEl = findChatScrollElement(id);
@@ -199,7 +201,9 @@ export function LayoutProvider({ view, children }: { view: View; children: React
       modus.getSessionUiState(id).then((state) => {
         uiCache.current.set(id, state);
         if (prevSessionIdRef.current === id) applyState(state);
-      }).catch(() => {});
+      }).catch(() => {
+        if (prevSessionIdRef.current === id) setRestoredSessionId(id);
+      });
     }
   }, [activeSessionId, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -362,6 +366,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
 
       currentView: view,
       panelsEnabled,
+      fileViewerReady: view !== "chat" || !activeSessionId || activeSessionId.startsWith("pending-") || restoredSessionId === activeSessionId,
     }}>
       {children}
     </LayoutContext.Provider>

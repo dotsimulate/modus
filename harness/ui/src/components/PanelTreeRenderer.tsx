@@ -9,7 +9,7 @@ import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
 import { useFileViewer } from "../providers/FileViewerContext";
-import { TerminalView } from "./TerminalView";
+import { TerminalView } from "./lazy-views";
 import { WidgetErrorBoundary } from "./WidgetErrorBoundary";
 
 type Props = {

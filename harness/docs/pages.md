@@ -479,6 +479,13 @@ terminals. Harness also issues `ownerType: "action"` terminals, which the
 
 ### Code editor widget & file viewer linking
 
+The desktop OS file handoff uses the same file tabs. Markdown (`.md`, `.mdx`,
+and `.markdown`) renders in preview unless the tab is already being edited.
+Opening from the OS does not select a session or switch projects. The desktop
+waits for session tab restoration before applying queued opens; a page without
+an editor receives a floating viewer. See `desktop/README.md` in the repository
+for file association, remote-backend, and isolated verification details.
+
 `code-editor` (`code-editor.widget.tsx`) calls `useOptionalRightPanelContext()`.
 When the editor is inside the app-level `RightPanel`, it uses the shared panel
 browser path (synced per session and persisted via `saveSessionUiState`). When

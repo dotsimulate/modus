@@ -43,8 +43,9 @@ import {
   restoreCheckpointById,
 } from "./checkpoints";
 import type { RewindPreview, RewindResult } from "./checkpoints";
-import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
-import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "fs";
+import { resolve as resolvePath, join as pathJoin } from "path";
+import { createSseFlowLog } from "./sse-flow-log";
+export { sseTimestamp } from "./sse-flow-log";
 import { APP_PATHS } from "./app-paths";
 import { providerErrorDisplayText } from "./provider-error";
 import { isAlwaysDurableEvent, isLiveOnlyEvent } from "./event-persistence";
@@ -53,62 +54,9 @@ import { formatMoveActivationFailures, type MoveActivationFailure } from "./move
 import { sendPermissionNotifications } from "./notify";
 import { pendingPermissionCount } from "./permission-policy";
 
-// ── SSE flow log ──
-// Append-only diagnostic log of every subscriber lifecycle event and broadcast.
-// Gitignored, no secrets (only ID prefixes, event types, sizes, counts).
-// Lives in the resolved logs directory, which differs between a source run and
-// a packaged one — read APP_PATHS.logsDir rather than assuming a path.
-const SSE_LOG = pathJoin(APP_PATHS.logsDir, "sse-flow.log");
-const SSE_LOG_PREVIOUS = `${SSE_LOG}.1`;
-/** Size at which the log rolls over. One previous generation is kept. */
-const SSE_LOG_MAX_BYTES = 64 * 1024 * 1024;
-/** Bytes written between size checks, so a stat does not ride every broadcast. */
-const SSE_LOG_CHECK_BYTES = 4 * 1024 * 1024;
-try { mkdirSync(pathDirname(SSE_LOG), { recursive: true }); } catch {}
-
-// Start due for a check: an existing log may already be over the cap from a
-// build that had no rotation at all.
-let sseLogBytesSinceCheck = SSE_LOG_CHECK_BYTES;
-
-function rollSseLogIfLarge(): void {
-  sseLogBytesSinceCheck = 0;
-  try {
-    if (statSync(SSE_LOG).size < SSE_LOG_MAX_BYTES) return;
-    // Windows refuses a rename onto an existing file, so clear the previous
-    // generation first. Losing it is the intended cost of rolling over.
-    rmSync(SSE_LOG_PREVIOUS, { force: true });
-    renameSync(SSE_LOG, SSE_LOG_PREVIOUS);
-  } catch { /* diagnostics must never break a broadcast */ }
-}
-
-/**
- * Local wall-clock stamp as HH:MM:SS.mmm.
- *
- * `fractionalSecondDigits` alone is not enough: it is not one of the components
- * the date-time defaulting algorithm fills in around, so asking for only it
- * yields a bare millisecond count ("746") with no hour, minute, or second — a
- * flow log that cannot be lined up against anything. Request each component.
- */
-export function sseTimestamp(): string {
-  return new Date().toLocaleTimeString("en-US", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    fractionalSecondDigits: 3,
-  });
-}
-
-function sseLog(event: string, sid: string | undefined, detail: string): void {
-  const ts = sseTimestamp();
-  const sidShort = sid ? sid.slice(0, 12) : "------------";
-  const line = `${ts} [${sidShort}] ${event}: ${detail}\n`;
-  try {
-    sseLogBytesSinceCheck += line.length;
-    if (sseLogBytesSinceCheck >= SSE_LOG_CHECK_BYTES) rollSseLogIfLarge();
-    appendFileSync(SSE_LOG, line);
-  } catch { /* ignore */ }
-}
+const flowLog = createSseFlowLog(pathJoin(APP_PATHS.logsDir, "sse-flow.log"));
+const sseLog = flowLog.write;
+process.once("exit", flowLog.close);
 
 // Lazy imports to avoid circular deps
 let _onSessionEvent: typeof import("./action-runner").onSessionEvent | null = null;

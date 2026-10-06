@@ -16,6 +16,7 @@
  */
 
 import { API_BASE, authHeaders, subscribeEvents, type EventStreamCallbacks } from "./modusClient";
+import { createLiveSnapshotDecoder } from "../../live-snapshot-codec";
 
 export type MultiCallbacks = {
   onEvent: (event: any, seq: number) => void;
@@ -163,6 +164,7 @@ function connect() {
   const url = `${API_BASE}/api/events/multi`;
 
   const ac = new AbortController();
+  const decodeLive = createLiveSnapshotDecoder();
   abort = ac;
   resetStale(ac);
 
@@ -170,7 +172,7 @@ function connect() {
     method: "POST",
     signal: ac.signal,
     headers: authHeaders(),
-    body: JSON.stringify({ sessions: specs }),
+    body: JSON.stringify({ sessions: specs, liveDeltas: true }),
   })
     .then(async (res) => {
       if (abort !== ac) return;
@@ -193,7 +195,7 @@ function connect() {
         buf = lines.pop() ?? "";
         for (const line of lines) {
           if (line.startsWith("event: ")) event = line.slice(7).trim();
-          else if (line.startsWith("data: ")) { route(event, line.slice(6)); event = ""; }
+          else if (line.startsWith("data: ")) { route(event, line.slice(6), decodeLive); event = ""; }
         }
       }
       throw new Error("multi stream closed");
@@ -213,7 +215,7 @@ function connect() {
     });
 }
 
-function route(event: string, dataStr: string) {
+function route(event: string, dataStr: string, decodeLive: ReturnType<typeof createLiveSnapshotDecoder>) {
   if (!event || event === "ping") return;
   let data: any;
   try { data = JSON.parse(dataStr); } catch { return; }
@@ -241,7 +243,7 @@ function route(event: string, dataStr: string) {
       break;
     case "ev": {
       const seq = Number(data.seq) || 0;
-      const ev = data.ev;
+      const ev = decodeLive(sid, seq, data.ev);
       if (reg.buffer) {
         reg.buffer.push({ event: ev?.type ?? "", data: ev, seq });
       } else {

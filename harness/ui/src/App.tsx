@@ -12,6 +12,10 @@ import { useActiveSessionId, useSessionActions, useSessionIndex } from "./provid
 import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
 import { useDesktopDeepLink } from "./hooks/useDesktopDeepLink";
+import { useDesktopFileOpen } from "./hooks/useDesktopFileOpen";
+import { layoutHasFileEditor } from "./desktop-file-open";
+import { CodeWorkspacePanel } from "./components/CodeWorkspacePanel";
+import { FloatingWindow } from "./components/FloatingWindow";
 import type { DesktopDeepLinkTarget } from "./desktopBridge";
 import { MobileNav } from "./components/MobileNav";
 import { MiniViewerShell } from "./components/MiniViewerShell";
@@ -47,6 +51,7 @@ import {
 } from "./pageNav";
 
 import { getInputValue } from "./inputStore";
+import { preloadOptionalViews } from "./lazy-view";
 
 type ConfigDashboardPage = DashboardPage & {
   origin?: PageNavOrigin;
@@ -130,6 +135,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 }
 
 function App() {
+  useEffect(() => preloadOptionalViews(), []);
   return (
     <AppErrorBoundary>
       <AuthProvider>
@@ -193,10 +199,18 @@ function AppContent({ router }: { router: HashRouter }) {
     setRequestRightPanelView,
     leftPanelTree, rightPanelTree,
     panelsEnabled,
+    fileViewerReady,
   } = useLayout();
 
   // ── File-open → panel routing ──
-  const { subscribeFileOpens } = useFileViewer();
+  const { subscribeFileOpens, openFile } = useFileViewer();
+  const [desktopFiles, setDesktopFiles] = useState<string[]>([]);
+  const [desktopFileFallback, setDesktopFileFallback] = useState(false);
+  const [remoteFileNotice, setRemoteFileNotice] = useState(false);
+  useDesktopFileOpen(
+    (paths) => setDesktopFiles((pending) => [...pending, ...paths]),
+    () => setRemoteFileNotice(true),
+  );
   const panelFileRouteRef = useRef({
     leftPanelWidgets,
     rightPanelWidgets,
@@ -520,6 +534,20 @@ function AppContent({ router }: { router: HashRouter }) {
   const shouldShowAppPanels = panelsEnabled && !isFullscreenPage;
 
   useEffect(() => {
+    if (!desktopFiles.length || !sessionsLoaded || !fileViewerReady) return;
+    if (view === "chat" && ((hashSessionId && hashSessionId !== activeSessionId)
+      || (!activeSessionId && restorableLastSessionId))) return;
+    if (projectCwd && pagesDiscoveredFor !== projectCwd) return;
+    const page = view === "chat" ? chatStudioPage : activeCustomPage;
+    const layout = window.matchMedia("(max-width: 640px)").matches && page?.layouts?.mobile ? page.layouts.mobile : page?.layout;
+    const pageHasEditor = layoutHasFileEditor(layout);
+    const needsFallback = !pageHasEditor && (!shouldShowAppPanels || view === "chat" || !!getCustomPageId(view));
+    setDesktopFileFallback(needsFallback);
+    for (const path of desktopFiles) openFile(path, { source: "desktop" });
+    setDesktopFiles([]);
+  }, [desktopFiles, sessionsLoaded, fileViewerReady, hashSessionId, activeSessionId, restorableLastSessionId, projectCwd, pagesDiscoveredFor, view, chatStudioPage, activeCustomPage, shouldShowAppPanels, openFile]);
+
+  useEffect(() => {
     const customPageId = getCustomPageId(view);
     if (!customPageId) return;
     setMountedCustomPageIds((prev) => (prev.includes(customPageId) ? prev : [...prev, customPageId]));
@@ -637,6 +665,12 @@ function AppContent({ router }: { router: HashRouter }) {
 
   return (
     <div className="app">
+      {remoteFileNotice && (
+        <div className="update-banner" role="status">
+          <span>Switch to Local Modus to open the desktop file. It is waiting on this computer.</span>
+          <button type="button" onClick={() => setRemoteFileNotice(false)}>Dismiss</button>
+        </div>
+      )}
       <div className="top-nav">
         <button className="menu-btn" onClick={() => setMobileNavOpen(true)}>
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -835,6 +869,18 @@ function AppContent({ router }: { router: HashRouter }) {
         onClose={() => setFloatingSessionId(null)}
         onNavigate={(id) => { setFloatingSessionId(null); handleViewSession(id); }}
       />
+
+      <FloatingWindow open={desktopFileFallback} onClose={() => setDesktopFileFallback(false)} storageKey="desktop-file-viewer-bounds" className="desktop-file-viewer-popup">
+        {({ onPointerDown }) => (
+          <div className="desktop-file-viewer">
+            <div className="fcv-head fcv-head--draggable" onPointerDown={onPointerDown}>
+              <span className="fcv-name">File viewer</span>
+              <button type="button" className="right-panel-header-btn" onClick={() => setDesktopFileFallback(false)} aria-label="Close file viewer">×</button>
+            </div>
+            <CodeWorkspacePanel onSelectSession={handleViewSession} />
+          </div>
+        )}
+      </FloatingWindow>
 
       <AgentPortal
         sessions={serverSessions.map((s) => {

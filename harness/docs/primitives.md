@@ -40,6 +40,15 @@ buffer overflows, the connection closes so the client can reconnect from its
 last delivered cursor. Repeated user text at distinct event sequences remains
 distinct messages in the transcript.
 
+`POST /api/events/multi` accepts an optional `liveDeltas: true` alongside
+`sessions`. Without it, full `system/live_snapshot` events remain unchanged.
+With it, the first snapshot for each session on each connection is full;
+subsequent `system/live_delta` events may encode `text`, `thinking`, and `feed`
+as `[retainedPrefixLength, suffix]`. `base` is the previous snapshot's sequence.
+The browser reconstructs the full snapshot before delivering it to reducers.
+A missing base triggers reconnect before advancing the cursor. Durable events,
+catch-up order, single-session streams, and stored history are unchanged.
+
 **Branching**: `POST /api/sessions/:id/branch` creates a new session forked
 from a specific message in the parent. Events are copied up to the branch
 point.

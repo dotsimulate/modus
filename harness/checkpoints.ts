@@ -7,7 +7,7 @@
  * intentionally non-restorable by this engine.
  */
 
-import simpleGit, { type SimpleGit } from "simple-git";
+import { simpleGit, type SimpleGit } from "simple-git";
 import { createHash } from "crypto";
 import {
   existsSync,
@@ -133,8 +133,7 @@ export function shadowDirFor(cwd: string): string {
 }
 
 function shadowGit(cwd: string): SimpleGit {
-  return simpleGit({ baseDir: cwd }).env({
-    ...process.env,
+  return simpleGit({ baseDir: cwd, allowEnvironment: ["GIT_DIR", "GIT_WORK_TREE"] }).env({
     GIT_DIR: shadowDirFor(cwd),
     GIT_WORK_TREE: cwd,
   });

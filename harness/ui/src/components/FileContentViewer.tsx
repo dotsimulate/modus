@@ -1,7 +1,8 @@
 import { memo } from "react";
 import type { PointerEventHandler, ReactNode } from "react";
 import { Markdown } from "./Markdown";
-import { CodeMirrorViewer } from "./CodeMirrorViewer";
+import { CodeMirrorViewer } from "./lazy-views";
+import { isMarkdownFile } from "../desktop-file-open";
 import type { CodeMirrorContextInfo } from "./CodeMirrorEditor";
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
   error?: string | null;
   actions?: ReactNode;
   nameActions?: ReactNode;
+  location?: ReactNode;
   onHeaderPointerDown?: PointerEventHandler<HTMLDivElement>;
   onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
   onMarkdownContextMenu?: (e: React.MouseEvent) => void;
@@ -32,6 +34,7 @@ export const FileContentViewer = memo(function FileContentViewer({
   error,
   actions,
   nameActions,
+  location,
   onHeaderPointerDown,
   onEditorContextMenu,
   onMarkdownContextMenu,
@@ -41,7 +44,7 @@ export const FileContentViewer = memo(function FileContentViewer({
   revealToken,
 }: Props) {
   const name = basename(filePath);
-  const isMarkdown = /\.mdx?$/i.test(filePath);
+  const isMarkdown = isMarkdownFile(filePath);
 
   const handleBodyDoubleClick = onRequestEdit
     ? (e: React.MouseEvent) => {
@@ -55,11 +58,12 @@ export const FileContentViewer = memo(function FileContentViewer({
   return (
     <div className="fcv-panel">
       <div className={`fcv-head${onHeaderPointerDown ? " fcv-head--draggable" : ""}`} onPointerDown={onHeaderPointerDown}>
-        <div className="fcv-meta">
+        <div className={`fcv-meta${location ? " fcv-meta--location" : ""}`}>
           <div className="fcv-name-row">
             {nameActions && <div className="fcv-name-actions">{nameActions}</div>}
             <span className="fcv-name">{name}</span>
           </div>
+          {location && <div className="fcv-location">{location}</div>}
         </div>
         <div className="fcv-head-side">
           {actions && <div className="fcv-actions">{actions}</div>}

@@ -57,6 +57,12 @@ $project = Join-Path $smokeRoot 'project'
 New-Item -ItemType Directory -Path $modusTestHome, $runtime, $logs, $config, $project -Force | Out-Null
 
 $env:MODUS_HOME = $modusTestHome
+$env:HOME = $smokeRoot
+$env:USERPROFILE = $smokeRoot
+$env:XDG_CONFIG_HOME = Join-Path $smokeRoot 'xdg-config'
+$env:XDG_DATA_HOME = Join-Path $smokeRoot 'xdg-data'
+$env:XDG_CACHE_HOME = Join-Path $smokeRoot 'xdg-cache'
+$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $smokeRoot 'webview'
 $env:MODUS_CONFIG_DIR = $config
 $testSecrets = Join-Path $config 'secrets.env'
 [System.IO.File]::WriteAllText($testSecrets, "HARNESS_PIN=packaged-smoke-pin`n", [System.Text.UTF8Encoding]::new($false))
@@ -138,9 +144,7 @@ if ($Scenario -eq 'remote') {
   $env:MODUS_DESKTOP_MODE = 'remote'
   $env:MODUS_DESKTOP_TARGET_URL = 'https://modus-packaged-smoke.invalid'
 } else {
-  # The WebView profile is shared with the installed app, so its saved backend
-  # preference is not an isolated test input. Pin lifecycle scenarios to the
-  # managed path instead of inheriting a user's localStorage choice.
+  # Pin lifecycle scenarios to the managed path independently of saved choices.
   $env:MODUS_DESKTOP_MODE = 'managed-local'
   Remove-Item Env:MODUS_DESKTOP_TARGET_URL -ErrorAction SilentlyContinue
 }
@@ -195,7 +199,6 @@ try {
           $candidateSecondary = Get-Content -Raw -LiteralPath $secondaryStatePath | ConvertFrom-Json
           if ($candidateSecondary.mode -eq 'managed-local' -and $candidateSecondary.port -gt 0) {
             $secondaryState = $candidateSecondary
-            break
           }
         } catch {
           # Each Vault publishes its own record atomically.
@@ -325,18 +328,18 @@ try {
     }
     $brainBridgeVerified = $true
 
-    $processSnapshot = @(Get-CimInstance Win32_Process)
     $backendTreeIds = [System.Collections.Generic.HashSet[uint32]]::new()
     [void]$backendTreeIds.Add([uint32]$state.backendPid)
-    do {
-      $added = $false
-      foreach ($candidate in $processSnapshot) {
-        if ($backendTreeIds.Contains([uint32]$candidate.ParentProcessId) -and
-            $backendTreeIds.Add([uint32]$candidate.ProcessId)) {
-          $added = $true
+    $pendingBackendIds = [System.Collections.Generic.Queue[uint32]]::new()
+    $pendingBackendIds.Enqueue([uint32]$state.backendPid)
+    while ($pendingBackendIds.Count -gt 0) {
+      $ownedPid = $pendingBackendIds.Dequeue()
+      foreach ($candidate in @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ownedPid")) {
+        if ($backendTreeIds.Add([uint32]$candidate.ProcessId)) {
+          $pendingBackendIds.Enqueue([uint32]$candidate.ProcessId)
         }
       }
-    } while ($added)
+    }
     $backendVisibleWindows = @([ModusVisibleWindowProbe]::Find([uint32[]]$backendTreeIds))
     if ($backendVisibleWindows.Count -gt 0) {
       throw "Managed backend created a visible top-level window: $($backendVisibleWindows -join ', ')"

@@ -1,4 +1,4 @@
-import simpleGit from "simple-git";
+import { simpleGit } from "simple-git";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "fs";
 import { join, relative, sep } from "path";
 import { homeHistoryDir, homeProfilesDir } from "./modus-home";
@@ -76,6 +76,7 @@ function getWorkTree(scope: ShadowScope): string {
 function git(scope: ShadowScope) {
   return simpleGit({
     baseDir: getWorkTree(scope),
+    allowEnvironment: ["GIT_DIR"],
     config: [
       `core.worktree=${getWorkTree(scope)}`,
     ],
@@ -138,7 +139,7 @@ export async function initShadowRepo(scope: ShadowScope, workTree: string): Prom
 
   const isNew = !existsSync(gd);
   if (isNew) {
-    const g = simpleGit(workTree);
+    const g = simpleGit({ baseDir: workTree, allowEnvironment: ["GIT_DIR"] });
     await g.raw(["init", "--separate-git-dir", gd]);
     await g.env("GIT_DIR", gd).addConfig("user.name", "modus-history");
     await g.env("GIT_DIR", gd).addConfig("user.email", "history@modus.local");
@@ -153,7 +154,7 @@ export async function initShadowRepo(scope: ShadowScope, workTree: string): Prom
     if (!isNew) {
       // Corrupt repo — wipe and reinit
       rmSync(gd, { recursive: true, force: true });
-      const g = simpleGit(workTree);
+      const g = simpleGit({ baseDir: workTree, allowEnvironment: ["GIT_DIR"] });
       await g.raw(["init", "--separate-git-dir", gd]);
       await g.env("GIT_DIR", gd).addConfig("user.name", "modus-history");
       await g.env("GIT_DIR", gd).addConfig("user.email", "history@modus.local");

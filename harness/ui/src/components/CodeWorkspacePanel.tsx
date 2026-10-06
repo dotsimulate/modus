@@ -9,7 +9,7 @@ import type { BrowseResult, FileSearchResponse, PreviewManifest } from "../../..
 import { setFsWatchRoot } from "../fsEvents";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser, type FileBrowserHandle } from "./FileBrowser";
-import { CodeMirrorEditor, type CodeMirrorContextInfo, type CodeMirrorEditorHandle } from "./CodeMirrorEditor";
+import { CodeMirrorEditor, type CodeMirrorContextInfo, type CodeMirrorEditorHandle } from "./lazy-views";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";
@@ -17,6 +17,7 @@ import { PreviewRenderer } from "./PreviewRenderer";
 import { PinboardView } from "./PinboardView";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { buildFileHistoryItem } from "./fileHistoryMenu";
+import { projectForFile } from "../file-project";
 
 type Props = {
   active?: boolean;
@@ -65,7 +66,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     contentVersion,
   } = useFileViewer();
   const { groups, pinToActive, pinToGroup, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
-  const { activeCwd, activeUserProfile } = useProfiles();
+  const { activeCwd, activeUserProfile, userProfiles } = useProfiles();
 
   useEffect(() => {
     setFsWatchRoot(activeCwd ?? null);
@@ -642,6 +643,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
         <div className="right-panel-file">
           <FileContentViewer
             filePath={viewingFile!}
+            location={<span title={viewingFile!}>{projectForFile(viewingFile!, userProfiles)?.displayName ?? "External file"} · {viewingFile}</span>}
             content={view.kind === "file" ? view.content : null}
             loading={loading}
             error={view.kind === "error" ? view.message : null}

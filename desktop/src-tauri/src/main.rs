@@ -2,6 +2,7 @@
 
 mod backend;
 mod deep_link;
+mod file_open;
 mod job;
 mod media_permission;
 mod mini_viewer;
@@ -23,6 +24,7 @@ use std::{
 
 use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse, DesktopVaultStatus};
 use deep_link::{DeepLinkTarget, PendingDeepLink};
+use file_open::PendingFiles;
 use media_permission::MicrophoneArm;
 use mini_viewer::MiniViewer;
 use serde::Deserialize;
@@ -312,6 +314,16 @@ fn desktop_take_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Option
 }
 
 #[tauri::command]
+fn desktop_take_pending_files(pending: State<'_, PendingFiles>) -> Vec<String> {
+    pending.take()
+}
+
+#[tauri::command]
+fn desktop_has_pending_files(pending: State<'_, PendingFiles>) -> bool {
+    pending.has_pending()
+}
+
+#[tauri::command]
 async fn desktop_tailscale_status(
     supervisor: State<'_, Arc<BackendSupervisor>>,
 ) -> Result<DesktopTailscaleStatus, String> {
@@ -406,11 +418,14 @@ fn main() {
 
     let mut builder = tauri::Builder::default();
     if !allow_parallel_smoke_instance() {
-        builder = builder.plugin(tauri_plugin_single_instance::init(
-            |app, _arguments, _cwd| {
-                show_main_window(app);
-            },
-        ));
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, arguments, cwd| {
+            file_open::dispatch_arguments(
+                app,
+                arguments.into_iter().skip(1).map(Into::into),
+                std::path::Path::new(&cwd),
+            );
+            show_main_window(app);
+        }));
     }
     builder = builder
         .plugin(tauri_plugin_deep_link::init())
@@ -418,6 +433,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PendingUpdate::default())
         .manage(PendingDeepLink::default())
+        .manage(PendingFiles::default())
         .manage(MiniViewer::default());
     let app = builder
         .invoke_handler(tauri::generate_handler![
@@ -437,6 +453,8 @@ fn main() {
             desktop_reveal_path,
             desktop_open_path,
             desktop_take_pending_deep_link,
+            desktop_take_pending_files,
+            desktop_has_pending_files,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,
             desktop_check_for_update,
@@ -454,6 +472,10 @@ fn main() {
             supervisor.start_monitor(app.handle().clone());
             app.manage(supervisor);
 
+            if let Ok(cwd) = env::current_dir() {
+                file_open::dispatch_arguments(app.handle(), env::args_os().skip(1), &cwd);
+            }
+
             // Answers the Linux webview's native capture prompt, which is
             // denied by default and left the composer mic reporting "mic
             // blocked" on a machine whose microphone worked everywhere else.
@@ -469,8 +491,10 @@ fn main() {
                 // the NSIS installer registers the scheme only for installed
                 // release builds — so development builds claim it at runtime.
                 #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
-                if let Err(error) = app.deep_link().register_all() {
-                    eprintln!("[desktop] could not register the modus:// scheme: {error}");
+                if !allow_parallel_smoke_instance() {
+                    if let Err(error) = app.deep_link().register_all() {
+                        eprintln!("[desktop] could not register the modus:// scheme: {error}");
+                    }
                 }
 
                 let handle = app.handle().clone();
@@ -548,6 +572,16 @@ fn main() {
         .expect("failed to build Modus desktop");
 
     app.run(|app, event| match event {
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Opened { urls } => {
+            let paths = urls.into_iter().filter_map(|url| {
+                let path = url.to_file_path().ok()?;
+                file_open::validate(&path, std::path::Path::new("/"))
+            });
+            if file_open::dispatch(app, paths) {
+                show_main_window(app);
+            }
+        }
         tauri::RunEvent::ExitRequested { api, .. } if !QUITTING.load(Ordering::SeqCst) => {
             api.prevent_exit();
             begin_quit(app.clone());

@@ -2,6 +2,20 @@ import type { TurnContent, TurnContentBlock, TurnToolCall } from "./db";
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 import { providerErrorDisplayText } from "./provider-error";
 
+/** Keep the existing weight threshold and ordered placeholders when deferring details. */
+export function summarizeTurnDetails(turn: TurnContent): TurnContent {
+  if (turn.role !== "assistant" || estimateTurnDetailBytes(turn) < 32_768) return turn;
+  const deferredToolCallCount = turn.toolCalls?.length ?? 0;
+  const { thinking: _thinking, toolCalls: _toolCalls, ...summary } = turn;
+  return {
+    ...summary,
+    ...(turn.contentBlocks ? { contentBlocks: summarizeContentBlocks(turn.contentBlocks) } : {}),
+    detailsDeferred: true,
+    deferredHasThinking: !!turn.thinking,
+    ...(deferredToolCallCount > 0 ? { deferredToolCallCount } : {}),
+  };
+}
+
 export type SessionHistoryEventRow = {
   seq: number;
   type: string;

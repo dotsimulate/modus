@@ -5,9 +5,9 @@
   "metadata": {
     "component": {
       "type": "application",
-      "bom-ref": "pkg:generic/modus@0.3.0",
+      "bom-ref": "pkg:generic/modus@0.3.2-alpha.2",
       "name": "Modus",
-      "version": "0.3.0",
+      "version": "0.3.2-alpha.2",
       "licenses": [
         {
           "license": {
@@ -15,7 +15,7 @@
           }
         }
       ],
-      "purl": "pkg:generic/modus@0.3.0"
+      "purl": "pkg:generic/modus@0.3.2-alpha.2"
     },
     "properties": [
       {
@@ -1575,10 +1575,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40simple-git/args-pathspec@1.0.3",
+      "bom-ref": "pkg:npm/%40simple-git/args-pathspec@1.0.4",
       "name": "@simple-git/args-pathspec",
-      "version": "1.0.3",
-      "purl": "pkg:npm/%40simple-git/args-pathspec@1.0.3",
+      "version": "1.0.4",
+      "purl": "pkg:npm/%40simple-git/args-pathspec@1.0.4",
       "licenses": [
         {
           "expression": "MIT"
@@ -1593,10 +1593,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40simple-git/argv-parser@1.1.1",
+      "bom-ref": "pkg:npm/%40simple-git/argv-parser@2.0.1",
       "name": "@simple-git/argv-parser",
-      "version": "1.1.1",
-      "purl": "pkg:npm/%40simple-git/argv-parser@1.1.1",
+      "version": "2.0.1",
+      "purl": "pkg:npm/%40simple-git/argv-parser@2.0.1",
       "licenses": [
         {
           "expression": "MIT"
@@ -3051,10 +3051,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/brace-expansion@2.1.4",
+      "bom-ref": "pkg:npm/brace-expansion@2.1.7",
       "name": "brace-expansion",
-      "version": "2.1.4",
-      "purl": "pkg:npm/brace-expansion@2.1.4",
+      "version": "2.1.7",
+      "purl": "pkg:npm/brace-expansion@2.1.7",
       "licenses": [
         {
           "expression": "MIT"
@@ -3069,10 +3069,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/brace-expansion@5.0.9",
+      "bom-ref": "pkg:npm/brace-expansion@5.0.12",
       "name": "brace-expansion",
-      "version": "5.0.9",
-      "purl": "pkg:npm/brace-expansion@5.0.9",
+      "version": "5.0.12",
+      "purl": "pkg:npm/brace-expansion@5.0.12",
       "licenses": [
         {
           "expression": "MIT"
@@ -4437,10 +4437,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/dompurify@3.4.14",
+      "bom-ref": "pkg:npm/dompurify@3.4.16",
       "name": "dompurify",
-      "version": "3.4.14",
-      "purl": "pkg:npm/dompurify@3.4.14",
+      "version": "3.4.16",
+      "purl": "pkg:npm/dompurify@3.4.16",
       "licenses": [
         {
           "expression": "(MPL-2.0 OR Apache-2.0)"
@@ -4869,10 +4869,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/fast-uri@3.1.6",
+      "bom-ref": "pkg:npm/fast-uri@3.1.8",
       "name": "fast-uri",
-      "version": "3.1.6",
-      "purl": "pkg:npm/fast-uri@3.1.6",
+      "version": "3.1.8",
+      "purl": "pkg:npm/fast-uri@3.1.8",
       "licenses": [
         {
           "expression": "BSD-3-Clause"
@@ -5481,10 +5481,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/hono@4.13.5",
+      "bom-ref": "pkg:npm/hono@4.13.7",
       "name": "hono",
-      "version": "4.13.5",
-      "purl": "pkg:npm/hono@4.13.5",
+      "version": "4.13.7",
+      "purl": "pkg:npm/hono@4.13.7",
       "licenses": [
         {
           "expression": "MIT"
@@ -5751,10 +5751,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/ip-address@10.5.0",
+      "bom-ref": "pkg:npm/ip-address@10.7.1",
       "name": "ip-address",
-      "version": "10.5.0",
-      "purl": "pkg:npm/ip-address@10.5.0",
+      "version": "10.7.1",
+      "purl": "pkg:npm/ip-address@10.7.1",
       "licenses": [
         {
           "expression": "MIT"
@@ -6111,10 +6111,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/katex@0.16.47",
+      "bom-ref": "pkg:npm/katex@0.18.2",
       "name": "katex",
-      "version": "0.16.47",
-      "purl": "pkg:npm/katex@0.16.47",
+      "version": "0.18.2",
+      "purl": "pkg:npm/katex@0.18.2",
       "licenses": [
         {
           "expression": "MIT"
@@ -7785,10 +7785,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/proxy-addr@2.0.7",
+      "bom-ref": "pkg:npm/proxy-addr@2.0.8",
       "name": "proxy-addr",
-      "version": "2.0.7",
-      "purl": "pkg:npm/proxy-addr@2.0.7",
+      "version": "2.0.8",
+      "purl": "pkg:npm/proxy-addr@2.0.8",
       "licenses": [
         {
           "expression": "MIT"
@@ -8415,10 +8415,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/simple-git@3.36.0",
+      "bom-ref": "pkg:npm/simple-git@4.0.1",
       "name": "simple-git",
-      "version": "3.36.0",
-      "purl": "pkg:npm/simple-git@3.36.0",
+      "version": "4.0.1",
+      "purl": "pkg:npm/simple-git@4.0.1",
       "licenses": [
         {
           "expression": "MIT"
@@ -8847,10 +8847,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/undici@7.29.0",
+      "bom-ref": "pkg:npm/undici@7.29.1",
       "name": "undici",
-      "version": "7.29.0",
-      "purl": "pkg:npm/undici@7.29.0",
+      "version": "7.29.1",
+      "purl": "pkg:npm/undici@7.29.1",
       "licenses": [
         {
           "expression": "MIT"

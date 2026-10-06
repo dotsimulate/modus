@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ownershipFor } from "../tailscale-serve";
+import { removeTreeAfterExit } from "./fixtures/remove-tree";
 
 const cliPath = resolve(import.meta.dir, "..", "cli.ts");
 const fakeTailscale = `
@@ -47,8 +48,8 @@ beforeAll(() => {
   if (compiled.exitCode !== 0) throw new Error(`fake Tailscale build failed: ${compiled.stderr.toString()}`);
 }, 30_000);
 
-afterAll(() => {
-  if (fakeBuildRoot) rmSync(fakeBuildRoot, { recursive: true, force: true });
+afterAll(async () => {
+  if (fakeBuildRoot) await removeTreeAfterExit(fakeBuildRoot);
 });
 
 async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" | "unreadable" | "malformed") {
@@ -103,6 +104,7 @@ async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" 
     const result = await Promise.race([output, Bun.sleep(10_000).then(() => null)]);
     if (!result) {
       child.kill();
+      await child.exited;
       throw new Error("remote off CLI test timed out");
     }
     if (!existsSync(calls)) throw new Error("fake Tailscale was not invoked");
@@ -113,7 +115,7 @@ async function runRemoteOff(scenario: "failed" | "removed" | "none" | "foreign" 
       ownershipExists: existsSync(join(configDir, "tailscale-serve-owner.json")),
     };
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    await removeTreeAfterExit(root);
   }
 }
 

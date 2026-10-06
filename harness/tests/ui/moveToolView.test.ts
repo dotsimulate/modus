@@ -33,6 +33,22 @@ const resolution: MoveToolViewResolution = {
 beforeEach(() => clearMoveToolViewResolutionCache());
 
 describe("move tool-view identity", () => {
+  test("retains lookup identity for text deltas but updates new, removed, and reordered calls", () => {
+    const messages: Message[] = [{ id: "m", role: "assistant", content: "one", toolCalls: [
+      tool("a1", "mapi-a-1"), tool("b1", "mapi-b-1"),
+    ] }];
+    const previous = buildLatestMoveToolCallIds(messages);
+    expect(buildLatestMoveToolCallIds([{ ...messages[0]!, content: "two" }], previous)).toBe(previous);
+    const changed = buildLatestMoveToolCallIds([{ ...messages[0]!, toolCalls: [tool("a2", "mapi-a-1")] }], previous);
+    expect(changed).not.toBe(previous);
+    expect([...changed]).toEqual([["mapi-a-1", "a2"]]);
+    const reordered = buildLatestMoveToolCallIds([{ ...messages[0]!, toolCalls: [...messages[0]!.toolCalls!].reverse() }], previous);
+    expect([...reordered]).toEqual([...previous].reverse());
+    expect(buildLatestMoveToolCallIds([], previous).size).toBe(0);
+    const empty = buildLatestMoveToolCallIds([]);
+    expect(buildLatestMoveToolCallIds([{ id: "plain", role: "assistant", content: "delta" }], empty)).toBe(empty);
+  });
+
   test("reads the reusable token, op, and handler payload from modus_submit input", () => {
     const call = tool("t1", "mapi-chess-game-1");
     expect(moveApiToken(call)).toBe("mapi-chess-game-1");

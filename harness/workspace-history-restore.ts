@@ -360,10 +360,10 @@ async function patchCommitMessage(
   // We can't easily amend the commit message after the fact via commitIfChanged,
   // but we can use the git raw interface. Import simpleGit inline to avoid
   // exposing it as a module-level dependency.
-  const simpleGit = (await import("simple-git")).default;
+  const { simpleGit } = await import("simple-git");
   const workTree = getWorkTree(scope);
   const gitDir = join(shadowRepoPath(scope), ".git");
-  const g = simpleGit({ baseDir: workTree, config: [`core.worktree=${workTree}`] })
+  const g = simpleGit({ baseDir: workTree, allowEnvironment: ["GIT_DIR"], config: [`core.worktree=${workTree}`] })
     .env("GIT_DIR", gitDir);
 
   const entityList = plan.entries.map((e) => `  ${e.ref.kind}:${e.ref.id}`).join("\n");

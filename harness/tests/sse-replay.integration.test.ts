@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { removeTreeAfterExit } from "./fixtures/remove-tree";
 import { createInitialState, reduceEvent } from "../ui/src/eventReducer";
+import { createLiveSnapshotDecoder } from "../live-snapshot-codec";
 
 const root = mkdtempSync(join(tmpdir(), "modus-sse-replay-"));
 const readyPath = join(root, "runtime", "ready.json");
@@ -43,13 +44,13 @@ afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) {
     await backend.exited;
-    await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(backend.pid)), 100);
+    await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(backend.pid)), 200);
   }
   await removeTreeAfterExit(root);
 }, 15_000);
 
 test("single and multiplexed clients receive interjections sent during catch-up and retain them on reload", async () => {
-  for (const [index, route] of ["single", "multi"].entries()) {
+  for (const [index, route] of ["single", "multi", "multi-delta"].entries()) {
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), 3000);
     let transcript = "";
@@ -59,13 +60,13 @@ test("single and multiplexed clients receive interjections sent during catch-up 
         : `${baseUrl}/api/events/multi`, {
         signal: controller.signal,
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        ...(route === "multi" ? { method: "POST", body: JSON.stringify({ sessions: [{ i: "sse-replay-fixture", s: 0 }] }) } : {}),
+        ...(route !== "single" ? { method: "POST", body: JSON.stringify({ sessions: [{ i: "sse-replay-fixture", s: 0 }], liveDeltas: route === "multi-delta" }) } : {}),
       });
       expect(response.status).toBe(200);
       const reader = response.body!.getReader();
       const needle = '"content":"continue"';
       try {
-        while (transcript.split(needle).length < index + 2) {
+        while (transcript.split(needle).length < index + 2 || !transcript.includes(` stream-marker-${index + 1}`)) {
           const chunk = await reader.read();
           if (chunk.done) break;
           transcript += new TextDecoder().decode(chunk.value);
@@ -75,19 +76,22 @@ test("single and multiplexed clients receive interjections sent during catch-up 
       }
       expect(transcript).toContain(needle);
       expect(transcript.split(needle)).toHaveLength(index + 2);
+      expect(transcript.includes('"subtype":"live_delta"')).toBe(route === "multi-delta");
       // Rebuild the client exactly as a fresh browser does when replaying SSE.
       // Repeated text must retain both sends, including on the second client.
       let state = createInitialState("sse-replay-fixture");
+      const decodeLive = createLiveSnapshotDecoder();
       let seq = 0;
       for (const line of transcript.split("\n")) {
         if (line.startsWith("id: ")) seq = Number(line.slice(4));
         if (!line.startsWith("data: ")) continue;
         const data = JSON.parse(line.slice(6));
-        if (route === "multi" && data.ev) state = reduceEvent(state, data.ev, data.seq);
+        if (route !== "single" && data.ev) state = reduceEvent(state, decodeLive(data.sid, data.seq, data.ev), data.seq);
         else if (route === "single" && data.type) state = reduceEvent(state, data, seq);
       }
       expect(state.messages.filter((message) => message.role === "user").map((message) => message.content))
         .toEqual(["opening", ...Array(index + 1).fill("continue")]);
+      expect(state.messages.at(-1)?.content).toContain(` stream-marker-${index + 1}`);
     } finally {
       clearTimeout(deadline);
       controller.abort();
@@ -99,5 +103,5 @@ test("single and multiplexed clients receive interjections sent during catch-up 
   expect(response.status).toBe(200);
   const snapshot = await response.json() as { messages: Array<{ role: string; text: string }> };
   expect(snapshot.messages.filter((message) => message.role === "user").map((message) => message.text))
-    .toEqual(["opening", "continue", "continue"]);
+    .toEqual(["opening", "continue", "continue", "continue"]);
 }, 10_000);

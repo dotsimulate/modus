@@ -18,40 +18,23 @@
 import type { ComponentType } from "react";
 import type { WidgetDef, WidgetProps, WidgetBase, DashboardConfig } from "./types";
 import { WIDGET_META } from "./catalog";
+import { lazyView } from "../lazy-view";
 
 // ── Widget component imports ──
 
-import AboutWidget from "./about.widget";
 import ActionCardWidget from "./action-card.widget";
-import AccountWidget from "./account.widget";
-import ActionsManagerWidget from "./actions-manager.widget";
 import AgentActivityWidget from "./agent-activity.widget";
 import ArtifactShelfWidget from "./artifact-shelf.widget";
-import ClaudePricingWidget from "./claude-pricing.widget";
-import CodeEditorWidget from "./code-editor.widget";
 import ComposerWidget from "./composer.widget";
 import ConversationProjectionWidget from "./conversation-projection.widget";
 import ConversationTranscriptWidget from "./conversation-transcript.widget";
 import ConfigBarWidget from "./config-bar.widget";
-import ConfigInspectorWidget from "./config-inspector.widget";
-import DeepAnalyticsWidget from "./deep-analytics.widget";
-import DocsWidget from "./docs.widget";
 import DefaultAgentWidget from "./default-agent.widget";
-import ExtensionsWidget from "./extensions.widget";
 import InboxWidget from "./inbox.widget";
-import MissionGraphWidget from "./mission-graph.widget";
-import MissionsWidget from "./missions.widget";
-import MovesWidget from "./moves.widget";
 import NewSessionWidget from "./new-session.widget";
-import NotesWidget from "./notes.widget";
-import PagesBrowserWidget from "./pages-browser.widget";
 import PersistentTerminalWidget from "./persistent-terminal.widget";
-import ProcessesWidget from "./processes.widget";
 import ProfileCardWidget from "./profile-card.widget";
-import ProfilesManagerWidget from "./profiles-manager.widget";
-import ProjectThemeWidget from "./project-theme.widget";
 import ProviderStatusWidget from "./provider-status.widget";
-import ProviderUsageWidget from "./provider-usage.widget";
 import HintsLauncherWidget from "./hints-launcher.widget";
 import SessionChatWidget from "./session-chat.widget";
 import SessionControlWidget from "./session-control.widget";
@@ -63,13 +46,32 @@ import SessionSidebarWidget from "./session-sidebar.widget";
 import SessionStreamsWidget from "./session-streams.widget";
 import SessionTurnWidget from "./session-turn.widget";
 import SessionTurnsWidget from "./session-turns.widget";
-import SessionWebWidget from "./session-web.widget";
 import SessionTerminalWidget from "./session-terminal.widget";
 import SessionsWidget from "./sessions.widget";
 import StatsWidget from "./stats.widget";
 import TerminalsWidget from "./terminals.widget";
-import TraceViewerWidget from "./trace-viewer.widget";
-import TtsSettingsWidget from "./tts-settings.widget";
+
+const AboutWidget = lazyView(() => import("./about.widget"));
+const AccountWidget = lazyView(() => import("./account.widget"));
+const ActionsManagerWidget = lazyView(() => import("./actions-manager.widget"));
+const ClaudePricingWidget = lazyView(() => import("./claude-pricing.widget"));
+const CodeEditorWidget = lazyView(() => import("./code-editor.widget"));
+const ConfigInspectorWidget = lazyView(() => import("./config-inspector.widget"));
+const DeepAnalyticsWidget = lazyView(() => import("./deep-analytics.widget"));
+const DocsWidget = lazyView(() => import("./docs.widget"));
+const ExtensionsWidget = lazyView(() => import("./extensions.widget"));
+const MissionGraphWidget = lazyView(() => import("./mission-graph.widget"));
+const MissionsWidget = lazyView(() => import("./missions.widget"));
+const MovesWidget = lazyView(() => import("./moves.widget"));
+const NotesWidget = lazyView(() => import("./notes.widget"));
+const PagesBrowserWidget = lazyView(() => import("./pages-browser.widget"));
+const ProcessesWidget = lazyView(() => import("./processes.widget"));
+const ProfilesManagerWidget = lazyView(() => import("./profiles-manager.widget"));
+const ProjectThemeWidget = lazyView(() => import("./project-theme.widget"));
+const ProviderUsageWidget = lazyView(() => import("./provider-usage.widget"));
+const SessionWebWidget = lazyView(() => import("./session-web.widget"));
+const TraceViewerWidget = lazyView(() => import("./trace-viewer.widget"));
+const TtsSettingsWidget = lazyView(() => import("./tts-settings.widget"));
 
 // ── Component bindings ──
 
