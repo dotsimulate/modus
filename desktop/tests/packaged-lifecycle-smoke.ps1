@@ -199,7 +199,6 @@ try {
           $candidateSecondary = Get-Content -Raw -LiteralPath $secondaryStatePath | ConvertFrom-Json
           if ($candidateSecondary.mode -eq 'managed-local' -and $candidateSecondary.port -gt 0) {
             $secondaryState = $candidateSecondary
-            break
           }
         } catch {
           # Each Vault publishes its own record atomically.
