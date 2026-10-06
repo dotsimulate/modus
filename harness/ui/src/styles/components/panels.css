@@ -143,6 +143,11 @@
   z-index: 10;
 }
 
+.left-panel-content:has(> .panel-surface-item-body--tabs) {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Tighter widget spacing in left panel */
 .left-panel-content .widget {
   border-bottom: none;
@@ -829,19 +834,30 @@
 
 .panel-surface-item-body {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scroll-behavior: smooth;
 }
 
-.panel-surface-item-body--list {
-  overflow: auto;
+.panel-surface-item-body--tabs,
+.panel-surface-item-body--leaf {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.panel-surface-item-body--leaf {
+  height: 100%;
 }
 
 .panel-surface-item-body--tabs {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  flex-direction: column;
   padding: 8px 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-surface-item-body {
+    scroll-behavior: auto;
+  }
 }
 /* Full-bleed widgets cancel the tab-body padding — scoped per-tab so sibling tabs keep theirs. */
 .panel-surface-item-body--tabs:has(.right-panel-file),
@@ -860,8 +876,9 @@
   min-width: 0;
 }
 
-.panel-surface-item-body--tabs > * {
-  flex: 1;
+.panel-surface-item-body--tabs > *,
+.panel-surface-item-body--leaf > * {
+  flex: 1 1 auto;
   min-height: 0;
 }
 

@@ -7,6 +7,33 @@
   min-width: 0;
 }
 
+.proc-widget > * {
+  flex-shrink: 0;
+}
+
+.proc-toolbar,
+.proc-sort {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-secondary);
+}
+
+.proc-toolbar {
+  justify-content: space-between;
+}
+
+.proc-sort select {
+  max-width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 4px;
+}
+
 /* ── Summary bar ── */
 
 .proc-summary {

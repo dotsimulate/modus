@@ -56,12 +56,14 @@ function LeafWidget({
   leaf,
   index,
   active,
+  standalone = false,
   onNavigate,
   onSelectSession,
 }: {
   leaf: LayoutLeaf;
   index: number;
   active: boolean;
+  standalone?: boolean;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
 }) {
@@ -71,34 +73,36 @@ function LeafWidget({
 
   if (!visible) return null;
 
+  let content: ReactNode;
   // Move widget resolution: "move:chess" → MoveWidgetEmbed
   if (isMoveWidget(leaf.widget.type)) {
-    return (
+    content = (
       <MoveWidgetEmbed
         moveName={getMoveWidgetName(leaf.widget.type)}
         widgetId={widgetId}
         pageContext={pageContext}
       />
     );
+  } else {
+    const def = WIDGET_DEFS[leaf.widget.type];
+    const Comp = def?.miniComponent ?? def?.component;
+    content = Comp ? (
+      <WidgetErrorBoundary label={leaf.widget.title ?? leaf.widget.type} logLabel="panel widget">
+        <Comp
+          config={leaf.widget}
+          widgetId={widgetId}
+          active={active}
+          onNavigate={onNavigate}
+          onSelectSession={onSelectSession}
+          pageContext={pageContext}
+        />
+      </WidgetErrorBoundary>
+    ) : <div className="panel-empty">unknown widget: {leaf.widget.type}</div>;
   }
 
-  const def = WIDGET_DEFS[leaf.widget.type];
-  const Comp = def?.miniComponent ?? def?.component;
-
-  if (!Comp) return <div className="panel-empty">unknown widget: {leaf.widget.type}</div>;
-
-  return (
-    <WidgetErrorBoundary label={leaf.widget.title ?? leaf.widget.type} logLabel="panel widget">
-      <Comp
-        config={leaf.widget}
-        widgetId={widgetId}
-        active={active}
-        onNavigate={onNavigate}
-        onSelectSession={onSelectSession}
-        pageContext={pageContext}
-      />
-    </WidgetErrorBoundary>
-  );
+  return standalone ? (
+    <div className="panel-surface-item-body panel-surface-item-body--leaf">{content}</div>
+  ) : content;
 }
 
 /** Compact SVG icons for widget tabs — matches RightPanel iconFor */
@@ -879,8 +883,7 @@ export function PanelTreeRenderer({
   );
 
   if (node.kind === "widget") {
-    const item = renderLeaf(node, 0, onNavigate, onSelectSession);
-    return <>{item.render(true)}</>;
+    return <LeafWidget leaf={node} index={0} active standalone onNavigate={onNavigate} onSelectSession={onSelectSession} />;
   }
 
   if (node.kind === "split") {

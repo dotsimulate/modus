@@ -1,6 +1,6 @@
 ---
 title: Panels
-lastUpdated: 2026-08-24
+lastUpdated: 2026-10-06
 covers: harness/ui/src/providers/LayoutProvider.tsx harness/ui/src/providers/LayoutContext.ts harness/ui/src/providers/FileViewerProvider.tsx harness/ui/src/components/PanelSurface.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/LeftPanel.tsx harness/ui/src/components/RightPanel.tsx harness/ui/src/components/RightPanelContext.tsx harness/ui/src/components/WidgetPicker.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/registry.ts harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/ui-state.ts harness/sdk/types.ts
 ---
 
@@ -155,8 +155,19 @@ Behavior:
   constraints. Tab-mode items render full-bleed with `display: none` on inactive
   siblings so mounted components stay alive.
 - Tab strips support horizontal wheel scrolling.
+- Widget bodies scroll overflowing content by default in tabs, list cards,
+  and standalone layout leaves (including split/grid children and move widgets).
+  Widgets can still own an internal scroll area for a fixed toolbar, editor, or
+  transcript; those keep the available height. Shared bodies use native wheel
+  and touch scrolling, with smooth programmatic scrolling unless system or app
+  reduced motion is enabled. Auto-sized layout sections remain content-sized.
 - Optional `picker`, `headerClassName`, `bodyClassName`, and `contentClassName`
   props let each caller slot its own CSS class names while reusing the core.
+
+The `processes` widget defaults to **Recently active**, ordered by the latest
+event or start time across process kinds. **Newest started** orders by start
+time instead. The selection persists per widget, user profile, and project.
+This is the current process snapshot, not a history of completed processes.
 
 ---
 
@@ -201,7 +212,7 @@ persisted `tree` — it synthesizes one from the widget list + mode so
 
 Dispatches by `node.kind`:
 
-- `widget` — single leaf, no chrome. `renderLeaf(...).render(true)`.
+- `widget` — single `LeafWidget` in a shared scroll body, without header chrome.
 - `split` — `ResizableSplit` (see §5).
 - `overlay` — one isolated CSS grid cell; the first child is the base and later
   recursive children paint above it.

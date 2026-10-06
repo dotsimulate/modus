@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProcessInfo, ProcessSnapshot } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { useActiveSessionId } from "../providers/SessionContext";
+import { useProfiles } from "../providers/ProfileContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { useWidgetChrome } from "./chrome";
 import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
+import { useWidgetUiState } from "./ui-state";
+import { sortProcesses, type ProcessSort } from "./process-order";
 
 type ProcessesConfig = WidgetBase & {
   type: "processes";
@@ -35,7 +38,8 @@ function formatCost(usd: number): string {
 }
 
 function timeAgo(ts: number): string {
-  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (ts <= 0) return "unknown";
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m ago`;
@@ -43,8 +47,12 @@ function timeAgo(ts: number): string {
   return `${hr}h ${min % 60}m ago`;
 }
 
-export default function ProcessesWidget({ config, onSelectSession, pageContext }: WidgetProps<ProcessesConfig>) {
+export default function ProcessesWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<ProcessesConfig>) {
   const activeSessionId = useActiveSessionId();
+  const { activeUserProfile, activeCwd } = useProfiles();
+  const [sort, setSort] = useWidgetUiState<ProcessSort>(
+    { userProfile: activeUserProfile, cwd: activeCwd }, widgetId, "sort", "activity",
+  );
   const { setHeaderSuffix } = useWidgetChrome();
   const [killingId, setKillingId] = useState<string | null>(null);
 
@@ -65,6 +73,8 @@ export default function ProcessesWidget({ config, onSelectSession, pageContext }
     intervalMs: 3000,
     initialValue: { timestamp: 0, processes: [], summary: { total: 0, byKind: {}, totalCostUsd: 0, missionRuns: 0 } },
   });
+
+  const processes = useMemo(() => sortProcesses(value.processes, sort), [value.processes, sort]);
 
   useEffect(() => {
     if (!loading) {
@@ -95,6 +105,16 @@ export default function ProcessesWidget({ config, onSelectSession, pageContext }
 
   return (
     <div className="proc-widget">
+      <div className="proc-toolbar">
+        <span>{processes.length} process{processes.length === 1 ? "" : "es"}</span>
+        <label className="proc-sort">
+          <span>Sort</span>
+          <select value={sort} onChange={(event) => setSort(event.target.value === "started" ? "started" : "activity")}>
+            <option value="activity">Recently active</option>
+            <option value="started">Newest started</option>
+          </select>
+        </label>
+      </div>
       {value.summary.missionRuns > 0 && (
         <div className="proc-summary">
           {value.summary.missionRuns} mission{value.summary.missionRuns > 1 ? "s" : ""} {"\u00b7"}{" "}
@@ -102,7 +122,7 @@ export default function ProcessesWidget({ config, onSelectSession, pageContext }
           {formatCost(value.summary.totalCostUsd)}
         </div>
       )}
-      {value.processes.map((proc: ProcessInfo) => {
+      {processes.map((proc: ProcessInfo) => {
         const isMe = proc.id === activeSessionId;
         return (
           <div key={proc.id} className={`proc-row ${isMe ? "proc-row--me" : ""}`}>
