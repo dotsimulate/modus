@@ -51,6 +51,7 @@ import {
 } from "./pageNav";
 
 import { getInputValue } from "./inputStore";
+import { preloadOptionalViews } from "./lazy-view";
 
 type ConfigDashboardPage = DashboardPage & {
   origin?: PageNavOrigin;
@@ -134,6 +135,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 }
 
 function App() {
+  useEffect(() => preloadOptionalViews(), []);
   return (
     <AppErrorBoundary>
       <AuthProvider>

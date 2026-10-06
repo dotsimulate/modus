@@ -1,4 +1,5 @@
 import { prepare, layout, clearCache, type PreparedText, type LayoutResult } from "@chenglou/pretext";
+import { BoundedCache } from "../../../bounded-cache";
 
 const FONT_SANS = "'IBM Plex Sans', sans-serif";
 const FONT_MONO = "'JetBrains Mono', monospace";
@@ -42,7 +43,10 @@ export function getFontProfile(profile: FontProfile, fontScale = 1) {
   };
 }
 
-const prepareCache = new Map<string, PreparedText>();
+// Prepared handles contain arrays as well as text. Bound source characters,
+// not just entry count, so successive prefixes of a long reply cannot pile up.
+const prepareCache = new BoundedCache<string, PreparedText>(128, 100_000);
+let preparedCharacters = 0;
 
 function getCacheKey(text: string, font: string): string {
   return `${font}::${text}`;
@@ -53,8 +57,15 @@ export function prepareText(text: string, profile: FontProfile, fontScale = 1): 
   const key = getCacheKey(text, font);
   let prepared = prepareCache.get(key);
   if (!prepared) {
+    // Pretext also owns word/analysis caches. Reset their accumulated work at
+    // a bounded interval; existing prepared handles remain valid after reset.
+    if (preparedCharacters + text.length > 1_000_000) {
+      clearCache();
+      preparedCharacters = 0;
+    }
     prepared = prepare(text, font);
-    prepareCache.set(key, prepared);
+    preparedCharacters += text.length;
+    prepareCache.set(key, prepared, key.length);
   }
   return prepared;
 }
@@ -193,5 +204,6 @@ export function estimateMessageHeight(
 
 export function clearMeasureCache() {
   prepareCache.clear();
+  preparedCharacters = 0;
   clearCache();
 }

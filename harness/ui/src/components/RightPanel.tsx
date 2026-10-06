@@ -5,7 +5,7 @@ import { WidgetPicker } from "./WidgetPicker";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { RightPanelContextProvider } from "./RightPanelContext";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
-import { TerminalView } from "./TerminalView";
+import { TerminalView } from "./lazy-views";
 import { modus } from "../modusClient";
 import { useSessionState } from "../sessionStore";
 

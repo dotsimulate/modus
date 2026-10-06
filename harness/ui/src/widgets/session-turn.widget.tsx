@@ -35,7 +35,8 @@ import { MessageText } from "../components/MessageText";
 import { AttachmentImage } from "../components/AttachmentImage";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { metaParts } from "../components/providerStats";
-import { partitionToolRun, buildLatestMoveToolCallIds } from "../move-tool-view";
+import { partitionToolRun } from "../move-tool-view";
+import { useLatestMoveToolCallIds } from "../hooks/useLatestMoveToolCallIds";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { useInterfaceSettings } from "../useInterfaceSettings";
@@ -421,10 +422,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
     });
   }, [activeUP?.interface, activeUserProfile, interfaceSettings, refreshUserProfiles, scrollThrough]);
 
-  const latestMoveToolCallIds = useMemo(
-    () => buildLatestMoveToolCallIds(messages),
-    [messages],
-  );
+  const latestMoveToolCallIds = useLatestMoveToolCallIds(messages);
 
   const loadDetails = useCallback((seq: number) => {
     if (sessionId) void loadSessionMessageDetails(sessionId, seq);

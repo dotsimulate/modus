@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { PointerEventHandler, ReactNode } from "react";
 import { Markdown } from "./Markdown";
-import { CodeMirrorViewer } from "./CodeMirrorViewer";
+import { CodeMirrorViewer } from "./lazy-views";
 import { isMarkdownFile } from "../desktop-file-open";
 import type { CodeMirrorContextInfo } from "./CodeMirrorEditor";
 

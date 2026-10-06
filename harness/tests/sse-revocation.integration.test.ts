@@ -60,13 +60,14 @@ beforeAll(async () => {
   try {
     db.run("INSERT INTO sessions (id, preview, status, created_at, updated_at) VALUES (?, 'SSE fixture', 'done', 1, 1)", [sessionId]);
     const insert = db.prepare("INSERT INTO events (session_id, seq, type, subtype, data, created_at) VALUES (?, ?, 'assistant', NULL, ?, 1)");
+    const payload = "x".repeat(100);
     try {
-      const payload = "x".repeat(100);
       db.transaction(() => {
         for (let seq = 1; seq <= eventCount; seq++) insert.run(sessionId, seq, JSON.stringify({ type: "assistant", seq, payload }));
       })();
     } finally {
-      // Uncached prepared statements keep SQLite handles alive after db.close().
+      // close() defers releasing SQLite until outstanding statements finalize.
+      // Do not leave this database locked until an unrelated GC in the suite.
       insert.finalize();
     }
   } finally { db.close(); }
