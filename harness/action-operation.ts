@@ -74,7 +74,7 @@ export async function executeOperation(opts: OperationOptions): Promise<{ receip
   async function worker(start: Record<string, unknown>, primary = false): Promise<{ result?: OperationResult; process?: ProcessResult; error?: string; couldNotStart?: boolean }> {
     controller.signal.throwIfAborted();
     if (children.size >= 5) throw new Error("At most 4 managed processes may run per code action");
-    const child = spawn(process.execPath, [workerPath], {
+    const child = spawn(process.execPath, ["--no-install", workerPath], {
       cwd: receipt.cwd, env, windowsHide: true, detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });

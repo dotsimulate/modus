@@ -266,8 +266,11 @@ fn run(arguments: impl Iterator<Item = OsString>) -> Result<i32, String> {
         .map_err(|error| format!("cannot resolve the installed Modus CLI: {error}"))?;
     let layout = installed_layout(&executable)?;
     validate_layout(&layout)?;
+    // The install ships no node_modules; without this Bun fetches any
+    // unresolved import from npm at runtime.
     let status = Command::new(&layout.bun)
         .arg("run")
+        .arg("--no-install")
         .arg(&layout.cli)
         .args(arguments)
         .env("MODUS_PACKAGED_CLI", "1")

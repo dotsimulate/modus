@@ -172,6 +172,8 @@ describe("Antigravity CLI runtime", () => {
     expect(files["hooks.json"]).toContain("PreToolUse");
     expect(files["hooks.json"]).toContain("PostToolUse");
     expect(files["mcp_config.json"]).toContain("modus_profile_tools");
+    expect(JSON.parse(files["mcp_config.json"]).mcpServers.modus_profile_tools.args[0]).toBe("--no-install");
+    expect(files["hooks.json"]).toContain("--no-install");
     expect(JSON.stringify(files)).not.toContain("oauth_creds.json");
   });
 

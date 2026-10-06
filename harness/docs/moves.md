@@ -48,6 +48,9 @@ host project or the harness.
   `package.json`, delete the move's `node_modules` to force a reinstall.
 - Install failure logs a warning and module load proceeds (imports of the
   missing package then fail and are caught by the normal load-error path).
+- Declare every package a move imports. Modus runs Bun with runtime
+  auto-install disabled, so an undeclared import fails instead of being
+  fetched from npm.
 - Bun does not run dependency lifecycle scripts (postinstall) unless the
   package is explicitly trusted, which limits install-time supply-chain
   exposure. The move's own code runs with full harness privileges regardless —

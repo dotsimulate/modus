@@ -27,6 +27,9 @@ use crate::vaults::{
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
 const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
+/// The packaged backend ships no node_modules, so Bun would otherwise fetch any
+/// unresolved import from npm at runtime — unsigned code outside the release.
+const BUN_NO_AUTO_INSTALL: &str = "--no-install";
 #[cfg(windows)]
 const BACKEND_LAUNCHER_FLAG: &str = "--modus-backend-launcher";
 #[cfg(windows)]
@@ -78,7 +81,10 @@ fn run_backend_launcher(gate: &Path, bun: &Path, server: &Path) -> i32 {
     let _ = fs::remove_file(gate);
 
     let mut command = Command::new(bun);
-    command.arg(server).stdin(Stdio::null());
+    command
+        .arg(BUN_NO_AUTO_INSTALL)
+        .arg(server)
+        .stdin(Stdio::null());
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     command.creation_flags(CREATE_NO_WINDOW);
@@ -869,7 +875,7 @@ impl VaultBackendSupervisor {
         #[cfg(not(windows))]
         let mut command = Command::new(&self.paths.bun);
         #[cfg(not(windows))]
-        command.arg(&self.paths.server);
+        command.arg(BUN_NO_AUTO_INSTALL).arg(&self.paths.server);
         command
             .current_dir(&self.paths.resources)
             .env_remove("MODUS_VAULT_ROOT")
@@ -1363,10 +1369,10 @@ mod tests {
     use crate::vaults::normalize_vault_slug;
 
     #[cfg(windows)]
-    use std::{fs, path::PathBuf, thread};
+    use std::{fs, thread};
 
     #[cfg(windows)]
-    use super::run_backend_launcher;
+    use super::{run_backend_launcher, BUN_NO_AUTO_INSTALL};
 
     #[test]
     fn restart_backoff_rechecks_desired_mode_after_sleeping() {
@@ -1535,19 +1541,21 @@ mod tests {
         fs::create_dir_all(&directory).expect("create launcher test directory");
         let gate = directory.join("assigned.gate");
         let marker = directory.join("backend-started.txt");
-        let script = directory.join("backend.ps1");
-        let escaped_marker = marker.to_string_lossy().replace('\'', "''");
+        // Stands in for Bun: records the start only when auto-install is disabled.
+        let fake_bun = directory.join("fake-bun.cmd");
         fs::write(
-            &script,
-            format!("[IO.File]::WriteAllText('{escaped_marker}', 'started')"),
+            &fake_bun,
+            format!(
+                "@echo off\r\nif not \"%~1\"==\"{BUN_NO_AUTO_INSTALL}\" exit /b 7\r\n<nul set /p \"=started\" > \"{}\"\r\nexit /b 0\r\n",
+                marker.display()
+            ),
         )
         .expect("write launcher test script");
-        let powershell = PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
-            .join("System32/WindowsPowerShell/v1.0/powershell.exe");
+        let server = directory.join("server.js");
 
         let launcher_gate = gate.clone();
         let launcher =
-            thread::spawn(move || run_backend_launcher(&launcher_gate, &powershell, &script));
+            thread::spawn(move || run_backend_launcher(&launcher_gate, &fake_bun, &server));
         thread::sleep(Duration::from_millis(200));
         assert!(
             !marker.exists(),

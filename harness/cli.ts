@@ -278,6 +278,8 @@ const UI_DIR = join(HARNESS_DIR, "ui");
 const UI_SRC_DIR = join(UI_DIR, "src");
 const UI_DIST_DIR = join(UI_DIR, "dist");
 const BUN = process.execPath;
+// A packaged install has no node_modules; keep Bun from fetching unresolved imports from npm.
+const NO_AUTO_INSTALL = "--no-install";
 const CLI_PATH = Bun.fileURLToPath(import.meta.url);
 const PACKAGED_CLI = process.env.MODUS_PACKAGED_CLI === "1";
 const SERVER_ENTRY = resolve(
@@ -661,7 +663,7 @@ async function cmdDaemonSupervise(): Promise<void> {
   // detached by cmdStart), and keeping the backend and its providers inside that same
   // group is what lets `modus stop` reap the whole daemon with one group signal.
   assertServerEntry();
-  const child = spawn([BUN, "run", SERVER_ENTRY], {
+  const child = spawn([BUN, "run", NO_AUTO_INSTALL, SERVER_ENTRY], {
     cwd: HARNESS_DIR,
     stdout: "inherit",
     stderr: "inherit",
@@ -809,7 +811,7 @@ async function cmdStart(args: string[]): Promise<void> {
     // ── Daemon mode ──
     mkdirSync(dirname(daemonLogFile), { recursive: true });
     const logFd = openSync(daemonLogFile, "a");
-    const proc = spawn([BUN, "run", CLI_PATH, "__daemon-supervise"], {
+    const proc = spawn([BUN, "run", NO_AUTO_INSTALL, CLI_PATH, "__daemon-supervise"], {
       cwd: HARNESS_DIR,
       stdout: logFd,
       stderr: logFd,
@@ -861,7 +863,7 @@ async function cmdStart(args: string[]): Promise<void> {
   // reap the provider CLIs beneath it. Ctrl-C then reaches only this CLI, which is
   // what we want: shutdown() below drives the graceful HTTP path and force-kills the
   // group as a fallback. Windows is left alone — taskkill /T already walks the tree.
-  const proc = spawn([BUN, "run", SERVER_ENTRY], {
+  const proc = spawn([BUN, "run", NO_AUTO_INSTALL, SERVER_ENTRY], {
     cwd: HARNESS_DIR,
     stdout: "inherit",
     stderr: "inherit",

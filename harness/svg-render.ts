@@ -18,7 +18,7 @@ const WORKER_PATH = join(
 
 export function svgToPngBase64(svgPath: string, width = 800): string | null {
   try {
-    const result = spawnSync(process.execPath, [WORKER_PATH, svgPath, String(width)], {
+    const result = spawnSync(process.execPath, ["--no-install", WORKER_PATH, svgPath, String(width)], {
       timeout: 10_000,
       maxBuffer: 50 * 1024 * 1024, // 50MB for large PNGs
     });

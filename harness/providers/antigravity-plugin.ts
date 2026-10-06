@@ -26,7 +26,7 @@ export function antigravityPluginFiles(options: {
   const scriptExtension = process.env.MODUS_DESKTOP_MANAGED ? "js" : "ts";
   const hookScript = join(providersDir, `antigravity-hook.${scriptExtension}`);
   const bridgeScript = join(providersDir, `antigravity-mcp-bridge.${scriptExtension}`);
-  const hookCommand = (mode: string) => [bunPath, hookScript, mode].map((part) => shellQuote(part, platform)).join(" ");
+  const hookCommand = (mode: string) => [bunPath, "--no-install", hookScript, mode].map((part) => shellQuote(part, platform)).join(" ");
   const hookHandler = (mode: string) => ({
     type: "command",
     command: hookCommand(mode),
@@ -51,7 +51,7 @@ export function antigravityPluginFiles(options: {
       mcpServers: {
         modus_profile_tools: {
           command: bunPath,
-          args: [bridgeScript],
+          args: ["--no-install", bridgeScript],
         },
       },
     }, null, 2),

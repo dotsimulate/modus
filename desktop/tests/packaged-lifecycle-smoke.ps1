@@ -63,6 +63,8 @@ $env:XDG_CONFIG_HOME = Join-Path $smokeRoot 'xdg-config'
 $env:XDG_DATA_HOME = Join-Path $smokeRoot 'xdg-data'
 $env:XDG_CACHE_HOME = Join-Path $smokeRoot 'xdg-cache'
 $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $smokeRoot 'webview'
+$bunInstallCache = Join-Path $smokeRoot 'bun-install-cache'
+$env:BUN_INSTALL_CACHE_DIR = $bunInstallCache
 $env:MODUS_CONFIG_DIR = $config
 $testSecrets = Join-Path $config 'secrets.env'
 [System.IO.File]::WriteAllText($testSecrets, "HARNESS_PIN=packaged-smoke-pin`n", [System.Text.UTF8Encoding]::new($false))
@@ -488,6 +490,10 @@ public static class ModusWindowSmoke {
     Get-NetTCPConnection -LocalPort 3778 -State Listen -ErrorAction SilentlyContinue |
       Select-Object -ExpandProperty OwningProcess -Unique
   )
+  # Packaged Bun processes run with auto-install off; any cached package means one
+  # fetched code from npm at runtime.
+  $autoInstalled = @(Get-ChildItem -LiteralPath $bunInstallCache -Force -ErrorAction SilentlyContinue)
+  if ($autoInstalled.Count) { throw "Packaged Bun auto-installed packages: $($autoInstalled.Name -join ', ')" }
   if (($existing3778 -join ',') -ne ($after3778 -join ',')) {
     throw "Listener 3778 changed: before=$($existing3778 -join ',') after=$($after3778 -join ',')"
   }
