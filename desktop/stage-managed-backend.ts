@@ -163,7 +163,7 @@ function stagePhotonWasm(): void {
  * `Bun.which("bun")` takes whatever is first on the build machine's PATH — in a
  * checkout that has been built once, that can be a Bun from this repository's
  * own `target/` directory. Nothing recorded which version went into a package,
- * so "record toolchain versions" in RELEASES.md could not be satisfied and the
+ * so a release record could not name its toolchain versions and the
  * vendored Bun license notice could not be said to describe the shipped binary.
  *
  * The pin is the root `packageManager` field, which already names the Bun this

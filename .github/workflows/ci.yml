@@ -2,7 +2,7 @@ name: CI
 
 # Source-tree gate, not release qualification. Packaging, signing, installer
 # launch, upgrade/rollback, and platform qualification remain separate
-# (RELEASES.md).
+# (harness/docs/releases.md).
 #
 # Private solo phase: pushes to main are a post-push alarm. They cannot stop
 # the commit from landing. pull_request and workflow_dispatch run the full job

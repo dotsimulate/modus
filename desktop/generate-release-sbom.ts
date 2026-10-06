@@ -9,9 +9,9 @@
  * be drift-checked. It therefore cannot describe a specific artifact.
  *
  * This one can. It stamps the build, records the source commit and toolchain
- * versions, and attaches a SHA-256 for every file that ships. RELEASES.md
- * requires exactly that ("record the source commit, toolchain versions,
- * dependency locks, artifact size, and SHA-256 digest") and it is the only form
+ * versions, and attaches a SHA-256 for every file that ships. A release record
+ * needs exactly that (the source commit, toolchain versions, dependency locks,
+ * artifact size, and SHA-256 digest) and it is the only form
  * that supports "independent checksum and signature verification after upload".
  *
  * Run after a bundle build, from `desktop/`:

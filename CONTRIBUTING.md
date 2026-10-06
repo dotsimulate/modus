@@ -120,7 +120,8 @@ lint failures; a clean enforced baseline remains release-readiness work.
 
 `.github/workflows/ci.yml` is a source-tree gate, not release qualification.
 Packaging, signing, installer launch, upgrade/rollback, and platform
-qualification remain separate; see [RELEASES.md](RELEASES.md).
+qualification remain separate; see
+[harness/docs/releases.md](harness/docs/releases.md).
 
 On `main` pushes, CI is a post-push alarm: it cannot stop the commit from
 landing. Pull requests and `workflow_dispatch` run the full job set. Push

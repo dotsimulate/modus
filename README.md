@@ -8,8 +8,7 @@
 > interfaces and security boundaries are still evolving. The old unsigned
 > Windows `v0.1.0` tester asset was withdrawn; the prerelease page/tag remains
 > for history but has no downloadable installer. Packaged macOS and Linux
-> applications have not been released. See [support scope](SUPPORT.md) and the
-> [release policy](RELEASES.md).
+> applications have not been released. See [support scope](SUPPORT.md).
 
 Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 

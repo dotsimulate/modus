@@ -7,13 +7,9 @@ covers: desktop/stage-managed-backend.ts desktop/tests/packaged-lifecycle-smoke.
 
 # Release, Signing, and Packaging
 
-How a Modus desktop build is produced, signed, and qualified. The policy that
-governs which builds may be published lives in `RELEASES.md` at the repository
-root; the day-to-day build recipe and lifecycle detail live in
-`desktop/README.md`; Windows signing has its own step-by-step in
-`desktop/docs/windows-signing.md`. This document is the map, and it is the piece
-that was missing from the agent-facing corpus — searching it for "installer",
-"notarization", or "updater" used to return nothing.
+How a Modus desktop build is produced, signed, and qualified. The day-to-day
+build recipe and lifecycle detail live in `desktop/README.md`; Windows signing
+has its own step-by-step in `desktop/docs/windows-signing.md`.
 
 Nothing here contains account identifiers, certificate values, or endpoints.
 Every credential is supplied through the environment at build time and none is
@@ -261,6 +257,6 @@ markers between the staged bundle and the currently installed one:
 - Always confirm a marker from the *previous* build still reads non-zero in the
   installed artifact, or you have only proven you grepped the wrong path.
 
-Record the package's SHA-256 with each build, per `RELEASES.md`. Package
+Record the package's SHA-256 with each build. Package
 filenames are version-derived, so consecutive builds overwrite each other —
 rename the existing artifact before rebuilding, or the rollback is gone.
