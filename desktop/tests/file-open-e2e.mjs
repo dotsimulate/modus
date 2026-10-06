@@ -67,7 +67,7 @@ Object.assign(env, {
   MODUS_DESKTOP_RESOURCES_DIR: resources,
   MODUS_DESKTOP_BUN: bun,
   MODUS_DESKTOP_MODE: "managed-local",
-  MODUS_DESKTOP_SMOKE_QUIT_MS: "180000",
+  MODUS_DESKTOP_SMOKE_QUIT_MS: "300000",
   MODUS_TAILSCALE_CLI: join(root, "fake-tailscale.cmd"),
   WEBVIEW2_USER_DATA_FOLDER: join(root, "webview"),
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
@@ -153,6 +153,26 @@ try {
   await page.locator('.fcv-actions button[title="Switch to view"]:visible').click();
   await heading("Outside project").waitFor();
 
+  // Persist an editor tab, reload, and verify its disk content is restored.
+  await page.locator('.fcv-actions button[title="Edit file"]:visible').click();
+  await page.locator('.right-panel-editor .cm-content:visible').filter({ hasText: "Saved from desktop test" }).waitFor();
+  const waitForSavedEditing = async (editing) => waitFor(async () => page.evaluate(async ({ id, editing }) => {
+    const params = new URLSearchParams(location.search);
+    const token = localStorage.getItem(`harness_token:${encodeURIComponent(params.get("modusTargetId"))}`);
+    const response = await fetch(`${params.get("modusTarget")}/api/ui/sessions/${id}/state`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const state = await response.json();
+    return state.fileViewerTabs?.some((tab) => tab.path.endsWith("outside.markdown") && tab.editing === editing);
+  }, { id: sessionId, editing }), "persisted editor mode");
+  await waitForSavedEditing(true);
+  await page.reload();
+  await forward(second);
+  await page.locator('.right-panel-editor .cm-content:visible').filter({ hasText: "Saved from desktop test" }).waitFor();
+  await page.locator('.fcv-actions button[title="Switch to view"]:visible').click();
+  await heading("Outside project").waitFor();
+  await waitForSavedEditing(false);
+
   // Hold tab restoration while an OS request arrives during a webview reload.
   // A later hydration must not erase the newly opened file.
   await page.route(`**/api/ui/sessions/${sessionId}/state`, async (route) => {
@@ -179,7 +199,7 @@ try {
   await page.locator('.app').waitFor();
   assert.equal(await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("desktop_has_pending_files")), false, "reload replayed a claimed file");
   await page.screenshot({ path: join(root, "desktop-file-open.png") });
-  console.log("PASS: native cold start, second-instance forwarding, multiple files, duplicate tabs, project recognition, external Markdown, Mermaid rendering, relative links/images, script sanitization, unsupported/missing files, edit/save, selected-session preservation, delayed startup hydration, fullscreen fallback, relative launch paths, and no replay.");
+  console.log("PASS: native cold start, second-instance forwarding, multiple files, duplicate tabs, project recognition, external Markdown, Mermaid rendering, relative links/images, script sanitization, unsupported/missing files, edit/save, restored editor content, selected-session preservation, delayed startup hydration, fullscreen fallback, relative launch paths, and no replay.");
 } catch (error) {
   if (page) {
     writeFileSync(join(root, "failure.html"), await page.content().catch(() => ""));

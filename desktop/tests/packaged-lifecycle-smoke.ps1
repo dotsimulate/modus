@@ -57,6 +57,12 @@ $project = Join-Path $smokeRoot 'project'
 New-Item -ItemType Directory -Path $modusTestHome, $runtime, $logs, $config, $project -Force | Out-Null
 
 $env:MODUS_HOME = $modusTestHome
+$env:HOME = $smokeRoot
+$env:USERPROFILE = $smokeRoot
+$env:XDG_CONFIG_HOME = Join-Path $smokeRoot 'xdg-config'
+$env:XDG_DATA_HOME = Join-Path $smokeRoot 'xdg-data'
+$env:XDG_CACHE_HOME = Join-Path $smokeRoot 'xdg-cache'
+$env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $smokeRoot 'webview'
 $env:MODUS_CONFIG_DIR = $config
 $testSecrets = Join-Path $config 'secrets.env'
 [System.IO.File]::WriteAllText($testSecrets, "HARNESS_PIN=packaged-smoke-pin`n", [System.Text.UTF8Encoding]::new($false))
@@ -138,9 +144,7 @@ if ($Scenario -eq 'remote') {
   $env:MODUS_DESKTOP_MODE = 'remote'
   $env:MODUS_DESKTOP_TARGET_URL = 'https://modus-packaged-smoke.invalid'
 } else {
-  # The WebView profile is shared with the installed app, so its saved backend
-  # preference is not an isolated test input. Pin lifecycle scenarios to the
-  # managed path instead of inheriting a user's localStorage choice.
+  # Pin lifecycle scenarios to the managed path independently of saved choices.
   $env:MODUS_DESKTOP_MODE = 'managed-local'
   Remove-Item Env:MODUS_DESKTOP_TARGET_URL -ErrorAction SilentlyContinue
 }

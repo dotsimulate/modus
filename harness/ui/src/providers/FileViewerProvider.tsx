@@ -16,6 +16,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const fileOpenListenersRef = useRef<Set<(request: FileOpenRequest) => void>>(new Set());
+  const hydrationVersionRef = useRef(0);
   useEffect(() => {
     return onFsChange((event) => {
       const openTabs = tabsRef.current;
@@ -138,6 +139,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hydrate = useCallback((hydratedTabs: Array<{ path: string; pinned: boolean; editing?: boolean; dirty?: boolean; content?: string | null }>, hydratedActivePath: string | null) => {
+    const version = ++hydrationVersionRef.current;
     // Normalize old-shape tabs (from saved UI state) to full Tab shape
     setTabs(hydratedTabs.map((t) => ({
       path: normalizeLocalFilePath(t.path),
@@ -147,6 +149,20 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
       content: null, // force re-load on edit
     })));
     setActivePath(hydratedActivePath ? normalizeLocalFilePath(hydratedActivePath) : null);
+    // Restored editor tabs need disk content before the editor can mount.
+    // Ignore reads from a session that has since been replaced.
+    for (const tab of hydratedTabs) {
+      if (!tab.editing) continue;
+      const path = normalizeLocalFilePath(tab.path);
+      modus.readFile(path).then((content) => {
+        if (content === null || hydrationVersionRef.current !== version) return;
+        setTabs((prev) => prev.map((current) =>
+          current.path === path && current.editing && current.content === null
+            ? { ...current, content }
+            : current
+        ));
+      }).catch(() => {});
+    }
   }, []);
 
   const subscribeFileOpens = useCallback((fn: (request: FileOpenRequest) => void) => {
