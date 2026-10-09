@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { db, upsertSession, addEvent, searchSessions, updateSessionTags, indexSessionTitle } from "../../db";
+import { db, upsertSession, addEvent, searchSessions, listSessionsScoped, updateSessionTags, indexSessionTitle } from "../../db";
 
 function seed(id: string, time: number, cwd = "/projects/example", userProfile = "example", profile = "helper") {
   upsertSession({ id, preview: id, cwd, userProfile, profile, messageCount: 2, costUsd: 0 });
@@ -39,6 +39,11 @@ try {
   const scoped = searchSessions("auth refactor", 20, { cwdPrefixes: ["/projects/example"], userProfileName: "example", agentProfiles: ["helper"] }, { sort: "latest" });
   assert.deepEqual(scoped.map(hit => hit.session_id), ["new", "middle", "old"]);
   assert(scoped.every(hit => /auth|refactor/i.test(hit.snippet)));
+  // Date bounds are [after, before) on last_message_at, applied before the limit.
+  const window = { cwdPrefixes: ["/projects/example"], userProfileName: "example", agentProfiles: ["helper"], lastMessageAfter: 200, lastMessageBefore: 300 };
+  assert.deepEqual(searchSessions("auth refactor", 1, window).map(hit => hit.session_id), ["middle"]);
+  assert.deepEqual(listSessionsScoped({ ...window, limit: 1 }).map(s => s.id), ["middle"]);
+  assert.deepEqual(listSessionsScoped({ ...window, lastMessageBefore: undefined }).map(s => s.id), ["new", "middle"]);
   assert.equal(new Set(ids("auth")).size, ids("auth").length);
   for (let i = 0; i < 25; i++) seed(`page-${String(i).padStart(2, "0")}`, 1000);
   const first = ids("auth", { sort: "latest" });

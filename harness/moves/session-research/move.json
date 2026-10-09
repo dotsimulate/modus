@@ -1,7 +1,7 @@
 {
   "name": "session-research",
   "label": "Session Research",
-  "description": "Search and read past session conversations within the current project. Find which session worked on a topic, read its messages, get summaries.",
+  "description": "Search and read past session conversations within the current project. Find which session worked on a topic, read its messages or how it ended, and check in on many sessions at once.",
   "icon": "search",
   "mode": "inline",
   "inputs": [],
@@ -9,7 +9,7 @@
     "tokenPrefix": "research",
     "ops": {
       "search": {
-        "description": "Full-text search across the calling session's own project (its cwd and user profile). Returns ranked results with rich snippets (400 chars of matching content). This is NOT a cross-project search — for that, see the hints move's search op.",
+        "description": "Full-text search across the calling session's own project (its cwd and user profile). Every word must match; when that finds too few sessions, it adds sessions matching some of the words and marks how many. Returns ranked results with rich snippets (400 chars of matching content). This is NOT a cross-project search — for that, see the hints move's search op.",
         "schema": {
           "type": "object",
           "properties": {
@@ -17,38 +17,79 @@
             "limit": { "type": "number", "description": "Max results (default 10, max 50)" },
             "profile": { "type": "string", "description": "Filter to a specific agent profile" },
             "role": { "type": "string", "enum": ["user", "assistant"], "description": "Filter by message sender — 'user' for user messages only, 'assistant' for assistant messages only. Omit to search all." },
-            "dateAfter": { "type": "string", "description": "Only sessions active after this date (ISO string, e.g. '2026-04-01')" },
-            "dateBefore": { "type": "string", "description": "Only sessions active before this date (ISO string, e.g. '2026-04-05')" }
+            "dateAfter": { "type": "string", "description": "Only sessions last active at or after this point. 'YYYY-MM-DD' is local midnight in timeZone, not UTC; full ISO timestamps also accepted." },
+            "dateBefore": { "type": "string", "description": "Only sessions last active before this point. 'YYYY-MM-DD' is local midnight in timeZone, not UTC; full ISO timestamps also accepted." },
+            "date": { "type": "string", "description": "One local day: 'today', 'yesterday', or 'YYYY-MM-DD'. Overrides dateAfter/dateBefore." },
+            "timeZone": { "type": "string", "description": "IANA time zone for shown and parsed dates (default: this machine's, e.g. 'America/New_York')" }
           },
           "required": ["query"]
         }
       },
       "list": {
-        "description": "List recent sessions, optionally filtered by profile.",
+        "description": "List recent sessions with their turn counts, newest activity first, optionally filtered by profile or a local date window. Sessions with no turns are hidden unless includeEmpty is set.",
         "schema": {
           "type": "object",
           "properties": {
             "limit": { "type": "number", "description": "Max results (default 15, max 50)" },
-            "profile": { "type": "string", "description": "Filter to a specific agent profile" }
+            "profile": { "type": "string", "description": "Filter to a specific agent profile" },
+            "date": { "type": "string", "description": "One local day: 'today', 'yesterday', or 'YYYY-MM-DD'. Overrides dateAfter/dateBefore." },
+            "dateAfter": { "type": "string", "description": "Only sessions last active at or after this point. 'YYYY-MM-DD' is local midnight in timeZone, not UTC; full ISO timestamps also accepted." },
+            "dateBefore": { "type": "string", "description": "Only sessions last active before this point. 'YYYY-MM-DD' is local midnight in timeZone, not UTC; full ISO timestamps also accepted." },
+            "includeEmpty": { "type": "boolean", "description": "Include sessions with no turns" },
+            "timeZone": { "type": "string", "description": "IANA time zone for shown and parsed dates (default: this machine's, e.g. 'America/New_York')" }
           }
         }
       },
       "read": {
-        "description": "Read the conversation messages from a specific session. Returns user/assistant turns with up to 3000 chars per turn (adjustable via maxLength).",
+        "description": "Read the conversation messages from a specific session. Returns user/assistant turns with up to 3000 chars per turn (adjustable via maxLength); longer turns are cut in the middle so their end is kept. Turn numbers match list/info turn counts.",
         "schema": {
           "type": "object",
           "properties": {
             "sessionId": { "type": "string", "description": "Session ID to read" },
             "limit": { "type": "number", "description": "Max turns to return (default 30, max 100)" },
-            "offset": { "type": "number", "description": "Skip this many turns from the start (default 0)" },
+            "offset": { "type": "number", "description": "Skip this many turns from the start (default 0). Negative counts from the end: -2 reads the last two turns." },
             "role": { "type": "string", "enum": ["user", "assistant"], "description": "Filter to only user or only assistant turns. Omit to return all turns." },
-            "maxLength": { "type": "number", "description": "Max chars per turn (default 3000, max 8000). Use higher values when searching for long-form content." }
+            "maxLength": { "type": "number", "description": "Max chars per turn (default 3000, max 8000). Longer turns keep their opening and their end, cutting the middle." }
           },
           "required": ["sessionId"]
         }
       },
+      "tail": {
+        "description": "Read how a session ended: its last N turns, with each assistant turn cut to its final answer (the narration after its last tool call). Long text is cut in the middle, keeping the end. Also reports who spoke last and a guessed ending.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessionId": { "type": "string", "description": "Session ID to read" },
+            "turns": { "type": "number", "description": "How many turns from the end (default 2, max 20)" },
+            "full": { "type": "boolean", "description": "Keep all of each assistant turn's narration, not just its final answer" },
+            "maxLength": { "type": "number", "description": "Max chars per turn (default 4000, max 8000)" },
+            "timeZone": { "type": "string", "description": "IANA time zone for shown and parsed dates (default: this machine's, e.g. 'America/New_York')" }
+          },
+          "required": ["sessionId"]
+        }
+      },
+      "digest": {
+        "description": "Check in on many sessions in one call — 'what have I left hanging?'. One row per session: title, profile, cwd, local start/end, turn count, last user message, last assistant final answer (never cut at the end), who spoke last, and a guessed ending (asks_user / waiting_on_external / signed_off / mid_work — a text heuristic, verify before acting). Pass sessionIds, or a date window.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessionIds": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Sessions to digest (max 100). Omit to use the date window."
+            },
+            "date": { "type": "string", "description": "One local day: 'today', 'yesterday', or 'YYYY-MM-DD'. Overrides dateAfter/dateBefore." },
+            "dateAfter": { "type": "string", "description": "Only sessions last active at or after this point. 'YYYY-MM-DD' is local midnight in timeZone, not UTC; full ISO timestamps also accepted." },
+            "dateBefore": { "type": "string", "description": "Only sessions last active before this point. 'YYYY-MM-DD' is local midnight in timeZone, not UTC; full ISO timestamps also accepted." },
+            "profile": { "type": "string", "description": "Filter to a specific agent profile (date window only)" },
+            "limit": { "type": "number", "description": "Max sessions from a date window (default 50, max 100)" },
+            "maxLength": { "type": "number", "description": "Max chars of each assistant final answer (default 800, max 4000); user messages get half" },
+            "timeZone": { "type": "string", "description": "IANA time zone for shown and parsed dates (default: this machine's, e.g. 'America/New_York')" }
+          }
+        }
+      },
       "scan": {
-        "description": "Bulk-preview multiple sessions at once. Shows first 3 turns from each session. Use this after search to quickly check multiple candidates instead of reading each one individually.",
+        "description": "Bulk-preview multiple sessions at once: the first 3 turns from each, or the last 3 with from: 'end' (assistant turns then cut to their final answer). Use this after search to quickly check multiple candidates instead of reading each one individually.",
         "schema": {
           "type": "object",
           "properties": {
@@ -58,31 +99,28 @@
               "description": "List of session IDs to scan (max 20)"
             },
             "role": { "type": "string", "enum": ["user", "assistant"], "description": "Filter to only user or only assistant turns." },
-            "maxLength": { "type": "number", "description": "Max chars per turn (default 2000, max 5000)" }
+            "maxLength": { "type": "number", "description": "Max chars per turn (default 2000, max 5000)" },
+            "from": { "type": "string", "enum": ["start", "end"], "description": "Preview the first turns (default) or the last turns" },
+            "timeZone": { "type": "string", "description": "IANA time zone for shown and parsed dates (default: this machine's, e.g. 'America/New_York')" }
           },
           "required": ["sessionIds"]
         }
       },
       "info": {
-        "description": "Get metadata for a specific session (profile, model, cost, status, timestamps, tags).",
+        "description": "Get metadata for a specific session (profile, model, cost, status, turn count, local timestamps, tags).",
         "schema": {
           "type": "object",
           "properties": {
-            "sessionId": { "type": "string", "description": "Session ID" }
+            "sessionId": { "type": "string", "description": "Session ID" },
+            "timeZone": { "type": "string", "description": "IANA time zone for shown and parsed dates (default: this machine's, e.g. 'America/New_York')" }
           },
           "required": ["sessionId"]
         }
       }
     },
-    "state": {
-      "persist": false
-    }
+    "state": { "persist": false }
   },
-  "submit": {
-    "required": false
-  },
-  "session": {
-    "afterSubmit": "continue"
-  },
+  "submit": { "required": false },
+  "session": { "afterSubmit": "continue" },
   "tags": ["research", "sessions", "capability"]
 }
