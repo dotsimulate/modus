@@ -532,6 +532,122 @@ async function armDesktopMicrophone() {
   }
 }
 
+export const CAPTURE_PROCESSOR = "modus-whisper-capture";
+
+/**
+ * Capture runs on the audio rendering thread and hands the page whole blocks.
+ *
+ * A ScriptProcessorNode calls back on the page's main thread instead, and
+ * Chromium drops every block that thread is too busy to take: while a long
+ * chat renders, a large tool result lands, or the harness answers late, words
+ * went missing from the middle of a dictation and came back garbled. Blocks a
+ * worklet posts wait in the port until the page is free, and arrive in order.
+ *
+ * Blocks are BUFFER_SIZE frames — the size the ScriptProcessor delivered — so
+ * the chunking below sees the same cadence either way. "flush" posts a partial
+ * block and then answers, which tells stop() every captured frame has arrived.
+ */
+export const CAPTURE_WORKLET_SOURCE = `
+class ModusWhisperCapture extends AudioWorkletProcessor {
+  constructor(options) {
+    super();
+    this.size = options.processorOptions.blockSize;
+    this.channels = [];
+    this.filled = 0;
+    this.port.onmessage = (event) => {
+      if (event.data !== "flush") return;
+      this.post();
+      this.port.postMessage({ flushed: true });
+    };
+  }
+
+  post() {
+    if (this.filled === 0) return;
+    const channels = this.channels.map((data) => (this.filled === data.length ? data : data.slice(0, this.filled)));
+    this.port.postMessage({ channels }, channels.map((data) => data.buffer));
+    this.channels = this.channels.map(() => new Float32Array(this.size));
+    this.filled = 0;
+  }
+
+  process(inputs) {
+    const input = inputs[0];
+    // Nothing connected yet, or the source went away: keep the node alive.
+    if (!input || input.length === 0) return true;
+    if (this.channels.length !== input.length) {
+      this.post();
+      this.channels = input.map(() => new Float32Array(this.size));
+    }
+    const frames = input[0].length;
+    let offset = 0;
+    while (offset < frames) {
+      const take = Math.min(frames - offset, this.size - this.filled);
+      for (let c = 0; c < input.length; c++) {
+        this.channels[c].set(input[c].subarray(offset, offset + take), this.filled);
+      }
+      this.filled += take;
+      offset += take;
+      if (this.filled === this.size) this.post();
+    }
+    return true;
+  }
+}
+registerProcessor(${JSON.stringify(CAPTURE_PROCESSOR)}, ModusWhisperCapture);
+`;
+
+/** How long stop() waits for the worklet to hand over its last frames. */
+const CAPTURE_FLUSH_TIMEOUT_MS = 500;
+
+/**
+ * Build the worklet capture node, or return null when this client cannot — no
+ * AudioWorklet, or a policy that refuses the module — so the caller falls back
+ * to a ScriptProcessorNode rather than failing the recording.
+ */
+async function createWorkletCapture(context, onBlock) {
+  if (!context.audioWorklet || typeof globalThis.AudioWorkletNode !== "function") return null;
+  const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET_SOURCE], { type: "text/javascript" }));
+  let node;
+  try {
+    await context.audioWorklet.addModule(url);
+    node = new globalThis.AudioWorkletNode(context, CAPTURE_PROCESSOR, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      // What createScriptProcessor(BUFFER_SIZE, CAPTURE_CHANNELS, 1) gave its input.
+      channelCount: CAPTURE_CHANNELS,
+      channelCountMode: "explicit",
+      processorOptions: { blockSize: BUFFER_SIZE },
+    });
+  } catch (error) {
+    console.warn("[whisper] audio worklet unavailable, capturing on the main thread:", error);
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  let onFlushed = null;
+  node.port.onmessage = (event) => {
+    if (event.data?.flushed) {
+      onFlushed?.();
+      onFlushed = null;
+      return;
+    }
+    if (Array.isArray(event.data?.channels)) onBlock(event.data.channels);
+  };
+  return {
+    node,
+    /** Resolves once every frame captured so far has been handed to onBlock. */
+    flush() {
+      return new Promise((resolve) => {
+        const timer = setTimeout(resolve, CAPTURE_FLUSH_TIMEOUT_MS);
+        onFlushed = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        node.port.postMessage("flush");
+      });
+    },
+  };
+}
+
 async function createRecordingSession(micPreference) {
   const unsupported = captureSupportFromGlobals();
   if (unsupported) throw failure(unsupported.label, unsupported.detail);
@@ -573,7 +689,6 @@ async function createRecordingSession(micPreference) {
   }
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
-  const processor = context.createScriptProcessor(BUFFER_SIZE, CAPTURE_CHANNELS, 1);
   const preRollLimit = Math.max(1, Math.round((context.sampleRate * PRE_ROLL_MS) / 1000));
   let preRollChunks = [];
   let preRollLength = 0;
@@ -590,11 +705,14 @@ async function createRecordingSession(micPreference) {
   let frames = 0;
   let liveChannel = 0;
   const startedAt = Date.now();
+  let capture = null;
+  let processor = null;
 
   async function closeGraph() {
     if (closed) return;
     closed = true;
-    processor.disconnect();
+    processor?.disconnect();
+    capture?.node.port.close();
     source.disconnect();
     stream.getTracks().forEach((track) => track.stop());
     await context.close();
@@ -640,11 +758,9 @@ async function createRecordingSession(micPreference) {
     return blob;
   }
 
-  processor.onaudioprocess = (event) => {
+  /** One captured block, one array of samples per input channel. */
+  function handleBlock(channels) {
     frames += 1;
-    const buffer = event.inputBuffer;
-    const channels = [];
-    for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
     const picked = pickLoudestChannel(channels);
     const input = picked.samples ?? channels[0];
     const copy = new Float32Array(input.length);
@@ -680,8 +796,20 @@ async function createRecordingSession(micPreference) {
     } else {
       silenceMs += frameMs;
     }
-  };
+  }
 
+  capture = await createWorkletCapture(context, handleBlock);
+  if (capture) {
+    processor = capture.node;
+  } else {
+    processor = context.createScriptProcessor(BUFFER_SIZE, CAPTURE_CHANNELS, 1);
+    processor.onaudioprocess = (event) => {
+      const buffer = event.inputBuffer;
+      const channels = [];
+      for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+      handleBlock(channels);
+    };
+  }
   source.connect(processor);
   processor.connect(context.destination);
   await context.resume();
@@ -739,6 +867,8 @@ async function createRecordingSession(micPreference) {
       return null;
     },
     async stop() {
+      // Blocks still queued from the audio thread belong to this recording.
+      if (capture && !closed) await capture.flush();
       await closeGraph();
       return takeChunk(true, false);
     },

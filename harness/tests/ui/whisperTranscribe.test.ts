@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import whisperTranscribeExtension, {
+  CAPTURE_PROCESSOR,
+  CAPTURE_WORKLET_SOURCE,
   describeCaptureError,
   describeCaptureSupport,
   describeMicDevice,
@@ -345,6 +347,8 @@ function installAudioStubs() {
         },
       });
     },
+    /** ScriptProcessorNodes built so far — none when the worklet path is taken. */
+    scriptProcessorCount: () => processors.length,
     restore() {
       if (original.navigator) Object.defineProperty(scope, "navigator", original.navigator);
       else delete scope.navigator;
@@ -352,6 +356,113 @@ function installAudioStubs() {
     },
   };
 }
+
+/**
+ * installAudioStubs plus an AudioWorklet. The node's port models the real one:
+ * a block the audio thread has posted can still be waiting for the page, and a
+ * "flush" delivers everything waiting before it answers.
+ */
+function installWorkletStubs(opts: { refuseModule?: boolean } = {}) {
+  const base = installAudioStubs();
+  const scope = globalThis as any;
+  const originalNode = scope.AudioWorkletNode;
+  const nodes: any[] = [];
+  const modules: string[] = [];
+  const BaseContext = scope.AudioContext;
+  scope.AudioContext = class extends BaseContext {
+    audioWorklet = {
+      addModule: async (url: string) => {
+        modules.push(url);
+        if (opts.refuseModule) throw new Error("refused by policy");
+      },
+    };
+  };
+  scope.AudioWorkletNode = class {
+    waiting: Float32Array[][] = [];
+    port = {
+      onmessage: null as any,
+      closed: false,
+      postMessage: (message: unknown) => {
+        if (message !== "flush") return;
+        for (const channels of this.waiting.splice(0)) this.port.onmessage?.({ data: { channels } });
+        this.port.onmessage?.({ data: { flushed: true } });
+      },
+      close() { this.closed = true; },
+    };
+    constructor(public context: unknown, public name: string, public options: any) { nodes.push(this); }
+    connect() {}
+    disconnect() {}
+  };
+  const block = (amplitude: number) => [new Float32Array(4096).fill(amplitude), new Float32Array(4096).fill(0.003)];
+  return {
+    nodes,
+    modules,
+    scriptProcessorCount: base.scriptProcessorCount,
+    scriptProcessorSpeak: base.speak,
+    /** A loud block the page receives as soon as the audio thread posts it. */
+    speak(amplitude = 0.5) {
+      nodes.at(-1)?.port.onmessage?.({ data: { channels: block(amplitude) } });
+    },
+    /** A loud block captured on the audio thread but not yet taken by a busy page. */
+    queue(amplitude = 0.5) {
+      nodes.at(-1)?.waiting.push(block(amplitude));
+    },
+    restore() {
+      scope.AudioWorkletNode = originalNode;
+      base.restore();
+    },
+  };
+}
+
+/** The shipped worklet source, run against a stand-in AudioWorkletGlobalScope. */
+function loadCaptureProcessor(): any {
+  let processor: any = null;
+  class AudioWorkletProcessorStub {
+    port = { posted: [] as any[], onmessage: null as any, postMessage(message: unknown) { this.posted.push(message); } };
+  }
+  new Function("AudioWorkletProcessor", "registerProcessor", CAPTURE_WORKLET_SOURCE)(
+    AudioWorkletProcessorStub,
+    (name: string, ctor: unknown) => {
+      expect(name).toBe(CAPTURE_PROCESSOR);
+      processor = ctor;
+    },
+  );
+  return processor;
+}
+
+describe("whisper-transcribe worklet capture", () => {
+  test("batches render quanta into whole blocks without losing or reordering a frame", () => {
+    const Processor = loadCaptureProcessor();
+    const node = new Processor({ processorOptions: { blockSize: 4096 } });
+    let next = 0;
+    // 40 quanta of 128 frames: one whole block and 1,024 frames left over.
+    for (let quantum = 0; quantum < 40; quantum++) {
+      const left = Float32Array.from({ length: 128 }, () => next++);
+      expect(node.process([[left, left.map((value) => value + 0.5)]])).toBe(true);
+    }
+    expect(node.port.posted).toHaveLength(1);
+    const [left, right] = node.port.posted[0].channels;
+    expect(left).toHaveLength(4096);
+    expect(left[0]).toBe(0);
+    expect(left[4095]).toBe(4095);
+    expect(right[10]).toBe(10.5);
+
+    node.port.onmessage({ data: "flush" });
+    const [partial, flushed] = node.port.posted.slice(1);
+    expect(partial.channels[0]).toHaveLength(1024);
+    expect(partial.channels[0][0]).toBe(4096);
+    expect(partial.channels[0][1023]).toBe(5119);
+    expect(flushed).toEqual({ flushed: true });
+  });
+
+  test("stays alive with nothing connected and flushes nothing it never captured", () => {
+    const node = new (loadCaptureProcessor())({ processorOptions: { blockSize: 4096 } });
+    expect(node.process([[]])).toBe(true);
+    expect(node.process([])).toBe(true);
+    node.port.onmessage({ data: "flush" });
+    expect(node.port.posted).toEqual([{ flushed: true }]);
+  });
+});
 
 /**
  * Peak absolute amplitude of an uploaded 16-bit PCM WAV, so a test can assert
@@ -778,5 +889,70 @@ describe("upload timeout", () => {
     const { response, raw } = await requestText(ok, "/x", {}, 1000);
     expect(response.status).toBe(200);
     expect(raw).toBe('{"text":"hello"}');
+  });
+});
+
+describe("whisper-transcribe capture thread", () => {
+  let audio: ReturnType<typeof installWorkletStubs> | null = null;
+  let dispose: (() => void) | null = null;
+
+  afterEach(() => {
+    dispose?.();
+    dispose = null;
+    audio?.restore();
+    audio = null;
+  });
+
+  test("captures on the audio thread when the client has an AudioWorklet", async () => {
+    audio = installWorkletStubs();
+    const { api, uploads, getAction } = createApiStub("off the main thread");
+    dispose = whisperTranscribeExtension(api as any) as () => void;
+
+    const clicked = createComposerStub();
+    await getAction().onClick({ composer: clicked.handle });
+    audio.speak();
+    await getAction().onClick({ composer: clicked.handle });
+
+    expect(clicked.drafts).toEqual(["off the main thread"]);
+    expect(audio.scriptProcessorCount()).toBe(0);
+    expect(audio.modules[0]).toMatch(/^blob:/);
+    expect(audio.nodes).toHaveLength(1);
+    expect(audio.nodes[0].name).toBe(CAPTURE_PROCESSOR);
+    // Same input shape the ScriptProcessorNode had, so both channels still arrive.
+    expect(audio.nodes[0].options).toMatchObject({ channelCount: 2, channelCountMode: "explicit", processorOptions: { blockSize: 4096 } });
+    expect(audio.nodes[0].port.closed).toBe(true);
+    expect(await peakOfUploadedWav(uploads[0]!)).toBeGreaterThan(0.3);
+  });
+
+  test("stop keeps the frames a busy page had not taken yet", async () => {
+    audio = installWorkletStubs();
+    const { api, uploads, getAction } = createApiStub("the last words");
+    dispose = whisperTranscribeExtension(api as any) as () => void;
+
+    const clicked = createComposerStub();
+    await getAction().onClick({ composer: clicked.handle });
+    // Captured while the page was blocked: nothing has reached it yet.
+    audio.queue();
+    await getAction().onClick({ composer: clicked.handle });
+
+    expect(clicked.drafts).toEqual(["the last words"]);
+    expect(uploads).toHaveLength(1);
+    expect(await peakOfUploadedWav(uploads[0]!)).toBeGreaterThan(0.3);
+  });
+
+  test("falls back to the script processor when the worklet module is refused", async () => {
+    audio = installWorkletStubs({ refuseModule: true });
+    const { api, uploads, getAction } = createApiStub("still recorded");
+    dispose = whisperTranscribeExtension(api as any) as () => void;
+
+    const clicked = createComposerStub();
+    await getAction().onClick({ composer: clicked.handle });
+    audio.scriptProcessorSpeak();
+    await getAction().onClick({ composer: clicked.handle });
+
+    expect(audio.nodes).toHaveLength(0);
+    expect(audio.scriptProcessorCount()).toBe(1);
+    expect(clicked.drafts).toEqual(["still recorded"]);
+    expect(uploads).toHaveLength(1);
   });
 });
