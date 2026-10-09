@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { db, upsertSession, addEvent, getSession, getSessionMessages } from "../../db";
+import { db, upsertSession, addEvent, getSession, getSessionMessages, readSessionMessages } from "../../db";
 import { handlers } from "../../moves/session-research/context";
 import type { MoveApiContext } from "../../move-types";
 
@@ -26,7 +26,7 @@ function assistant(id: string, seq: number, final: string, opts: { narration?: s
   addEvent(id, next++, "result", "success", JSON.stringify({ subtype: "success" }));
 }
 
-const ctx = { sessionId: "caller", db: { getSession, getSessionMessages } } as unknown as MoveApiContext;
+const ctx = { sessionId: "caller", db: { getSession, getSessionMessages, readSessionMessages } } as unknown as MoveApiContext;
 async function call(op: string, data: Record<string, unknown>): Promise<string> {
   const result = await handlers[op]!(ctx, data) as { ok: boolean; message?: string; error?: string };
   assert.equal(result.ok, true, result.error);

@@ -40,7 +40,7 @@ import {
 import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
   getSession as dbGetSession,
-  searchSessions as dbSearchSessions, getSessionMessages,
+  searchSessions as dbSearchSessions, getSessionMessages, readSessionMessages,
   listSessionCwds, sessionHasMoveContext,
   type TurnContent,
 } from "./db";
@@ -48,6 +48,7 @@ import {
   insertMoveRun, updateMoveRun, getMoveRuns,
 } from "./move-db";
 import { logActivity } from "./activity";
+import { trackActivity } from "./event-loop-monitor";
 import { resolveSecret, isSecretSet } from "./secrets";
 import { addSessionTag as dbAddSessionTag } from "./db";
 import { getPluginMovesDir, listEnabledModusPlugins } from "./modus-plugins";
@@ -771,7 +772,13 @@ export async function handleMoveApiSubmit(
   const payload = (typeof data.data === "object" && data.data !== null)
     ? data.data as Record<string, unknown>
     : data;
-  const result = await handler(ctx, payload);
+  const done = trackActivity(`${reg.moveName}:${op} [${caller}]`);
+  let result: Awaited<ReturnType<typeof handler>>;
+  try {
+    result = await handler(ctx, payload);
+  } finally {
+    done();
+  }
 
   // ── Audit: log every op call ──
   logActivity({
@@ -1619,6 +1626,9 @@ export function buildMoveDB(moveName: string, cwd: string): MoveDB {
     },
     getSessionMessages(sessionId: string) {
       return getSessionMessages(sessionId);
+    },
+    readSessionMessages(sessionId: string, options?: { toolPayloads?: boolean }) {
+      return readSessionMessages(sessionId, options);
     },
   };
 }

@@ -2,7 +2,8 @@
  * Session Research move — gives an agent the ability to search and read
  * past session conversations via API ops.
  *
- * Backend: harness/db.ts searchSessions, getSession, getSessionMessages, listSessionsScoped.
+ * Backend: harness/db.ts searchSessions, getSession, listSessionsScoped; turns via
+ * ctx.db.readSessionMessages, which rebuilds them on a worker thread.
  * Handlers auto-scope to the calling session's cwd/userProfile via getSession lookup.
  * Dates are shown and parsed in a local time zone (the `timeZone` arg, else the machine's).
  */
@@ -11,6 +12,7 @@ import type { MoveContext, MoveApiContext, MoveApiHandler } from "../../../harne
 import {
   getSession,
   searchSessions,
+  searchSessionsOffThread,
   listSessions,
   listSessionsScoped,
   parseTags,
@@ -133,9 +135,18 @@ function formatTurn(t: TurnContent, maxLen: number, opts: { finalOnly?: boolean 
   return `[${prefix}]${toolSummary}${label}\n${text}`;
 }
 
-function turnsOf(ctx: MoveApiContext, sessionId: string): TurnContent[] {
+/**
+ * A session's turns, rebuilt off the harness's main thread: an op here can read
+ * dozens of long transcripts, and reading them inline stalls every other request
+ * — the UI, live streams, dictation uploads — until it finishes. No op shows
+ * tool inputs or results, so they are not carried back.
+ */
+async function turnsOf(ctx: MoveApiContext, sessionId: string): Promise<TurnContent[]> {
   try {
-    return ctx.db.getSessionMessages(sessionId);
+    // A backend older than this move has only the synchronous read.
+    return typeof ctx.db.readSessionMessages === "function"
+      ? await ctx.db.readSessionMessages(sessionId, { toolPayloads: false })
+      : ctx.db.getSessionMessages(sessionId);
   } catch {
     return [];
   }
@@ -230,10 +241,13 @@ export const handlers: Record<string, MoveApiHandler> = {
       ...(window.after !== undefined ? { lastMessageAfter: window.after } : {}),
       ...(window.before !== undefined ? { lastMessageBefore: window.before } : {}),
     };
-    const run = (q: string) => searchSessions(q, fetchLimit, Object.keys(scope).length ? scope : undefined)
+    // Full-text ranking can take hundreds of milliseconds on a large index;
+    // run it off the main thread when this backend can.
+    const search = typeof searchSessionsOffThread === "function" ? searchSessionsOffThread : searchSessions;
+    const run = async (q: string) => (await search(q, fetchLimit, Object.keys(scope).length ? scope : undefined))
       .filter(h => inWindow(h.last_message_at, window));
 
-    let hits = run(query).slice(0, requestedLimit);
+    let hits = (await run(query)).slice(0, requestedLimit);
     const matchedTerms = new Map<string, number>();
 
     // Every word must match for a hit. Remembered wording rarely matches the
@@ -245,7 +259,7 @@ export const handlers: Record<string, MoveApiHandler> = {
       const seen = new Set(hits.map(h => h.session_id));
       const extra = new Map<string, { hit: (typeof hits)[number]; count: number }>();
       for (const word of words) {
-        for (const hit of run(word)) {
+        for (const hit of await run(word)) {
           if (seen.has(hit.session_id)) continue;
           const entry = extra.get(hit.session_id);
           if (entry) entry.count++;
@@ -275,7 +289,7 @@ export const handlers: Record<string, MoveApiHandler> = {
 
       // Get a richer snippet: find the best matching turn and show more context
       try {
-        const turns = ctx.db.getSessionMessages(hit.session_id);
+        const turns = await turnsOf(ctx, hit.session_id);
         const targetTurns = role ? turns.filter(t => t.role === role) : turns;
         let bestTurn: TurnContent | undefined;
         let bestScore = 0;
@@ -316,7 +330,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const rows: { s: SessionRow; turns: number }[] = [];
     for (const s of fetched) {
       if (rows.length >= limit) break;
-      const turns = turnsOf(ctx, s.id).length;
+      const turns = (await turnsOf(ctx, s.id)).length;
       if (turns === 0 && !includeEmpty) continue;
       rows.push({ s, turns });
     }
@@ -348,7 +362,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const role = roleArg(data.role);
     const maxLength = clampNum(data.maxLength, 3000, 8000);
 
-    const allTurns = turnsOf(ctx, sessionId);
+    const allTurns = await turnsOf(ctx, sessionId);
     const filtered = role ? allTurns.filter(t => t.role === role) : allTurns;
     // A negative offset counts back from the end, so -2 reads the last two turns.
     const rawOffset = typeof data.offset === "number" ? Math.floor(data.offset) : 0;
@@ -388,7 +402,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const full = data.full === true;
     const timeZone = resolveTimeZone(data.timeZone);
 
-    const allTurns = turnsOf(ctx, sessionId);
+    const allTurns = await turnsOf(ctx, sessionId);
     if (allTurns.length === 0) return { ok: true, message: `Session "${sessionId}" has no turns.` };
     const start = Math.max(0, allTurns.length - count);
     const last = allTurns[allTurns.length - 1]!;
@@ -435,7 +449,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const counts: Record<string, number> = {};
     const blocks: string[] = [];
     for (const s of sessions) {
-      const turns = turnsOf(ctx, s.id);
+      const turns = await turnsOf(ctx, s.id);
       if (turns.length === 0 && ids.length === 0) continue;
       const last = turns[turns.length - 1];
       const ending = classifyEnding(last, s.status);
@@ -488,7 +502,7 @@ export const handlers: Record<string, MoveApiHandler> = {
       lines.push(`--- **${sid}** [${session.profile ?? "?"}] ${formatLocal(session.last_message_at ?? session.updated_at, timeZone)} $${(session.total_cost_usd ?? 0).toFixed(2)} ---`);
       if (session.title) lines.push(`Title: ${session.title}`);
 
-      const allTurns = turnsOf(ctx, sid);
+      const allTurns = await turnsOf(ctx, sid);
       const filtered = role ? allTurns.filter(t => t.role === role) : allTurns;
       const preview = fromEnd ? filtered.slice(-3) : filtered.slice(0, 3);
 
@@ -515,6 +529,7 @@ export const handlers: Record<string, MoveApiHandler> = {
 
     const timeZone = resolveTimeZone(data.timeZone);
     const tags = parseTags(s.tags ?? "");
+    const turnCount = (await turnsOf(ctx, sessionId)).length;
 
     const lines = [
       `**${s.id}**`,
@@ -523,7 +538,7 @@ export const handlers: Record<string, MoveApiHandler> = {
       `Model: ${s.model ?? "unknown"}`,
       `Status: ${s.status}`,
       // Same count `read` pages over; the stored message_count is a different unit.
-      `Turns: ${turnsOf(ctx, sessionId).length}`,
+      `Turns: ${turnCount}`,
       `Cost: $${(s.total_cost_usd ?? 0).toFixed(4)}`,
       `Created: ${formatLocal(s.created_at, timeZone)}`,
       `Updated: ${formatLocal(s.updated_at, timeZone)}`,

@@ -28,6 +28,7 @@ import { broadcastUiEvent } from "./session-manager";
 import { buildHarnessContext, type HarnessContext } from "./harness-context";
 import { getScopedSkill, getScopedSkills } from "./skill-attachment";
 import { buildSkillPayload } from "./skills";
+import { trackActivity } from "./event-loop-monitor";
 import { join } from "path";
 import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 
@@ -84,16 +85,25 @@ export async function handleModusMcpRequest(request: Request, scopeKey?: string)
         data = rawData as Record<string, unknown>;
       }
       // ── Route by token type ──
+      // Move API ops name themselves in move-runner; the rest are named here so
+      // an event-loop stall report can say which call was running.
       if (isMoveApiToken(token)) {
         return handleMoveApiSubmitMcp(token, data as Record<string, unknown>);
       }
-      if (isApiToken(token)) {
-        return handleApiSubmit(token, data as Record<string, unknown>);
+      const op = typeof data.op === "string" ? ` ${data.op}` : "";
+      const kind = isApiToken(token) ? "api" : isMissionToken(token) ? "mission" : "move submit";
+      const done = trackActivity(`modus_submit ${kind}${op}`);
+      try {
+        if (isApiToken(token)) {
+          return await handleApiSubmit(token, data as Record<string, unknown>);
+        }
+        if (isMissionToken(token)) {
+          return await handleMissionSubmit(token, data as Record<string, unknown>);
+        }
+        return await handleMoveSubmit(token, data as Record<string, unknown>);
+      } finally {
+        done();
       }
-      if (isMissionToken(token)) {
-        return handleMissionSubmit(token, data as Record<string, unknown>);
-      }
-      return handleMoveSubmit(token, data as Record<string, unknown>);
     },
   );
 

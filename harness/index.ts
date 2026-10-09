@@ -6,6 +6,7 @@ import { BrowserSessionStore } from "./browser-auth";
 import { normalizeSearchSort, parseSessionSearch } from "./session-search";
 import { escapeEverythingQuery } from "./file-search";
 import { registerSessionReadRoute } from "./session-read";
+import { startEventLoopMonitor } from "./event-loop-monitor";
 import { probeClaudeAccount } from "./claude-account";
 import { rehydrateHome } from "./modus-home-rehydrate";
 loadSecrets();
@@ -4539,6 +4540,9 @@ const resourceLogTimer = setInterval(() => {
 }, RESOURCE_LOG_INTERVAL_MS);
 // Don't block process exit
 if (resourceLogTimer.unref) resourceLogTimer.unref();
+
+// Name whatever holds the event loop long enough to freeze the UI and streams.
+startEventLoopMonitor();
 
 // ── Storage Stats & Compaction ──
 

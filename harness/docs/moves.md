@@ -610,7 +610,11 @@ on disk remains available for a later instance resume.
 
 - `moveName`, `sessionId`, `cwd`, `userProfile`, `inputs`
 - `session` — lastAssistantText, seq, profile, exchangeCount
-- `db` — read-only queries (listSessions, search, getMoveHistory, getSessionMessages)
+- `db` — read-only queries (listSessions, search, getMoveHistory, getSessionMessages,
+  readSessionMessages). `readSessionMessages` returns the same turns as `getSessionMessages`
+  but rebuilds them off the harness's main thread; use it in any op that reads long or many
+  sessions, because a synchronous read holds every other request until it finishes.
+  `{ toolPayloads: false }` empties tool inputs and drops tool results.
 - `run(cmd)` — shell execution
 - `harness` — HarnessBridge (createSession, sendMessage, triggerAction, notify, addSessionTag,
   listMoves, activateMove, watchSessionTurns). `harness.notify({ channel, body })` now routes

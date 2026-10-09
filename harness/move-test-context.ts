@@ -330,6 +330,8 @@ function testMoveDb(db: Partial<MoveDB> | undefined): MoveDB {
     searchSessions: (query: string, limit?: number): SearchRef[] => db?.searchSessions?.(query, limit) ?? [],
     getMoveHistory: (moveName: string, limit?: number): MoveRun[] => db?.getMoveHistory?.(moveName, limit) ?? [],
     getSessionMessages: (sessionId: string): TurnContent[] => db?.getSessionMessages?.(sessionId) ?? [],
+    readSessionMessages: async (sessionId: string, options?: { toolPayloads?: boolean }): Promise<TurnContent[]> =>
+      (await db?.readSessionMessages?.(sessionId, options)) ?? db?.getSessionMessages?.(sessionId) ?? [],
   };
 }
 

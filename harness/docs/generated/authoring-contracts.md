@@ -471,6 +471,13 @@ export interface MoveDB {
   getMoveHistory(moveName: string, limit?: number): MoveRun[];
   /** Get structured message content (user/assistant turns) for a session. */
   getSessionMessages(sessionId: string): TurnContent[];
+  /**
+   * The same turns as getSessionMessages, rebuilt off the harness's main thread.
+   * Prefer it in any op that reads long or many sessions: the synchronous read
+   * holds every other request, stream, and upload until it finishes.
+   * `toolPayloads: false` empties each tool call's input and drops its result.
+   */
+  readSessionMessages(sessionId: string, options?: { toolPayloads?: boolean }): Promise<TurnContent[]>;
 }
 ```
 

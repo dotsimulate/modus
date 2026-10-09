@@ -305,3 +305,18 @@ function materializeAssistantTurn(
   if (current.contentBlocks.length > 0) turn.contentBlocks = current.contentBlocks;
   return turn;
 }
+
+/**
+ * Empty each tool call's input and drop its result, for readers of the
+ * conversation rather than its tool traffic. Tool results are most of a long
+ * transcript's bytes. Clears in place: content blocks share the same tool-call
+ * objects, so a copy would leave the payloads reachable.
+ */
+export function dropToolPayloads(turns: TurnContent[]): void {
+  for (const turn of turns) {
+    for (const call of turn.toolCalls ?? []) {
+      call.input = {};
+      delete call.result;
+    }
+  }
+}

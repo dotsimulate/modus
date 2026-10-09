@@ -2,15 +2,17 @@ import { Database } from "bun:sqlite";
 import { basename, isAbsolute, normalize, resolve } from "path";
 import { resolveDatabasePath } from "./database-paths";
 import {
+  dropToolPayloads,
   reconstructSessionTurns,
   summarizeTurnDetails,
   type SessionHistoryEventRow,
 } from "./session-history";
 import { reconstructCachedSessionTurns } from "./session-history-cache";
+import { readEventTurnsOffThread, searchOffThread } from "./transcript-read";
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 import { buildProjectCwdScope } from "./project-cwd-scope";
 import { runStartupMaintenanceTasks } from "./startup-maintenance";
-import { normalizeSearchLimit, normalizeSearchOffset, normalizeSearchSort, parseSessionSearch, type SearchOptions } from "./session-search";
+import { querySessionSearch, type SessionSearchOptions, type SessionSearchScope } from "./session-search-query";
 
 const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
@@ -2448,21 +2450,6 @@ export function getSessionMessageHistory(
   sessionId: string,
   options: SessionHistoryPageOptions = {},
 ): SessionMessageHistory {
-  const artifactRows = stmts.listSessionArtifacts.all({ $session_id: sessionId }) as SessionArtifactRow[];
-  const artifactsBySeq = new Map<number, SessionArtifactValue[]>();
-  const artifactsByUuid = new Map<string, SessionArtifactValue[]>();
-  for (const row of artifactRows) {
-    const artifact = toSessionArtifactValue(row);
-    const seqArtifacts = artifactsBySeq.get(row.seq) ?? [];
-    seqArtifacts.push(artifact);
-    artifactsBySeq.set(row.seq, seqArtifacts);
-    if (row.target_message_uuid) {
-      const uuidArtifacts = artifactsByUuid.get(row.target_message_uuid) ?? [];
-      uuidArtifacts.push(artifact);
-      artifactsByUuid.set(row.target_message_uuid, uuidArtifacts);
-    }
-  }
-
   const rawAssistant = db.prepare(
     `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM events WHERE session_id = $sid AND type = 'assistant'`
   ).get({ $sid: sessionId }) as { max_seq: number };
@@ -2491,7 +2478,40 @@ export function getSessionMessageHistory(
     ? page.turns
     : attachResultEventMeta(sessionId, page.turns, sessionModel);
 
-  const messages = turns.map((turn) => {
+  const messages = attachSessionArtifacts(sessionId, turns).map((turn) => {
+    return options.includeDetails === false ? summarizeTurnDetails(turn) : turn;
+  });
+  return {
+    messages,
+    recoveredFromEvents,
+    hasMore: page.hasMore,
+    oldestSeq: messages.reduce<number | null>((min, turn) => (
+      turn.seq > 0 && (min === null || turn.seq < min) ? turn.seq : min
+    ), null),
+    oldestCreatedAt: page.oldestCreatedAt,
+    oldestId: page.oldestId,
+    olderTurnCount: page.olderTurnCount,
+  };
+}
+
+/** Attach each assistant turn's artifacts: those targeting its uuid, then those at its seq. */
+function attachSessionArtifacts(sessionId: string, turns: TurnContent[]): TurnContent[] {
+  const artifactRows = stmts.listSessionArtifacts.all({ $session_id: sessionId }) as SessionArtifactRow[];
+  if (artifactRows.length === 0) return turns;
+  const artifactsBySeq = new Map<number, SessionArtifactValue[]>();
+  const artifactsByUuid = new Map<string, SessionArtifactValue[]>();
+  for (const row of artifactRows) {
+    const artifact = toSessionArtifactValue(row);
+    const seqArtifacts = artifactsBySeq.get(row.seq) ?? [];
+    seqArtifacts.push(artifact);
+    artifactsBySeq.set(row.seq, seqArtifacts);
+    if (row.target_message_uuid) {
+      const uuidArtifacts = artifactsByUuid.get(row.target_message_uuid) ?? [];
+      uuidArtifacts.push(artifact);
+      artifactsByUuid.set(row.target_message_uuid, uuidArtifacts);
+    }
+  }
+  return turns.map((turn) => {
     if (turn.role !== "assistant") return turn;
     const artifacts: SessionArtifactValue[] = [];
     const seen = new Set<number>();
@@ -2508,25 +2528,41 @@ export function getSessionMessageHistory(
       artifacts.push(artifact);
     }
     return artifacts.length > 0 ? { ...turn, artifacts } : turn;
-  }).map((turn) => {
-    return options.includeDetails === false ? summarizeTurnDetails(turn) : turn;
   });
-  return {
-    messages,
-    recoveredFromEvents,
-    hasMore: page.hasMore,
-    oldestSeq: messages.reduce<number | null>((min, turn) => (
-      turn.seq > 0 && (min === null || turn.seq < min) ? turn.seq : min
-    ), null),
-    oldestCreatedAt: page.oldestCreatedAt,
-    oldestId: page.oldestId,
-    olderTurnCount: page.olderTurnCount,
-  };
 }
 
 /** Reconstruct structured message content for callers that only need turns. */
 export function getSessionMessages(sessionId: string): TurnContent[] {
   return getSessionMessageHistory(sessionId, { preserveEventSequence: true }).messages;
+}
+
+export type SessionReadOptions = {
+  /**
+   * `false` empties each tool call's input and drops its result. Tool results
+   * are most of a long transcript's bytes; a reader of the conversation itself
+   * does not need them carried back from the worker.
+   */
+  toolPayloads?: boolean;
+};
+
+/**
+ * The same turns as getSessionMessages, rebuilt on a worker thread so a long
+ * transcript does not stall every other request while it is read. Use it from
+ * anything an agent or a request can point at many or long sessions.
+ */
+export async function readSessionMessages(
+  sessionId: string,
+  options: SessionReadOptions = {},
+): Promise<TurnContent[]> {
+  const turns = await readEventTurnsOffThread(DB_PATH, sessionId, options);
+  // No worker, or a session with no event history (its turns survive only as
+  // semantic rows): the synchronous path owns both cases.
+  if (!turns || turns.length === 0) {
+    const local = getSessionMessages(sessionId);
+    if (options.toolPayloads === false) dropToolPayloads(local);
+    return local;
+  }
+  return attachSessionArtifacts(sessionId, turns);
 }
 
 // ── Turn Index ──
@@ -2873,138 +2909,25 @@ export type SearchHit = {
 export function searchSessions(
   query: string,
   limit = 20,
-  scope?: {
-    cwdPrefixes?: string[];
-    agentProfiles?: string[];
-    userProfileName?: string;
-    role?: string;
-    /** Inclusive lower bound on the session's `last_message_at` (epoch ms). */
-    lastMessageAfter?: number;
-    /** Exclusive upper bound on the session's `last_message_at` (epoch ms). */
-    lastMessageBefore?: number;
-  },
-  options?: Pick<SearchOptions, "sort" | "offset">,
+  scope?: SessionSearchScope,
+  options?: SessionSearchOptions,
 ): SearchHit[] {
-  const terms = parseSessionSearch(query);
-  if (!terms.length) return [];
-  const termQueries = terms.map(({ fts }) => scope?.role && ["user", "assistant"].includes(scope.role)
-    ? `role:"${scope.role}" AND {content title}: (${fts})`
-    : `{content title}: (${fts})`);
-  const ftsQuery = termQueries.map(term => `(${term})`).join(" OR ");
+  return querySessionSearch(db, query, limit, scope, options);
+}
 
-  const matchConditions = [
-    `search_index_v2 MATCH ?`,
-    `s.tags NOT LIKE '%"archived"%'`,
-    `s.tags NOT LIKE '%"internal"%'`,
-  ];
-  const matchParams: (string | number)[] = [];
-
-  if (scope?.userProfileName) {
-    matchConditions.push(`(s.user_profile = ? OR s.user_profile IS NULL)`);
-    matchParams.push(scope.userProfileName);
-  }
-
-  if (scope?.cwdPrefixes && scope.cwdPrefixes.length > 0) {
-    const cwdScope = buildProjectCwdScope("s.cwd", scope.cwdPrefixes);
-    matchConditions.push(`(${cwdScope.sql})`);
-    matchParams.push(...cwdScope.params);
-  }
-
-  if (scope?.agentProfiles && scope.agentProfiles.length > 0) {
-    const placeholders = scope.agentProfiles.map(() => "?").join(", ");
-    matchConditions.push(`s.profile IN (${placeholders})`);
-    matchParams.push(...scope.agentProfiles);
-  }
-
-  if (scope?.lastMessageAfter !== undefined) {
-    matchConditions.push(`s.last_message_at >= ?`);
-    matchParams.push(scope.lastMessageAfter);
-  }
-  if (scope?.lastMessageBefore !== undefined) {
-    matchConditions.push(`s.last_message_at < ?`);
-    matchParams.push(scope.lastMessageBefore);
-  }
-
-  // Recency-blended ranking: FTS5 rank (bm25 with title weight 10x) is blended
-  // with a recency bonus so recent sessions float up when relevance is similar.
-  // rank is negative (lower = better), recency term is 0..2 (higher = more recent).
-  const now = Date.now();
-  // Each term may occur in a different message or title within the session.
-  const termSelects = termQueries.map((_, index) => `
-    SELECT search_index_v2.session_id AS sid, MIN(rank) AS best_rank,
-      s.last_message_at AS lma, ${index} AS term
-    FROM search_index_v2
-    JOIN sessions s ON s.id = search_index_v2.session_id
-    WHERE ${matchConditions.join(" AND ")}
-    GROUP BY search_index_v2.session_id
-  `);
-  const sort = normalizeSearchSort(options?.sort);
-  const order = sort === "latest" ? "lma DESC, sid ASC"
-    : sort === "oldest" ? "lma ASC, sid ASC" : "blended ASC, lma DESC, sid ASC";
-  const matches = db.prepare(`
-    SELECT sid, best_rank, lma,
-      (best_rank - 2.0 * (CAST(lma AS REAL) / ${now})) AS blended
-    FROM (
-      SELECT
-        sid, MIN(best_rank) AS best_rank, MAX(lma) AS lma
-      FROM (${termSelects.join(" UNION ALL ")})
-      GROUP BY sid
-      HAVING COUNT(DISTINCT term) = ${terms.length}
-    )
-    ORDER BY ${order}
-    LIMIT ? OFFSET ?
-  `).all(...termQueries.flatMap(term => [term, ...matchParams]), normalizeSearchLimit(limit), normalizeSearchOffset(options?.offset)) as { sid: string; best_rank: number; lma: number }[];
-
-  if (matches.length === 0) return [];
-
-  const ids = matches.map(m => m.sid);
-  const placeholders = ids.map(() => "?").join(",");
-  const sessions = db.prepare(
-    `SELECT * FROM sessions WHERE id IN (${placeholders}) AND tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`
-  ).all(...ids) as SessionRow[];
-  const sessionMap = new Map(sessions.map(s => [s.id, s]));
-
-  // Build snippets: prefer title matches, then content matches with context
-  const snippetStmt = db.prepare(
-    `SELECT role, content, title FROM search_index_v2 WHERE session_id = $sid AND search_index_v2 MATCH $fts ORDER BY rank LIMIT 1`
-  );
-
-  return matches.flatMap(m => {
-    const s = sessionMap.get(m.sid);
-    if (!s) return [];
-
-    let snippet = s.last_prompt ?? s.preview;
-    try {
-      const row = snippetStmt.get({ $sid: m.sid, $fts: ftsQuery }) as { role: string; content: string; title: string } | null;
-      if (row) {
-        // If the best match is from the title column, use it directly
-        const source = row.role === "title" ? row.title : row.content;
-        if (source) {
-          const lower = source.toLowerCase();
-          const positions = terms.map(term => lower.indexOf(term.text.toLowerCase())).filter(index => index >= 0);
-          const idx = positions.length ? Math.min(...positions) : -1;
-          if (idx >= 0) {
-            const start = Math.max(0, idx - 60);
-            const raw = source.slice(start, start + 160);
-            snippet = (start > 0 ? "..." : "") + raw + (start + 160 < source.length ? "..." : "");
-          } else {
-            snippet = source.slice(0, 160) + (source.length > 160 ? "..." : "");
-          }
-        }
-      }
-    } catch { /* fallback to default snippet */ }
-
-    return [{
-      session_id: s.id,
-      preview: s.title || s.preview,
-      profile: s.profile,
-      model: s.model,
-      cwd: s.cwd,
-      last_message_at: s.last_message_at,
-      total_cost_usd: s.total_cost_usd,
-      snippet,
-    }];
-  });
+/**
+ * searchSessions on the transcript-read worker. Full-text ranking over a large
+ * index, or a word that occurs everywhere, can take hundreds of milliseconds,
+ * and on the main thread every other request waits for it.
+ */
+export async function searchSessionsOffThread(
+  query: string,
+  limit = 20,
+  scope?: SessionSearchScope,
+  options?: SessionSearchOptions,
+): Promise<SearchHit[]> {
+  return await searchOffThread(DB_PATH, { query, limit, scope, options })
+    ?? searchSessions(query, limit, scope, options);
 }
 
 // ── Event Pruning ──

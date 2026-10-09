@@ -38,7 +38,7 @@
  */
 
 import type { MoveContext, MoveApiContext, MoveApiHandler, SubmitResult } from "../../move-types";
-import { getProfileUsage, searchSessions, type ProfileUsageRow, type SearchHit } from "../../db";
+import { getProfileUsage, searchSessions, searchSessionsOffThread, type ProfileUsageRow, type SearchHit } from "../../db";
 import { listMoves } from "../../move-runner";
 import { getAllProfiles, getAllUserProfiles } from "../../profiles";
 import { buildProjectDescriptors, resolveSessionProject, type SessionProjectDescriptor } from "../../session-projects";
@@ -252,6 +252,12 @@ function renderHit(hit: SearchHit, projects: SessionProjectDescriptor[]): string
 }
 
 /** Merge hit lists, keeping the first occurrence of each session. */
+/** Session search off the harness's main thread when this backend can: full-text
+ *  ranking over a large index otherwise holds every other request. */
+const search: typeof searchSessionsOffThread = typeof searchSessionsOffThread === "function"
+  ? searchSessionsOffThread
+  : async (...args) => searchSessions(...args);
+
 function dedupeHits(...lists: SearchHit[][]): SearchHit[] {
   const seen = new Set<string>();
   const out: SearchHit[] = [];
@@ -290,10 +296,10 @@ export async function gather(ctx: MoveContext): Promise<string> {
   let globalHits: SearchHit[] = [];
   let localHits: SearchHit[] = [];
   try {
-    globalHits = searchSessions(query, 8);
+    globalHits = await search(query, 8);
   } catch { /* best effort */ }
   try {
-    if (ctx.cwd) localHits = searchSessions(query, 5, { cwdPrefixes: [ctx.cwd] });
+    if (ctx.cwd) localHits = await search(query, 5, { cwdPrefixes: [ctx.cwd] });
   } catch { /* best effort */ }
   const sessionHits = dedupeHits(localHits, globalHits).slice(0, 10);
 
@@ -519,7 +525,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const fetchLimit = sinceDays ? Math.min(limit * 4, 60) : limit;
     let hits: SearchHit[];
     try {
-      hits = searchSessions(query, fetchLimit, Object.keys(scope).length ? scope : undefined);
+      hits = await search(query, fetchLimit, Object.keys(scope).length ? scope : undefined);
     } catch (err) {
       return { ok: false, error: `search failed: ${err}` };
     }
@@ -552,7 +558,11 @@ export const handlers: Record<string, MoveApiHandler> = {
 
     let turns;
     try {
-      turns = ctx.db.getSessionMessages(sessionId);
+      // Off the harness's main thread when the backend can: a long transcript
+      // read inline holds every other request until it finishes.
+      turns = typeof ctx.db.readSessionMessages === "function"
+        ? await ctx.db.readSessionMessages(sessionId, { toolPayloads: false })
+        : ctx.db.getSessionMessages(sessionId);
     } catch (err) {
       return { ok: false, error: `read failed: ${err}` };
     }

@@ -86,6 +86,14 @@ turns from raw events. Returns `TurnContent[]` — each turn has `role`, `seq`, 
 optional `thinking` and `toolCalls`, and `timestamp`. Tool call results are joined to
 the assistant turn that made the call. Incomplete (still-streaming) turns are included.
 Exposed via `GET /api/sessions/:id/messages-content` (optional `?seq=<n>` for a single turn).
+`readSessionMessages(sessionId, { toolPayloads? })` returns the same turns rebuilt on a
+worker thread (`transcript-read-worker.ts`, its own read-only connection), and
+`searchSessionsOffThread` does the same for `searchSessions`. Rebuilding one long transcript
+takes hundreds of milliseconds and the backend serves every request, stream, and upload from
+one event loop, so anything an agent can point at many or long sessions — move API ops
+especially — should use these. A read the worker cannot serve falls back to the synchronous
+path. The backend logs `[event-loop] blocked ~Nms while running: …` when the loop is held
+for more than half a second, naming the `modus_submit` calls and move ops in flight.
 
 **Usage analytics**: `getProviderUsageAnalytics({ userProfile?, days? })` in `db.ts` returns token/cost breakdowns by provider, model, and day over a configurable window (default 30 days, max 120). Shape: `{ windowDays, totals, providers[], models[], daily[] }` — each bucket has sessions, turns, inputTokens, outputTokens, totalTokens, cost.
 
