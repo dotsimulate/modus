@@ -8,7 +8,9 @@ describe("Claude Code model suggestions", () => {
 
     expect(ids).toContain("claude-opus-5-5");
     expect(ids).toContain("claude-opus-5");
+    expect(ids).toContain("claude-sonnet-5-5");
     expect(ids).toContain("claude-sonnet-5");
+    expect(ids).toContain("claude-haiku-5-5");
     expect(ids).toContain("default");
     expect(ids).toContain("best");
     expect(ids).toContain("opus");
