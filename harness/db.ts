@@ -980,7 +980,16 @@ export function getProfileUsage(
 
 /** List sessions scoped to a user profile — filters by CWD prefixes AND/OR agent profiles AND/OR user_profile column */
 export function listSessionsScoped(
-  opts: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string; limit?: number },
+  opts: {
+    cwdPrefixes?: string[];
+    agentProfiles?: string[];
+    userProfileName?: string;
+    limit?: number;
+    /** Inclusive lower bound on `last_message_at` (epoch ms). */
+    lastMessageAfter?: number;
+    /** Exclusive upper bound on `last_message_at` (epoch ms). */
+    lastMessageBefore?: number;
+  },
 ): SessionRow[] {
   const limit = opts.limit ?? 50;
   const conditions: string[] = ["tags NOT LIKE '%\"archived\"%'", "tags NOT LIKE '%\"internal\"%'"];
@@ -1001,6 +1010,16 @@ export function listSessionsScoped(
     const placeholders = opts.agentProfiles.map(() => "?").join(", ");
     conditions.push(`profile IN (${placeholders})`);
     params.push(...opts.agentProfiles);
+  }
+
+  // Bounds narrow a scope; they are not a scope, so they do not count below.
+  if (opts.lastMessageAfter !== undefined) {
+    conditions.push("last_message_at >= ?");
+    params.push(opts.lastMessageAfter);
+  }
+  if (opts.lastMessageBefore !== undefined) {
+    conditions.push("last_message_at < ?");
+    params.push(opts.lastMessageBefore);
   }
 
   // If no filters provided at all, return nothing (fully empty profile)
@@ -2854,7 +2873,16 @@ export type SearchHit = {
 export function searchSessions(
   query: string,
   limit = 20,
-  scope?: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string; role?: string },
+  scope?: {
+    cwdPrefixes?: string[];
+    agentProfiles?: string[];
+    userProfileName?: string;
+    role?: string;
+    /** Inclusive lower bound on the session's `last_message_at` (epoch ms). */
+    lastMessageAfter?: number;
+    /** Exclusive upper bound on the session's `last_message_at` (epoch ms). */
+    lastMessageBefore?: number;
+  },
   options?: Pick<SearchOptions, "sort" | "offset">,
 ): SearchHit[] {
   const terms = parseSessionSearch(query);
@@ -2886,6 +2914,15 @@ export function searchSessions(
     const placeholders = scope.agentProfiles.map(() => "?").join(", ");
     matchConditions.push(`s.profile IN (${placeholders})`);
     matchParams.push(...scope.agentProfiles);
+  }
+
+  if (scope?.lastMessageAfter !== undefined) {
+    matchConditions.push(`s.last_message_at >= ?`);
+    matchParams.push(scope.lastMessageAfter);
+  }
+  if (scope?.lastMessageBefore !== undefined) {
+    matchConditions.push(`s.last_message_at < ?`);
+    matchParams.push(scope.lastMessageBefore);
   }
 
   // Recency-blended ranking: FTS5 rank (bm25 with title weight 10x) is blended
