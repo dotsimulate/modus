@@ -1,6 +1,6 @@
 [package]
 name = "modus-desktop"
-version = "0.3.4"
+version = "0.3.5"
 description = "Modus desktop client"
 authors = ["Modus contributors"]
 license = "FSL-1.1-ALv2"
