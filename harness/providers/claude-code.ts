@@ -114,7 +114,6 @@ type ClaudeCodeState = {
   /** Private directory holding the CLI-readable MCP config for this provider generation. */
   sensitiveTempDir: string | null;
   input: InputChannel;
-  skipNextPromptPersist?: boolean;
   thinkingStartedAt?: number;
   thinkingDurationMs?: number;
   stderrBuf: string;
@@ -137,6 +136,14 @@ type InputChannel = {
 
 function getState(session: ActiveSession): ClaudeCodeState | null {
   return (session._providerState as ClaudeCodeState | null) ?? null;
+}
+
+/**
+ * Record a user message as delivered. The CLI does not echo its input, and the
+ * harness keeps only a queue-time row, so this is the message's transcript turn.
+ */
+function emitDeliveredPrompt(ctx: TurnContext, content: MessageContent): void {
+  ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
 }
 
 /**
@@ -921,9 +928,10 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         session.preview = contentPreview(content);
         session.status = "running";
         session.turnStartedAt = Date.now();
-        state.skipNextPromptPersist = true;
         updateSessionStatus(session.sessionId, "running");
         state.input.push(content);
+        // A live subprocess sends no init for this turn, so nothing else records it.
+        emitDeliveredPrompt(ctx, content);
         msgLog(sid, "REUSE", "pushed to live subprocess via input channel");
         providerLog(`[claude-code] REUSE subprocess for ${session.sessionId} (drainActive, no cold start)`);
         return;
@@ -989,7 +997,6 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       state.spawnedAt = spawnedAt;
       session.status = "running";
       session.turnStartedAt = Date.now();
-      state.skipNextPromptPersist = true;
 
       updateSessionStatus(session.sessionId, "running");
 
@@ -1330,6 +1337,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
   try {
     for await (const msg of q) {
       const m = msg as any;
+      let flushedPrompt: MessageContent | null = null;
       session.lastEventAt = Date.now();
       eventCount++;
       if (eventCount === 1) {
@@ -1386,15 +1394,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           session.seq = getMaxSeq(realId);
         }
 
-        // Emit user prompt (unless resuming a turn that already persisted it)
-        if (!(isResume && state.skipNextPromptPersist)) {
-          ctx.emitEvent({
-            type: "user",
-            subtype: "prompt",
-            message: { role: "user", content: session.initialContent },
-          });
-        }
-        state.skipNextPromptPersist = false;
+        emitDeliveredPrompt(ctx, session.initialContent);
       }
 
       // Track running status
@@ -1506,6 +1506,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           session.status = "running";
           session.turnStartedAt = Date.now();
           session.preview = contentPreview(next);
+          flushedPrompt = next;
         }
       }
 
@@ -1548,6 +1549,9 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         m.loadProjectSettings = ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true;
       }
       ctx.emitEvent(m);
+      // After the result it was flushed on. Written before it, the prompt would
+      // close the finished turn first and that turn would lose its usage.
+      if (flushedPrompt) emitDeliveredPrompt(ctx, flushedPrompt);
     }
     providerLog(`[claude-code] DRAIN EXIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms, status=${session.status}, events=${eventCount}`);
 
@@ -1694,7 +1698,6 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       session.preview = contentPreview(next);
       session.status = "running";
       session.turnStartedAt = Date.now();
-      state.skipNextPromptPersist = true;
 
       session.abortController = new AbortController();
       const { generator, channel } = createInputChannel();

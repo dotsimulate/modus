@@ -58,6 +58,25 @@ failure with `ctx.broadcastEvent({ type: "error", error })`. Do **not** reach fo
 assistant turn in flight is dropped during history reconstruction
 (`session-history.ts`), so the failure is visible live and gone after reload.
 
+### User prompts
+
+Session-manager records a sent or queued message only as a `user/prompt_pending`
+row, which keeps the text through a backend death but is not a transcript turn.
+The provider owns the turn: emit
+`ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } })`
+when each message actually reaches the agent. That includes the first message,
+every follow-up pushed into a live process, and every queued message flushed
+after a turn ends. Emit a flushed message after the `result` that ended the
+previous turn, not before it, or that turn loses its usage on reload. Do not emit
+one for content the user did not send, such as a synthesized continuation.
+Steered messages are the exception: session-manager records those itself when
+`steerMessage` returns true.
+
+History reconstruction recovers a pending row when a reply starts with no prompt
+before it, which repairs sessions written before every provider did this. It is
+a repair, not a substitute: the turn index, history paging, and single-turn
+lookups key on `user/prompt` rows.
+
 ## Registered Providers
 
 | Name | Family | Implementation | Notes |

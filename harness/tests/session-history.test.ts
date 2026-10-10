@@ -160,6 +160,111 @@ describe("queued prompt rows", () => {
     expect(turns[2]).toMatchObject({ role: "user", seq: 5, text: "second" });
   });
 
+  describe("recovers messages whose delivery left no prompt row", () => {
+    const prompt = (seq: number, text: string) =>
+      event(seq, "user", "prompt", { subtype: "prompt", message: { content: text } });
+    const queued = (seq: number, text: string) =>
+      event(seq, "user", QUEUED_PROMPT_SUBTYPE, { subtype: QUEUED_PROMPT_SUBTYPE, message: { content: text } });
+    const said = (seq: number, text: string) =>
+      event(seq, "assistant", null, { message: { content: [{ type: "text", text }] } });
+    const result = (seq: number) => event(seq, "result", "success", { subtype: "success" });
+    const shape = (turns: ReturnType<typeof reconstructSessionTurns>) =>
+      turns.map((turn) => `${turn.role}:${turn.text}`);
+
+    test("a follow-up sent while idle opens the reply that answers it", () => {
+      const turns = reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "one"),
+        result(3),
+        queued(4, "second"),
+        said(5, "two"),
+        result(6),
+      ]);
+      expect(shape(turns)).toEqual(["user:first", "assistant:one", "user:second", "assistant:two"]);
+      expect(turns[2]).toMatchObject({ seq: 4, timestamp: 1_004 });
+    });
+
+    test("a message queued mid-turn lands after that turn, before its own reply", () => {
+      expect(shape(reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "working"),
+        queued(3, "and also"),
+        said(4, " done"),
+        result(5),
+        said(6, "on it"),
+        result(7),
+      ]))).toEqual(["user:first", "assistant:working done", "user:and also", "assistant:on it"]);
+    });
+
+    test("messages queued together are answered in the order they were sent", () => {
+      expect(shape(reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "working"),
+        queued(3, "a"),
+        queued(4, "b"),
+        result(5),
+        said(6, "for a"),
+        result(7),
+        said(8, "for b"),
+        result(9),
+      ]))).toEqual(["user:first", "assistant:working", "user:a", "assistant:for a", "user:b", "assistant:for b"]);
+    });
+
+    test("a queued message that never reached the agent stays out", () => {
+      expect(shape(reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "working"),
+        // Cancelled, or discarded by a stop, before the turn ended.
+        queued(3, "never sent"),
+        result(4),
+        queued(5, "next"),
+        said(6, "for next"),
+        result(7),
+      ]))).toEqual(["user:first", "assistant:working", "user:next", "assistant:for next"]);
+
+      expect(shape(reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "working"),
+        queued(3, "never sent"),
+        result(4),
+        prompt(5, "recorded"),
+        said(6, "for recorded"),
+        result(7),
+        said(8, "on its own"),
+        result(9),
+      ]))).toEqual(["user:first", "assistant:working", "user:recorded", "assistant:for recorded", "assistant:on its own"]);
+    });
+
+    test("a message steered into the turn does not retire one still queued", () => {
+      expect(shape(reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "working"),
+        queued(3, "after this"),
+        prompt(4, "steer"),
+        said(5, "steered"),
+        result(6),
+        said(7, "for after this"),
+        result(8),
+      ]))).toEqual([
+        "user:first", "assistant:working", "user:steer", "assistant:steered",
+        "user:after this", "assistant:for after this",
+      ]);
+    });
+
+    test("a prompt with no text still opens its own reply", () => {
+      const turns = reconstructSessionTurns([
+        prompt(1, "first"),
+        said(2, "one"),
+        result(3),
+        queued(4, "pending"),
+        event(5, "user", "prompt", { subtype: "prompt", message: { content: [{ type: "image" }] } }),
+        said(6, "nice picture"),
+        result(7),
+      ]);
+      expect(shape(turns)).toEqual(["user:first", "assistant:one", "assistant:nice picture"]);
+    });
+  });
+
   test("still renders two turns when the same text is genuinely sent twice", () => {
     const turns = reconstructSessionTurns([
       event(1, "user", QUEUED_PROMPT_SUBTYPE, { subtype: QUEUED_PROMPT_SUBTYPE, message: { content: "again" } }),

@@ -372,7 +372,7 @@ async function runTurn(
   ctx: TurnContext,
   state: AntigravityState,
   content: MessageContent,
-  options: { isResume: boolean; skipPromptPersist: boolean },
+  options: { isResume: boolean },
   deps: Required<AntigravityProviderDependencies>,
 ): Promise<void> {
   const { session } = ctx;
@@ -406,9 +406,8 @@ async function runTurn(
       "mcp-servers.json",
       JSON.stringify(mergedMcpServers(ctx)),
     );
-    if (!options.skipPromptPersist) {
-      ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
-    }
+    // The harness keeps only a queue-time row; this is the message's transcript turn.
+    ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
     const unsupportedControls: string[] = [];
     if (ctx.opts.effort ?? ctx.profile?.effort) unsupportedControls.push("effort");
     if (ctx.opts.maxTurns ?? ctx.profile?.maxTurns) unsupportedControls.push("maxTurns");
@@ -564,7 +563,7 @@ async function runTurn(
     state.abortController = session.abortController;
     session.status = "running";
     session.turnStartedAt = Date.now();
-    void runTurn(ctx, state, next, { isResume: true, skipPromptPersist: true }, deps);
+    void runTurn(ctx, state, next, { isResume: true }, deps);
   }
 }
 
@@ -595,7 +594,7 @@ export function createAntigravityProvider(overrides: AntigravityProviderDependen
         protocolError: null,
       };
       session._providerState = state;
-      void runTurn(ctx, state, session.initialContent, { isResume, skipPromptPersist: false }, deps);
+      void runTurn(ctx, state, session.initialContent, { isResume }, deps);
     },
 
     sendMessage(ctx: TurnContext, content: MessageContent) {
@@ -613,7 +612,7 @@ export function createAntigravityProvider(overrides: AntigravityProviderDependen
       session.status = "running";
       session.turnStartedAt = Date.now();
       updateSessionStatus(session.sessionId, "running");
-      void runTurn(ctx, state, content, { isResume: true, skipPromptPersist: true }, deps);
+      void runTurn(ctx, state, content, { isResume: true }, deps);
     },
 
     abort(session: ActiveSession) {

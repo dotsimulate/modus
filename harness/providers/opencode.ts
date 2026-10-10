@@ -224,7 +224,7 @@ async function runTurn(
   ctx: TurnContext,
   state: OpenCodeState,
   content: MessageContent,
-  options: { isResume: boolean; skipPromptPersist: boolean },
+  options: { isResume: boolean },
 ) {
   const { session } = ctx;
   const requestedResumeId = options.isResume ? state.sessionId : null;
@@ -268,9 +268,8 @@ async function runTurn(
     if (session.sessionId !== realId) ctx.rekeySession(realId);
     session.status = "running";
     updateSessionStatus(realId, "running");
-    if (!options.skipPromptPersist) {
-      ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
-    }
+    // The harness keeps only a queue-time row; this is the message's transcript turn.
+    ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
     ctx.emitEvent({
       type: "system",
       subtype: "init",
@@ -408,7 +407,7 @@ async function runTurn(
     state.abortController = session.abortController;
     session.status = "running";
     session.turnStartedAt = Date.now();
-    runTurn(ctx, state, next, { isResume: true, skipPromptPersist: true }).catch((err) => {
+    runTurn(ctx, state, next, { isResume: true }).catch((err) => {
       session.status = "error";
       session.error = String(err);
       updateSessionStatus(session.sessionId, "error");
@@ -435,7 +434,7 @@ export function createOpenCodeProvider(): SessionProvider {
         effort: opts.effort ?? profile?.effort,
       };
       session._providerState = state;
-      runTurn(ctx, state, session.initialContent, { isResume, skipPromptPersist: false }).catch((err) => {
+      runTurn(ctx, state, session.initialContent, { isResume }).catch((err) => {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
@@ -458,7 +457,7 @@ export function createOpenCodeProvider(): SessionProvider {
       session.status = "running";
       session.turnStartedAt = Date.now();
       updateSessionStatus(session.sessionId, "running");
-      runTurn(ctx, state, content, { isResume: true, skipPromptPersist: true }).catch((err) => {
+      runTurn(ctx, state, content, { isResume: true }).catch((err) => {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");

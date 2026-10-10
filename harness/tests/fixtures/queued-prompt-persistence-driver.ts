@@ -16,9 +16,9 @@ const fakeProvider = {
     ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content: ctx.opts.prompt } });
     ctx.emitEvent({ type: "system", subtype: "init", session_id: ctx.session.sessionId });
   },
-  // Every shipped provider echoes the prompt back once it has accepted one.
-  // That echo is what makes the queue-time row a duplicate rather than the
-  // only record, so the fixture has to reproduce it.
+  // Every shipped provider records the prompt once it has delivered one. That
+  // record is what makes the queue-time row a duplicate rather than the only
+  // one, so the fixture has to reproduce it.
   sendMessage(ctx: TurnContext, content: unknown) {
     context = ctx;
     ctx.session.status = "running";

@@ -125,14 +125,29 @@ export function shouldRecoverSessionHistory(
  * provider has seen it. It exists so the text survives a backend death between
  * persistence and dispatch.
  *
- * Deliberately not `"prompt"`: every provider emits a real `user/prompt` event
+ * Deliberately not `"prompt"`: the provider emits a real `user/prompt` event
  * when the message is actually delivered, so a `"prompt"` row here means two
  * durable rows per message. Anything rebuilt from the event stream then shows
  * every follow-up twice — and for a message queued mid-turn the queue-time copy
  * also lands at the wrong point in the transcript, because it is ordered by
  * when the user hit send rather than by when the agent received it.
+ *
+ * Sessions written while most providers still skipped that delivery echo hold
+ * only this row for their follow-ups. Reconstruction recovers those; see
+ * {@link reconstructSessionTurns}.
  */
 export const QUEUED_PROMPT_SUBTYPE = "prompt_pending";
+
+function userMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  let text = "";
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block?.type === "text" && typeof block.text === "string") text += block.text;
+    }
+  }
+  return text;
+}
 
 /**
  * Rebuild user/assistant turns from durable non-stream events.
@@ -140,12 +155,26 @@ export const QUEUED_PROMPT_SUBTYPE = "prompt_pending";
  * `result` events close a turn *and* carry its usage. Reading only the boundary
  * and discarding the payload is what used to make a reloaded session lose every
  * cost, token, and context figure it had shown while streaming.
+ *
+ * A queued row is a turn only when its delivery left no `user/prompt` row: an
+ * assistant reply then opens with no prompt before it, and the oldest queued
+ * message still waiting is what it answers. Providers deliver the queue as soon
+ * as a turn ends, so a message queued before the last turn ended loses to one
+ * sent after it: a leftover still waiting once the agent took a fresh message
+ * was cancelled or dropped by a stop. A prompt that opens a turn retires those
+ * leftovers the same way; one steered into a running turn does not. A queued
+ * row whose delivery was recorded, or that was never delivered, stays hidden.
  */
 export function reconstructSessionTurns(
   events: SessionHistoryEventRow[],
   fallbackModel = "",
 ): TurnContent[] {
   const turns: TurnContent[] = [];
+  // Queued messages not yet matched to a delivery, oldest first. `at` is the
+  // event's position, compared against where the last turn ended.
+  let queued: { at: number; seq: number; text: string; timestamp: number }[] = [];
+  let lastEndAt = -1;
+  let promptOpen = false;
   let current: {
     text: string;
     thinking: string;
@@ -162,28 +191,34 @@ export function reconstructSessionTurns(
     ? [...events].sort(compareSessionHistoryEvents)
     : events;
 
-  for (const evt of ordered) {
+  for (const [at, evt] of ordered.entries()) {
     let d: any;
     try { d = JSON.parse(evt.data); } catch { continue; }
 
     if (evt.type === "user") {
-      // Queue-time durability row, not a transcript turn — the dispatch-time
-      // copy is the one that carries the moment the agent actually received it.
-      if (evt.subtype === QUEUED_PROMPT_SUBTYPE || d.subtype === QUEUED_PROMPT_SUBTYPE) continue;
+      // Queue-time durability row, not yet a transcript turn — the
+      // dispatch-time copy is the one that carries the moment the agent
+      // actually received it.
+      if (evt.subtype === QUEUED_PROMPT_SUBTYPE || d.subtype === QUEUED_PROMPT_SUBTYPE) {
+        const text = userMessageText(d.message?.content);
+        if (text) queued.push({ at, seq: evt.seq, text, timestamp: evt.created_at });
+        continue;
+      }
       if (evt.subtype === "prompt" || d.subtype === "prompt") {
+        const text = userMessageText(d.message?.content);
+        const delivered = queued.findIndex((entry) => entry.text === text);
+        if (delivered >= 0) queued.splice(delivered, 1);
         if (current) {
+          // Steered into the running turn: anything queued is still waiting.
           turns.push(materializeAssistantTurn(current, current.seq));
           current = null;
-        }
-        const content = d.message?.content;
-        let text = "";
-        if (typeof content === "string") text = content;
-        else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block?.type === "text" && typeof block.text === "string") text += block.text;
-          }
+        } else {
+          // Opens a turn of its own, so what was queued before the last turn
+          // ended is never going to be.
+          queued = queued.filter((entry) => entry.at > lastEndAt);
         }
         if (text) turns.push({ role: "user", seq: evt.seq, text, timestamp: evt.created_at });
+        promptOpen = true;
       } else if (current) {
         const content = d.message?.content;
         if (Array.isArray(content)) {
@@ -202,6 +237,13 @@ export function reconstructSessionTurns(
 
     if (evt.type === "assistant") {
       if (!current) {
+        if (!promptOpen && queued.length > 0) {
+          const fresh = queued.findIndex((entry) => entry.at > lastEndAt);
+          if (fresh > 0) queued = queued.slice(fresh);
+          const answered = queued.shift()!;
+          turns.push({ role: "user", seq: answered.seq, text: answered.text, timestamp: answered.timestamp });
+        }
+        promptOpen = false;
         current = {
           text: "",
           thinking: "",
@@ -240,6 +282,8 @@ export function reconstructSessionTurns(
         }
       }
     }
+
+    if (evt.type === "result" || evt.type === "error") lastEndAt = at;
 
     if (evt.type === "result" && current) {
       const meta = turnMetaFromResultEvent(d, fallbackModel);

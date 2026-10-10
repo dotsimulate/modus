@@ -246,16 +246,13 @@ function emitLocalCodexResponse(
   ctx: TurnContext,
   content: MessageContent,
   text: string,
-  skipPromptPersist: boolean,
 ) {
   const { session } = ctx;
-  if (!skipPromptPersist) {
-    ctx.emitEvent({
-      type: "user",
-      subtype: "prompt",
-      message: { role: "user", content },
-    });
-  }
+  ctx.emitEvent({
+    type: "user",
+    subtype: "prompt",
+    message: { role: "user", content },
+  });
   session.lastAssistantText = text.slice(-200);
   ctx.emitEvent(assembledAssistant({ text }));
   ctx.emitEvent({
@@ -283,7 +280,6 @@ function handleGoalCommand(
   ctx: TurnContext,
   state: CodexState,
   content: MessageContent,
-  skipPromptPersist: boolean,
 ): { handled: boolean; input?: string } {
   const command = parseGoalCommand(content);
   if (!command) return { handled: false };
@@ -301,7 +297,7 @@ function handleGoalCommand(
       return { handled: true, input: buildGoalPrompt(command.objective) };
     }
     case "status": {
-      emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal), skipPromptPersist);
+      emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal));
       return { handled: true };
     }
     case "pause": {
@@ -309,21 +305,21 @@ function handleGoalCommand(
         state.goal.status = "paused";
         state.goal.updatedAt = now;
       }
-      emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal), skipPromptPersist);
+      emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal));
       return { handled: true };
     }
     case "clear": {
       state.goal = undefined;
-      emitLocalCodexResponse(ctx, content, "Codex goal cleared for this Modus session.", skipPromptPersist);
+      emitLocalCodexResponse(ctx, content, "Codex goal cleared for this Modus session.");
       return { handled: true };
     }
     case "resume": {
       if (!state.goal) {
-        emitLocalCodexResponse(ctx, content, "No Codex goal is set for this Modus session.", skipPromptPersist);
+        emitLocalCodexResponse(ctx, content, "No Codex goal is set for this Modus session.");
         return { handled: true };
       }
       if (state.goal.status === "complete") {
-        emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal), skipPromptPersist);
+        emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal));
         return { handled: true };
       }
       state.goal.status = "active";
@@ -948,7 +944,7 @@ export function createCodexProvider(): SessionProvider {
       }
 
       // Start the turn
-      const goalCommand = handleGoalCommand(ctx, state, session.initialContent, false);
+      const goalCommand = handleGoalCommand(ctx, state, session.initialContent);
       if (goalCommand.handled && !goalCommand.input) return;
 
       const input = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(session.initialContent, ctx);
@@ -1002,11 +998,11 @@ export function createCodexProvider(): SessionProvider {
       // Rebuild the Codex client so next turns pick up live MCP/profile changes.
       state.codex = createCodexClient(ctx, resolveCodexApiKey());
 
-      const goalCommand = handleGoalCommand(ctx, state, content, true);
+      const goalCommand = handleGoalCommand(ctx, state, content);
       if (goalCommand.handled && !goalCommand.input) return;
 
       const input = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(content, ctx);
-      runTurn(ctx, state, input, true, true).catch((err) => {
+      runTurn(ctx, state, input, true, false).catch((err) => {
         console.error(`[codex] sendMessage error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
@@ -1456,6 +1452,7 @@ async function runTurn(
       session.turnStartedAt = Date.now();
       updateSessionStatus(session.sessionId, "running");
 
+      // Synthesized here, not said by the user, so it is not a transcript turn.
       runTurn(ctx, state, buildCodexInput(session.initialContent, ctx), true, true).catch((err) => {
         console.error(`[codex] goal continuation error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -1475,10 +1472,10 @@ async function runTurn(
       session.status = "running";
       session.turnStartedAt = Date.now();
 
-      const goalCommand = handleGoalCommand(ctx, state, next, true);
+      const goalCommand = handleGoalCommand(ctx, state, next);
       if (goalCommand.handled && !goalCommand.input) return;
       const nextInput = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(next, ctx);
-      runTurn(ctx, state, nextInput, true, true).catch((err) => {
+      runTurn(ctx, state, nextInput, true, false).catch((err) => {
         console.error(`[codex] pending drain error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
@@ -1521,10 +1518,10 @@ async function runTurn(
         session.status = "running";
         session.turnStartedAt = Date.now();
 
-        const goalCommand = handleGoalCommand(ctx, state, next, true);
+        const goalCommand = handleGoalCommand(ctx, state, next);
         if (goalCommand.handled && !goalCommand.input) return;
         const nextInput = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(next, ctx);
-        runTurn(ctx, state, nextInput, true, true).catch((err2) => {
+        runTurn(ctx, state, nextInput, true, false).catch((err2) => {
           console.error(`[codex] post-abort drain error for ${session.sessionId}:`, err2);
           session.status = "error";
           session.error = String(err2);

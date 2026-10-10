@@ -364,7 +364,7 @@ export function createCursorProvider(): SessionProvider {
       }
 
       const input = buildCursorInput(session.initialContent, ctx);
-      runTurn(ctx, state, input, isResume, false).catch((err) => {
+      runTurn(ctx, state, input, isResume).catch((err) => {
         console.error(`[cursor] startTurn error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
@@ -424,7 +424,7 @@ export function createCursorProvider(): SessionProvider {
       updateSessionStatus(session.sessionId, "running");
 
       const input = buildCursorInput(content, ctx);
-      runTurn(ctx, state, input, true, true).catch((err) => {
+      runTurn(ctx, state, input, true).catch((err) => {
         console.error(`[cursor] sendMessage error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
@@ -515,7 +515,6 @@ async function runTurn(
   state: CursorState,
   input: string,
   isResume: boolean,
-  skipPromptPersist: boolean,
 ) {
   const { session } = ctx;
   const requestedResumeId = isResume ? state.sessionId : null;
@@ -676,13 +675,12 @@ async function runTurn(
                 session.seq = getMaxSeq(realId);
               }
 
-              if (!skipPromptPersist) {
-                ctx.emitEvent({
-                  type: "user",
-                  subtype: "prompt",
-                  message: { role: "user", content: session.initialContent },
-                });
-              }
+              // The harness keeps only a queue-time row; this is the message's transcript turn.
+              ctx.emitEvent({
+                type: "user",
+                subtype: "prompt",
+                message: { role: "user", content: session.initialContent },
+              });
 
               ctx.emitEvent({
                 type: "system",
@@ -886,7 +884,7 @@ async function runTurn(
       session.turnStartedAt = Date.now();
 
       const nextInput = buildCursorInput(next, ctx);
-      runTurn(ctx, state, nextInput, true, true).catch((err) => {
+      runTurn(ctx, state, nextInput, true).catch((err) => {
         console.error(`[cursor] pending drain error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
@@ -919,7 +917,7 @@ async function runTurn(
         session.turnStartedAt = Date.now();
 
         const nextInput = buildCursorInput(next, ctx);
-        runTurn(ctx, state, nextInput, true, true).catch((err2) => {
+        runTurn(ctx, state, nextInput, true).catch((err2) => {
           console.error(`[cursor] post-abort drain error for ${session.sessionId}:`, err2);
           session.status = "error";
           session.error = String(err2);

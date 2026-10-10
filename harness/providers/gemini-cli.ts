@@ -523,7 +523,7 @@ async function runTurn(
   ctx: TurnContext,
   state: GeminiState,
   content: MessageContent,
-  options: { isResume: boolean; skipPromptPersist: boolean },
+  options: { isResume: boolean },
 ) {
   const { session, profile: profileDef } = ctx;
   requireSupportedProfilePrompt(GEMINI_CAPABILITIES, profileDef);
@@ -666,13 +666,12 @@ async function runTurn(
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
 
-    if (!options.skipPromptPersist) {
-      ctx.emitEvent({
-        type: "user",
-        subtype: "prompt",
-        message: { role: "user", content },
-      });
-    }
+    // The harness keeps only a queue-time row; this is the message's transcript turn.
+    ctx.emitEvent({
+      type: "user",
+      subtype: "prompt",
+      message: { role: "user", content },
+    });
 
     ctx.emitEvent({
       type: "system",
@@ -938,7 +937,7 @@ async function runTurn(
     session.status = "running";
     session.turnStartedAt = Date.now();
 
-    scheduleGeminiTurn(ctx, state, queuedNext, { isResume: true, skipPromptPersist: true });
+    scheduleGeminiTurn(ctx, state, queuedNext, { isResume: true });
   }
 }
 
@@ -946,7 +945,7 @@ function scheduleGeminiTurn(
   ctx: TurnContext,
   state: GeminiState,
   content: MessageContent,
-  options: { isResume: boolean; skipPromptPersist: boolean },
+  options: { isResume: boolean },
 ): void {
   const { session } = ctx;
   state.turnCompletion = state.turnCompletion.then(async () => {
@@ -987,7 +986,7 @@ export function createGeminiCliProvider(
       };
       session._providerState = state;
 
-      scheduleGeminiTurn(ctx, state, session.initialContent, { isResume, skipPromptPersist: false });
+      scheduleGeminiTurn(ctx, state, session.initialContent, { isResume });
     },
 
     sendMessage(ctx: TurnContext, content: MessageContent) {
@@ -1012,7 +1011,7 @@ export function createGeminiCliProvider(
       session.turnStartedAt = Date.now();
       updateSessionStatus(session.sessionId, "running");
 
-      scheduleGeminiTurn(ctx, state, content, { isResume: true, skipPromptPersist: true });
+      scheduleGeminiTurn(ctx, state, content, { isResume: true });
     },
 
     abort(session: ActiveSession) {

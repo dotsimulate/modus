@@ -276,6 +276,35 @@ describe("Antigravity provider", () => {
     expect(existsSync(captured[0].env.MODUS_ANTIGRAVITY_HOOK_DIR)).toBe(false);
   });
 
+  test("records a follow-up as a delivered prompt", async () => {
+    // The harness writes only a queue-time row, so this event is the follow-up's turn.
+    const nativeId = "33333333-3333-4333-8333-333333333333";
+    const provider = createAntigravityProvider({
+      resolveExecutable: () => "agy-test",
+      ensurePlugin: async () => {},
+      hookPollMs: 5,
+      spawn(options) {
+        const hookEvents = [
+          { kind: "pre-invocation", input: { conversationId: nativeId, invocationNum: 0 } },
+          { kind: "stop", input: { conversationId: nativeId, fullyIdle: true } },
+        ];
+        writeFileSync(join(options.env.MODUS_ANTIGRAVITY_HOOK_DIR, "events.jsonl"), `${hookEvents.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
+        return { pid: 4243, stdout: textStream("done"), stderr: textStream(""), exited: Promise.resolve(0), kill() {} };
+      },
+    });
+    const session = makeSession();
+    const events: any[] = [];
+    const ctx = makeContext(session, events, []);
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+
+    provider.sendMessage(ctx, "follow-up");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+
+    const prompts = events.filter((event) => event.type === "user" && event.subtype === "prompt");
+    expect(prompts.map((event) => event.message.content)).toEqual(["hello", "follow-up"]);
+  });
+
   test("interrupt kills the active agy process and returns the session to idle", async () => {
     let killed = false;
     let finish!: (code: number) => void;

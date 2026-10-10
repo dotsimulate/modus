@@ -576,7 +576,7 @@ async function runTurn(
   ctx: TurnContext,
   state: GrokState,
   content: MessageContent,
-  options: { resume: boolean; skipPromptPersist: boolean },
+  options: { resume: boolean },
 ): Promise<void> {
   const { session } = ctx;
   const turnAbortController = state.abortController;
@@ -588,9 +588,8 @@ async function runTurn(
     if (state.model && state.providerSessionId) {
       await turnClient.request("session/set_model", { sessionId: state.providerSessionId, modelId: state.model }, 30_000);
     }
-    if (!options.skipPromptPersist) {
-      ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
-    }
+    // The harness keeps only a queue-time row; this is the message's transcript turn.
+    ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
     emitInit(ctx, state);
     state.turnActive = true;
     state.text = "";
@@ -673,7 +672,7 @@ async function runTurn(
     session.abortController = new AbortController();
     state.abortController = session.abortController;
     session.turnStartedAt = Date.now();
-    void runTurn(ctx, state, next, { resume: true, skipPromptPersist: true });
+    void runTurn(ctx, state, next, { resume: true });
   }
 }
 
@@ -747,7 +746,7 @@ export function createGrokBuildProvider(options?: {
         command,
       };
       ctx.session._providerState = state;
-      void runTurn(ctx, state, ctx.session.initialContent, { resume, skipPromptPersist: false });
+      void runTurn(ctx, state, ctx.session.initialContent, { resume });
     },
 
     sendMessage(ctx, content) {
@@ -761,7 +760,7 @@ export function createGrokBuildProvider(options?: {
       ctx.session.initialContent = content;
       ctx.session.preview = contentPreview(content);
       ctx.session.turnStartedAt = Date.now();
-      void runTurn(ctx, state, content, { resume: true, skipPromptPersist: true });
+      void runTurn(ctx, state, content, { resume: true });
     },
 
     abort(session) {
