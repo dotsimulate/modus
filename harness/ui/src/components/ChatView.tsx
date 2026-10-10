@@ -16,6 +16,7 @@ import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interfa
 import { partitionToolRun } from "../move-tool-view";
 import { useLatestMoveToolCallIds } from "../hooks/useLatestMoveToolCallIds";
 import { buildTurns, segmentContentBlocks } from "../turn-segments";
+import { rememberChatScrollAnchor, type ChatScrollAnchor } from "../chat-scroll-anchor";
 import { currentTurnKey, onControlIntent, scrollIntentPixels, stepTurnKey } from "../control-intents";
 import { TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
 import { isTodoTool } from "../tool-names";
@@ -30,37 +31,7 @@ type DisplayItem =
  */
 const AUTO_LOAD_OLDER_PX = 240;
 
-type ChatScrollAnchor = { key: string; within: number };
 const chatScrollAnchors = new Map<string, ChatScrollAnchor>();
-
-function rememberChatScrollAnchor(
-  sessionId: string,
-  element: HTMLElement,
-  layout: VirtualLayoutSnapshot | null,
-): ChatScrollAnchor | null {
-  if (!layout || layout.offsets.size === 0) return null;
-  let anchor: ChatScrollAnchor | null = null;
-  for (const [key, offset] of layout.offsets) {
-    const height = layout.heights.get(key) ?? 0;
-    if (offset + height > element.scrollTop) {
-      anchor = { key, within: Math.max(0, element.scrollTop - offset) };
-      break;
-    }
-  }
-  if (!anchor) {
-    const last = [...layout.offsets.keys()].at(-1);
-    if (last) anchor = { key: last, within: layout.heights.get(last) ?? 0 };
-  }
-  if (!anchor) return null;
-  chatScrollAnchors.delete(sessionId);
-  chatScrollAnchors.set(sessionId, anchor);
-  while (chatScrollAnchors.size > 30) {
-    const oldest = chatScrollAnchors.keys().next().value;
-    if (typeof oldest !== "string") break;
-    chatScrollAnchors.delete(oldest);
-  }
-  return anchor;
-}
 
 function readScrollIndicator(): ChatScrollIndicator {
   return readLocalInterfaceSettings().chat.scrollIndicator;
@@ -389,12 +360,14 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
   focusTurnNumberRef.current = focusTurnNumber;
   useEffect(() => {
     if (!scrollEl || !sessionId) return;
-    const save = () => { rememberChatScrollAnchor(sessionId, scrollEl, measuredLayoutRef.current); };
+    const save = () => { rememberChatScrollAnchor(chatScrollAnchors, sessionId, scrollEl, measuredLayoutRef.current); };
     scrollEl.addEventListener("scroll", save, { passive: true });
     const saved = chatScrollAnchors.get(sessionId);
     let firstFrame = 0;
     let secondFrame = 0;
-    if (saved && focusTurnNumberRef.current == null) {
+    // A reader who left at the live edge reopens on the last message: the list
+    // already starts pinned there, and restoring an anchor would detach it.
+    if (saved && !saved.atBottom && focusTurnNumberRef.current == null) {
       firstFrame = requestAnimationFrame(() => {
         secondFrame = requestAnimationFrame(() => {
           listControlsRef.current?.scrollToKey(saved.key, {
