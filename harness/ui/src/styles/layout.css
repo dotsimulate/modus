@@ -143,12 +143,15 @@
   overflow: hidden;
 }
 
+/* Clips the scroll spine's overhang past the right edge. Without it, a
+   scrolling layout leaf around the chat grows a horizontal scrollbar. */
 .chat-scroll-wrapper {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .chat-messages {
