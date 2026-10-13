@@ -41,4 +41,11 @@ describe("claude CLI flags", () => {
     const source = sourceOf("claude-code-pty.ts");
     expect(source).toContain(`args.push("--setting-sources", loadSettings ? "project,local" : "")`);
   });
+
+  test("the PTY provider passes Modus-owned settings as a --settings file", () => {
+    // The user settings tier is never loaded, so contextWindow reaches the CLI
+    // only through the flag tier. A file avoids cmd.exe shim quoting of JSON.
+    const source = sourceOf("claude-code-pty.ts");
+    expect(source).toContain(`args.push("--settings", writeSensitiveTempFile(privateTempDir(), "settings.json", JSON.stringify(flagSettings)))`);
+  });
 });

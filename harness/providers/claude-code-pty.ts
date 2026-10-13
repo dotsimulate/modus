@@ -48,6 +48,7 @@ import {
 } from "./provider-process-owner";
 import { logProviderDiagnostic, redactProviderDiagnostic } from "./provider-diagnostics";
 import { providerChildEnv } from "./child-env";
+import { applyContextWindowCap, claudeFlagSettings, resolveClaudeAutoCompactWindow } from "./claude-settings";
 import { cliExists, resolveCli } from "./resolve-cli";
 
 // ── Constants ──
@@ -142,6 +143,8 @@ type PtyState = {
   spawnCwd: string;
   /** Private per-process directory containing MCP config/system prompt files. */
   sensitiveTempDir: string | null;
+  /** Compaction window passed via --settings; also caps the reported context window. */
+  autoCompactWindow?: number;
   /** Enforces one close-delimited provider process generation at a time. */
   processOwner: ProviderProcessOwner<ChildProcess>;
   /** Terminal registration for UI visibility */
@@ -286,6 +289,7 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   env: Record<string, string>;
   cwd: string;
   sensitiveTempDir: string | null;
+  autoCompactWindow?: number;
 } {
   const { session, opts, profile: profileDef } = ctx;
   let sensitiveTempDir: string | null = null;
@@ -367,13 +371,22 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   const loadSettings = opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
   args.push("--setting-sources", loadSettings ? "project,local" : "");
 
+  // Flag-tier settings Modus owns. The user tier is not loaded, so a
+  // ~/.claude autoCompactWindow never applies; Modus contextWindow does.
+  // A file, not inline JSON, so cmd.exe shim quoting cannot mangle it.
+  const autoCompactWindow = resolveClaudeAutoCompactWindow(profileDef, session.projectRoot ?? cwd, "claude-code-pty");
+  const flagSettings = claudeFlagSettings(autoCompactWindow);
+  if (flagSettings) {
+    args.push("--settings", writeSensitiveTempFile(privateTempDir(), "settings.json", JSON.stringify(flagSettings)));
+  }
+
   // Build env
   const env: Record<string, string> = providerChildEnv();
   if (profileDef?.env) {
     Object.assign(env, profileDef.env);
   }
 
-    return { args, env, cwd, sensitiveTempDir };
+    return { args, env, cwd, sensitiveTempDir, autoCompactWindow };
   } catch (error) {
     if (sensitiveTempDir) {
       try {
@@ -717,7 +730,8 @@ function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageConte
   state.stderrBuf = "";
 
   cleanupSensitiveTempDir(state);
-  const { args, env, cwd: newCwd, sensitiveTempDir } = buildSpawnArgs(ctx, state.sessionId ?? undefined);
+  const { args, env, cwd: newCwd, sensitiveTempDir, autoCompactWindow } = buildSpawnArgs(ctx, state.sessionId ?? undefined);
+  state.autoCompactWindow = autoCompactWindow;
   state.spawnArgs = args;
   state.spawnEnv = env;
   state.spawnCwd = newCwd;
@@ -944,6 +958,7 @@ async function drainEvents(
             break;
           }
         }
+        applyContextWindowCap(m, state.autoCompactWindow);
 
         if (!m.modelUsage && m.usage) {
           // Alternate format
@@ -1113,7 +1128,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const isResume = !!resumeId;
 
       // Build spawn args
-      const { args, env, cwd: resolvedCwd, sensitiveTempDir } = buildSpawnArgs(ctx, resumeId);
+      const { args, env, cwd: resolvedCwd, sensitiveTempDir, autoCompactWindow } = buildSpawnArgs(ctx, resumeId);
 
       const state: PtyState = {
         proc: null,
@@ -1139,6 +1154,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         spawnEnv: env,
         spawnCwd: resolvedCwd,
         sensitiveTempDir,
+        autoCompactWindow,
         processOwner: new ProviderProcessOwner<ChildProcess>(),
         terminal: null,
       };

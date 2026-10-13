@@ -139,6 +139,16 @@ describe("claude-code live config", () => {
     }, 15_000);
   }
 
+  test("passes the profile contextWindow as Claude Code's autoCompactWindow at launch and profile switch", async () => {
+    const { provider, session, queryOptions } = await startWarmSession({}, { contextWindow: 600_000 });
+    expect(queryOptions.settings).toEqual({ autoCompactWindow: 600_000 });
+
+    const ctx = makeTurnContext(session);
+    ctx.profile = { contextWindow: 300_000 };
+    provider.switchProfile!(session, ctx, "keep");
+    expect(session._providerState.sdkOptions.settings).toEqual({ autoCompactWindow: 300_000 });
+  });
+
   test("applies an effort change to the warm subprocess between turns", async () => {
     const { provider, session, calls } = await startWarmSession({ effort: "high" });
 

@@ -54,7 +54,7 @@ contributes to the merge. A new named Vault starts with no plugin registration.
 
 | Field | Profile | Provider Default | TS Fallback | Notes |
 |-------|---------|-----------------|-------------|-------|
-| `contextWindow` | ✓ | ✓ | 128000 (or openrouter API) | Must match your inference server's `-c` flag for local models |
+| `contextWindow` | ✓ | ✓ | 128000 (or openrouter API) | Must match your inference server's `-c` flag for local models. Claude Code: see below |
 | `maxOutputTokens` | ✓ | ✓ | 8192 | Max tokens per response |
 | `compaction.enabled` | ✓ | ✓ | true | Threshold compaction at ~75% context usage |
 | `compaction.reserveTokens` | ✓ | ✓ | max(4096, maxOutputTokens) | Tokens reserved for the next response |
@@ -120,3 +120,22 @@ For PI providers, model-window resolution happens in two places in
 Model construction reads current-Vault provider defaults; compaction reads
 `getGlobalConfig(session.cwd).providerDefaults?.[providerName]`, so project
 `_global.json` can override compaction settings for the active workspace.
+
+### Claude Code
+
+Claude Code compacts on its own; only `contextWindow` applies. Modus resolves
+profile → `providerDefaults["claude-code-pty"]` (PTY only) →
+`providerDefaults["claude-code"]` against the project, clamps the value to the
+CLI's accepted 100000–1000000 range, and passes it as `autoCompactWindow` in the
+flag settings tier: the SDK `settings` option, or a `--settings` file for PTY.
+Unset leaves Claude Code's own default. The session's reported context window
+is capped at the same value, so the context readout measures against the point
+where compaction happens. Code: `providers/claude-settings.ts`.
+
+Claude Code's user settings tier (`~/.claude/settings.json`) is not loaded in
+Modus sessions, so an `autoCompactWindow` set there has no effect here. To cap
+every Claude session in the Main home:
+
+```json
+{ "providerDefaults": { "claude-code": { "contextWindow": 600000 } } }
+```

@@ -160,6 +160,12 @@ when project settings are enabled, set `"autoMemoryEnabled": false` in either
 project settings file. With `loadProjectSettings: false`, those files are not
 read; use profile `env: { "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1" }` instead.
 Both Claude providers pass profile environment variables to their subprocesses.
+
+Because the user tier is excluded, a `~/.claude/settings.json` `autoCompactWindow`
+(top-level or under `modelSettings`) does not apply to Modus sessions. Set
+`contextWindow` instead, on the profile or as `providerDefaults["claude-code"]`
+in `_global.json`; both Claude providers pass it to Claude Code as
+`autoCompactWindow` (see `docs/config-resolution.md`).
 See [Claude's settings-source contract](https://code.claude.com/docs/en/agent-sdk/claude-code-features).
 
 **`env`**: Provider-specific process environment, not a universal endpoint
