@@ -44,7 +44,7 @@ import { getSecretsInfo, resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { providerChildEnv } from "./child-env";
-import { applyContextWindowCap, claudeFlagSettings, resolveClaudeAutoCompactWindow } from "./claude-settings";
+import { applyContextWindowCap, resolveClaudeFlagSettings } from "./claude-settings";
 import { cliExists, resolveCli } from "./resolve-cli";
 import { logProviderDiagnostic as providerLog } from "./provider-diagnostics";
 
@@ -762,9 +762,11 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         GIT_CONFIG_KEY_2: "submodule.recurse",
         GIT_CONFIG_VALUE_2: "false",
       };
+      const sdkCwd = session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd();
+      const loadProjectSettings = opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
       const sdkOptions: any = {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
-        cwd: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+        cwd: sdkCwd,
         additionalDirectories: session.additionalDirectories.length > 0 ? session.additionalDirectories : undefined,
         includePartialMessages: true,
         enableFileCheckpointing: true,
@@ -776,10 +778,10 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         disallowedTools: sdkDisallowed,
         tools: sdkTools,
         systemPrompt,
-        settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project", "local"] : [],
-        // Flag-tier settings Modus owns. The user tier is not loaded, so a
-        // ~/.claude autoCompactWindow never applies; Modus contextWindow does.
-        settings: claudeFlagSettings(resolveClaudeAutoCompactWindow(profileDef, projectRoot, "claude-code")),
+        settingSources: loadProjectSettings ? ["project", "local"] : [],
+        // Flag-tier settings Modus owns: the compaction window, from Modus
+        // contextWindow or else Claude Code's own settings (user tier included).
+        settings: resolveClaudeFlagSettings(profileDef, projectRoot, sdkCwd, "claude-code", loadProjectSettings),
         // When harness policy is bypass, use bypassPermissions and skip hooks entirely.
         // On Windows, the hook IPC stream between SDK and CLI is unreliable —
         // every tool call triggers a round-trip that can fail with "Stream closed".
@@ -1256,11 +1258,14 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       // Update SDK options for next resume
       state.sdkOptions.systemPrompt = systemPrompt;
-      state.sdkOptions.settingSources = (ctx.opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true)
-        ? ["project", "local"]
-        : [];
-      state.sdkOptions.settings = claudeFlagSettings(
-        resolveClaudeAutoCompactWindow(profileDef, session.projectRoot ?? ctx.opts.cwd ?? session.cwd, "claude-code"),
+      const loadProjectSettings = ctx.opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
+      state.sdkOptions.settingSources = loadProjectSettings ? ["project", "local"] : [];
+      state.sdkOptions.settings = resolveClaudeFlagSettings(
+        profileDef,
+        session.projectRoot ?? ctx.opts.cwd ?? session.cwd,
+        session.cwd,
+        "claude-code",
+        loadProjectSettings,
       );
       state.sdkOptions.model = ctx.opts.model || undefined;
       state.sdkOptions.effort = normalizeClaudeEffort(ctx.opts.effort);
@@ -1455,7 +1460,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
             break;
           }
         }
-        applyContextWindowCap(m, state.sdkOptions?.settings?.autoCompactWindow);
+        applyContextWindowCap(m, state.sdkOptions?.settings);
         const ctxWindow = m.context_window ?? (m.modelUsage ? (Object.values(m.modelUsage as Record<string, any>)[0] as any)?.contextWindow : null);
         providerLog(`[claude-code] CONTEXT: tokens_used=${m.context_tokens_used ?? "none"} window=${ctxWindow ?? "none"}`);
 

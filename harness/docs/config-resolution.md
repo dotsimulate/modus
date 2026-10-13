@@ -128,13 +128,22 @@ profile → `providerDefaults["claude-code-pty"]` (PTY only) →
 `providerDefaults["claude-code"]` against the project, clamps the value to the
 CLI's accepted 100000–1000000 range, and passes it as `autoCompactWindow` in the
 flag settings tier: the SDK `settings` option, or a `--settings` file for PTY.
-Unset leaves Claude Code's own default. The session's reported context window
-is capped at the same value, so the context readout measures against the point
-where compaction happens. Code: `providers/claude-settings.ts`.
 
-Claude Code's user settings tier (`~/.claude/settings.json`) is not loaded in
-Modus sessions, so an `autoCompactWindow` set there has no effect here. To cap
-every Claude session in the Main home:
+With no Modus value set, the window configured in Claude Code itself applies:
+Modus reads `autoCompactWindow` (top-level and per-model under `modelSettings`,
+which is where `/autocompact` saves it) from `~/.claude/settings.json` (or
+`$CLAUDE_CONFIG_DIR`, including a profile `env` override) and the project's
+`.claude/settings.json` and `.claude/settings.local.json`, merges them as
+Claude Code does, and passes the result in the flag tier. Only this key is
+carried over; the rest of the user settings tier stays unloaded. With neither
+set, Claude Code uses its own default.
+
+The session's reported context window is capped at the window that applies to
+the session's model, so the context readout measures against the point where
+compaction happens. Code: `providers/claude-settings.ts`.
+
+To cap every Claude session in the Main home regardless of Claude Code's own
+setting:
 
 ```json
 { "providerDefaults": { "claude-code": { "contextWindow": 600000 } } }

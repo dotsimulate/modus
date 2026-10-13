@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 afterEach(() => {
   mock.restore();
@@ -147,6 +150,20 @@ describe("claude-code live config", () => {
     ctx.profile = { contextWindow: 300_000 };
     provider.switchProfile!(session, ctx, "keep");
     expect(session._providerState.sdkOptions.settings).toEqual({ autoCompactWindow: 300_000 });
+  });
+
+  test("carries Claude Code's own /autocompact window when Modus sets no contextWindow", async () => {
+    const configDir = mkdtempSync(join(tmpdir(), "modus-claude-config-"));
+    writeFileSync(join(configDir, "settings.json"), JSON.stringify({
+      hooks: { Stop: [] },
+      modelSettings: { "claude-opus-5-5": { autoCompactWindow: 600_000 } },
+    }));
+    try {
+      const { queryOptions } = await startWarmSession({}, { env: { CLAUDE_CONFIG_DIR: configDir } });
+      expect(queryOptions.settings).toEqual({ modelSettings: { "claude-opus-5-5": { autoCompactWindow: 600_000 } } });
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+    }
   });
 
   test("applies an effort change to the warm subprocess between turns", async () => {
