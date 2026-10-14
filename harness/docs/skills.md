@@ -168,7 +168,7 @@ source you do not control.
 |---|---|---|
 | claude-code, claude-code-pty | yes (`.claude/skills/`) | no — uses the skill tools |
 | Any declarative PI provider | yes (`.pi/skills/`) | yes, natively |
-| codex, cursor, grok-build | no | no — uses the skill tools |
+| codex, cursor, grok-build, muse-code | no | no — uses the skill tools |
 | opencode | no | no — Modus does not inject its skill tools |
 
 The tool path depends on the provider mounting the built-in `modus` MCP server,

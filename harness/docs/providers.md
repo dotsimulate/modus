@@ -86,6 +86,7 @@ lookups key on `user/prompt` rows.
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
+| `muse-code` | muse-code | Meta Muse Code CLI (`muse serve`) | Persistent MSP session, full MCP, streaming tool/reasoning events, live Modus approvals, steer |
 | `opencode` | opencode | OpenCode CLI subprocess | Event-derived tools, `bunx opencode-ai` fallback; Modus MCP injection is not implemented |
 | `openai-compat` | pi-agent | Generic OpenAI-compatible endpoint (LiteLLM defaults) | PI agent loop, MCP via mcp-bridge, steer; `litellm` remains an accepted legacy alias |
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
@@ -356,6 +357,39 @@ prompt replacement/appending maps to Grok's system-prompt override/rules flags.
 Model lists are discovered from ACP initialization, with `grok-4.5` used only as
 an offline UI fallback.
 
+### Muse Code support boundary
+
+Modus starts one `muse serve` host per active session and drives it over the
+Muse Session Protocol (MSP): newline-delimited JSON-RPC 2.0 on stdio. It
+initializes, starts or resumes the provider-native Muse session, and keeps the
+host warm for follow-up turns. Text, reasoning summaries, tool calls,
+approvals, usage, cancellation, steering, images, model selection, and MCP
+servers use native MSP methods rather than terminal-output scraping.
+
+Install the Muse Code CLI and sign in with your Meta Model API account. The
+CLI's own sign-in is what a Muse Code subscription applies to, and Modus
+launches that same CLI, so subscription turns stay on the subscription. If a
+`MODEL_API_KEY` Modus secret is set it is forwarded instead, and Muse bills that
+key pay-as-you-go. `MODUS_MUSE_CLI` overrides the executable path.
+
+- **Models**: listed with MSP `model/list`, which needs no session. There is no
+  offline fallback list; model pickers accept any ID. A model change is sent as
+  `session/setModel` before the next turn, without restarting the host.
+- **Approvals**: MSP has no tool filter, so Modus enforces `tools`,
+  `disallowedTools`, `toolStates`, and `permissionPolicy` by answering the
+  host's `approval/request`. The session uses approval mode `allowAll` only when
+  the policy is `bypass` and no tool is restricted; otherwise `promptUnmatched`,
+  so a tool the host already allows by its own rules never reaches Modus.
+- **MCP**: servers are sent in the session's `config.mcpServers` when the host
+  grants the `sessionMcp` capability. Stdio and streamable HTTP are supported;
+  SSE servers are skipped with a warning. Servers are marked `optional`, so one
+  failing server does not refuse the session.
+- **Profile prompts**: MSP has no system-prompt channel, so a profile with a
+  prompt fails the turn up front instead of smuggling the prompt into the user
+  message.
+- **Questions**: the client declines `userInput/request` dialogs at the
+  handshake, since Modus has no surface for them.
+
 ## Effort Resolution
 
 `effort` follows the standard cascade: session override → agent profile → user profile default.
@@ -370,6 +404,7 @@ Provider-specific normalization:
 - **codex**: `"off"` disables reasoning. `"low"/"medium"/"high"/"xhigh"` map to Codex reasoning effort; `"max"` maps to `"xhigh"`.
 - Other providers accept the resolved effort only if their implementation uses it.
 - **grok-build**: effort is applied at ACP process startup and included in prompt metadata for compatible Grok versions.
+- **muse-code**: effort is sent per turn as MSP `reasoningEffort`; `"off"` maps to `"none"`.
 
 ## Permissions
 
@@ -396,6 +431,7 @@ When the agent calls the `ExitPlanMode` tool, the provider automatically resets 
 | `codex` | `codex` CLI plus `CODEX_API_KEY` / `OPENAI_API_KEY` or `~/.codex/auth.json` |
 | `cursor` | `cursor-agent` CLI (or configured resolver path) |
 | `grok-build` | `grok` CLI plus a headless ACP authentication probe (`grok login` or `XAI_API_KEY`) |
+| `muse-code` | `muse` CLI (or `MODUS_MUSE_CLI`). MSP has no sign-in status method, so a missing login surfaces on the first turn |
 | `opencode` | `opencode` CLI, or `bunx` for `opencode-ai` fallback |
 | Any declarative PI provider | resolved `<baseUrl>/models`, or its explicit `health.url`; definition headers and named Modus secret are included |
 
@@ -519,5 +555,6 @@ Actionable provider warnings and errors remain enabled without this flag.
 (MCP via .cursor/mcp.json), `providers/codex.ts` (MCP via config object),
 `providers/opencode.ts`,
 `providers/grok-build.ts`, `providers/grok-build-acp.ts`,
+`providers/muse-code.ts`, `providers/muse-code-runtime.ts`,
 `providers/mcp-bridge.ts` (MCP lifecycle for PI agents),
 `providers/registry.ts` (provider lookup).

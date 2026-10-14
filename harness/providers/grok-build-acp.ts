@@ -12,6 +12,8 @@ export type GrokAcpClientOptions = {
   env?: NodeJS.ProcessEnv;
   sensitiveValues?: readonly (string | undefined)[];
   requestTimeoutMs?: number;
+  /** Names the protocol in errors and diagnostics; Muse Code reuses this client over MSP. */
+  label?: string;
 };
 
 type PendingRequest = {
@@ -31,9 +33,11 @@ export class GrokAcpClient {
   private requestHandler?: (id: JsonRpcId, method: string, params: any) => void | Promise<void>;
   private closeHandler?: (error: Error | null) => void;
   private sensitiveValues = new Set<string>();
+  private readonly label: string;
 
   constructor(options: GrokAcpClientOptions) {
     this.options = options;
+    this.label = options.label ?? "Grok ACP";
     this.addSensitiveValues(options.sensitiveValues ?? []);
   }
 
@@ -74,7 +78,7 @@ export class GrokAcpClient {
   }
 
   start(): void {
-    if (this.process) throw new Error("Grok ACP process already started");
+    if (this.process) throw new Error(`${this.label} process already started`);
     const child = spawn(this.options.executable, this.options.args, {
       cwd: this.options.cwd,
       env: this.options.env,
@@ -97,7 +101,7 @@ export class GrokAcpClient {
     child.once("close", (code, signal) => {
       const error = code === 0 || child.killed
         ? null
-        : new Error(this.stderrBuffer.trim() || `Grok ACP exited with code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}`);
+        : new Error(this.stderrBuffer.trim() || `${this.label} exited with code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}`);
       this.finish(error);
     });
   }
@@ -107,7 +111,7 @@ export class GrokAcpClient {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Grok ACP request timed out: ${method}`));
+        reject(new Error(`${this.label} request timed out: ${method}`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try {
@@ -148,14 +152,14 @@ export class GrokAcpClient {
 
   private write(message: unknown): void {
     if (!this.process || !this.running || !this.process.stdin.writable) {
-      throw new Error("Grok ACP process is not running");
+      throw new Error(`${this.label} process is not running`);
     }
     const child = this.process;
     const wrote = tryPipeOperation(
       () => child.stdin.write(`${JSON.stringify(message)}\n`),
       (error) => this.appendDiagnostic(`Provider input stream write failed (${pipeErrorCode(error)}).`),
     );
-    if (!wrote) throw new Error("Grok ACP input stream is closed");
+    if (!wrote) throw new Error(`${this.label} input stream is closed`);
   }
 
   private appendDiagnostic(value: string): void {
@@ -179,7 +183,7 @@ export class GrokAcpClient {
     try {
       message = JSON.parse(line);
     } catch {
-      this.appendDiagnostic(`Unexpected Grok stdout: ${line}`);
+      this.appendDiagnostic(`Unexpected ${this.label} stdout: ${line}`);
       return;
     }
     if (message && message.id != null && ("result" in message || "error" in message) && !message.method) {
@@ -225,7 +229,7 @@ export class GrokAcpClient {
   private finish(error: Error | null): void {
     if (!this.process) return;
     this.process = null;
-    const terminalError = error ?? new Error("Grok ACP process closed");
+    const terminalError = error ?? new Error(`${this.label} process closed`);
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(terminalError);

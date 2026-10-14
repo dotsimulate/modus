@@ -17,6 +17,7 @@ export const PROVIDER_CLI_NAMES: Readonly<Record<string, string>> = {
   "codex": "codex",
   "cursor": "cursor-agent",
   "grok-build": "grok",
+  "muse-code": "muse",
   "opencode": "opencode",
 };
 

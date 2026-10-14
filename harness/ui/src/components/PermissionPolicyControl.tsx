@@ -36,6 +36,7 @@ function shellTools(provider: string): string[] {
   if (provider === "grok-build") return ["run_terminal_cmd", "run_terminal_command"];
   if (provider === "antigravity") return ["run_command"];
   if (provider === "opencode") return ["bash"];
+  if (provider === "muse-code") return ["shell"];
   return ["Bash", "PowerShell"];
 }
 

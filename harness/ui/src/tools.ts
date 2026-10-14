@@ -82,6 +82,12 @@ export const GROK_BUILD_TOOL_GROUPS: ToolGroup[] = [
   { label: "interaction", tools: ["ask_user_question", "enter_plan_mode", "exit_plan_mode"] },
 ];
 
+// Muse Code tools (matches muse-code-capabilities.ts builtInToolGroups)
+export const MUSE_CODE_TOOL_GROUPS: ToolGroup[] = [
+  { label: "files", tools: ["read_file", "write_file"] },
+  { label: "exec", tools: ["shell"] },
+];
+
 export const OPENCODE_TOOL_GROUPS: ToolGroup[] = [
   { label: "exec", tools: ["bash"] },
   { label: "files", tools: ["read", "write", "edit"] },
@@ -95,6 +101,7 @@ export type ProviderToolFamily =
   | "cursor"
   | "gemini-cli"
   | "grok-build"
+  | "muse-code"
   | "opencode"
   | "pi-agent"
   | "unknown";
@@ -152,6 +159,8 @@ export function providerToolFamily(
       return "cursor";
     case "grok-build":
       return "grok-build";
+    case "muse-code":
+      return "muse-code";
     case "opencode":
       return "opencode";
     case "claude-code":
@@ -180,6 +189,8 @@ export function getToolGroups(
       return CURSOR_TOOL_GROUPS;
     case "grok-build":
       return GROK_BUILD_TOOL_GROUPS;
+    case "muse-code":
+      return MUSE_CODE_TOOL_GROUPS;
     case "opencode":
       return OPENCODE_TOOL_GROUPS;
     case "claude-code":

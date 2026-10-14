@@ -28,7 +28,7 @@ profile's ID used everywhere in the system.
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
   // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
-  // "grok-build" | "opencode" | "openai-compat" | "ollama" |
+  // "grok-build" | "muse-code" | "opencode" | "openai-compat" | "ollama" |
   // "openrouter", plus user/plugin declarative providers discovered at runtime.
   // "litellm" remains accepted as a legacy alias of "openai-compat".
 

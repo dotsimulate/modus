@@ -29,7 +29,7 @@ export type ProviderCapabilities = {
   label: string;
   /** Legacy names accepted by the backend but omitted from new-provider pickers. */
   aliases?: string[];
-  family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "grok-build" | "opencode" | "pi-agent";
+  family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "grok-build" | "muse-code" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   builtInToolMode: "explicit" | "event-derived";

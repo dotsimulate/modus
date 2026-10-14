@@ -49,6 +49,7 @@ modus/
       opencode.ts          # OpenCode CLI provider
       grok-build.ts        # xAI Grok Build ACP provider
       grok-build-acp.ts    # newline-delimited JSON-RPC transport
+      muse-code.ts         # Meta Muse Code MSP provider (reuses that transport)
       pi-agent.ts          # PI agent (built-in + user/plugin declarative providers)
       mcp-bridge.ts        # MCP server lifecycle management
       models.ts            # Model listing per provider
@@ -137,8 +138,8 @@ Providers are execution backends. Session-manager delegates to them via the
 `SessionProvider` interface (defined in `providers/types.ts`).
 
 Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
-`grok-build`, `opencode`, `openai-compat`, `ollama`, `openrouter`,
-plus current-Vault and plugin declarative PI providers. `litellm` remains an
+`grok-build`, `muse-code`, `opencode`, `openai-compat`, `ollama`,
+`openrouter`, plus current-Vault and plugin declarative PI providers. `litellm` remains an
 accepted compatibility alias of `openai-compat`. The standalone `antigravity`
 and `gemini-cli` adapters are excluded from the distributed app; profiles using
 either name need another provider (see `providers.md`).

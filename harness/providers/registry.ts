@@ -15,6 +15,9 @@ import { resolveCursorAgentExecutable } from "./cursor-resolve-bin";
 import { createGrokBuildProvider } from "./grok-build";
 import { GROK_BUILD_CAPABILITIES } from "./grok-build-capabilities";
 import { probeGrokBuildAuth, resolveGrokBuildCommand } from "./grok-build-runtime";
+import { createMuseCodeProvider } from "./muse-code";
+import { MUSE_CODE_CAPABILITIES } from "./muse-code-capabilities";
+import { resolveMuseCodeCommand } from "./muse-code-runtime";
 import { createOpenCodeProvider } from "./opencode";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { createPiAgentProvider } from "./pi-agent";
@@ -69,6 +72,8 @@ export function getProvider(name: string): SessionProvider {
     provider = createOpenCodeProvider();
   } else if (name === "grok-build") {
     provider = createGrokBuildProvider();
+  } else if (name === "muse-code") {
+    provider = createMuseCodeProvider();
   } else if (definition?.kind === "pi") {
     provider = createPiAgentProvider(name);
   } else {
@@ -85,6 +90,7 @@ export function getProvider(name: string): SessionProvider {
 export function getProviderCapabilities(name: string): ProviderCapabilities {
   const base =
     name === "grok-build" ? GROK_BUILD_CAPABILITIES
+    : name === "muse-code" ? MUSE_CODE_CAPABILITIES
     : name === "opencode" ? OPENCODE_CAPABILITIES
     : getProvider(name).capabilities;
   return {
@@ -161,6 +167,8 @@ export async function checkProviderHealth(name: string): Promise<ProviderHealthI
         ? resolveCursorAgentExecutable()
         : name === "grok-build"
             ? resolveGrokBuildCommand()?.executable
+          : name === "muse-code"
+            ? resolveMuseCodeCommand()?.executable
           : name === "opencode"
             ? resolveCli("opencode") ?? resolveCli("bunx")
             : resolveCli(spec.cli);

@@ -27,6 +27,7 @@ export const STANDALONE_PROVIDER_NAMES = [
   "codex",
   "cursor",
   "grok-build",
+  "muse-code",
   "opencode",
 ] as const;
 

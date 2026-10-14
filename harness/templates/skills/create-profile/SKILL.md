@@ -166,6 +166,7 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 | `codex` | Runtime-discovered Codex models | OpenAI Codex CLI; sandbox modes and Starlark rules | [references/codex.md](references/codex.md) |
 | `opencode` | Runtime-discovered OpenCode models | OpenCode CLI or `bunx` fallback | See `harness/docs/providers.md` |
 | `grok-build` | Runtime-discovered Grok Build models | `grok` CLI; browser login or `XAI_API_KEY` | See `harness/docs/providers.md` |
+| `muse-code` | Muse Code host catalog (`model/list`) | `muse` CLI signed in to a Meta Model API account, or `MODEL_API_KEY`; no profile prompts | See `harness/docs/providers.md` |
 | `openai-compat` | Any OpenAI-compatible endpoint | Local models, LiteLLM, vLLM, llama.cpp | See `harness/docs/providers.md` |
 | `ollama` | Ollama models | Local Ollama server | — |
 | `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |

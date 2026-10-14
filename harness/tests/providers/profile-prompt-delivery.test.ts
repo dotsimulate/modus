@@ -128,6 +128,7 @@ describe("profile prompt delivery", () => {
       codex: [["append", "custom"], "toggle"],
       cursor: [["append"], "always"],
       "grok-build": [["append", "custom"], "always"],
+      "muse-code": [[], "always"],
       opencode: [["append", "custom"], "toggle"],
     } as const;
 

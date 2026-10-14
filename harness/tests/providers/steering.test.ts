@@ -33,6 +33,7 @@ const IMPLEMENTATION: Record<string, string> = {
   "codex": "codex.ts",
   "cursor": "cursor.ts",
   "grok-build": "grok-build.ts",
+  "muse-code": "muse-code.ts",
   "opencode": "opencode.ts",
   ...Object.fromEntries(PI_PROVIDERS.map((name) => [name, "pi-agent.ts"])),
 };
@@ -66,7 +67,7 @@ describe("provider steering capability", () => {
     for (const name of ["cursor", "grok-build", "opencode"]) {
       expect(supportsSteering(name)).toBe(false);
     }
-    for (const name of ["claude-code", "claude-code-pty", "codex", ...PI_PROVIDERS]) {
+    for (const name of ["claude-code", "claude-code-pty", "codex", "muse-code", ...PI_PROVIDERS]) {
       expect(supportsSteering(name)).toBe(true);
     }
   });

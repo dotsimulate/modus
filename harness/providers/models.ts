@@ -7,6 +7,7 @@ import { resolveSecret } from "../secrets";
 import { fetchCursorModels } from "./cursor-runtime";
 import { getGlobalConfig } from "../profiles";
 import { probeGrokBuildModels } from "./grok-build-runtime";
+import { probeMuseCodeModels } from "./muse-code-runtime";
 import { getProviderDefinition } from "./provider-definitions";
 import { removedProviderMigrationError } from "./provider-definition";
 import { resolvePiApiKey, resolvePiBaseUrl } from "./pi-model";
@@ -130,6 +131,16 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
       return models.length ? models : GROK_BUILD_FALLBACK_MODELS;
     } catch {
       return GROK_BUILD_FALLBACK_MODELS;
+    }
+  }
+
+  // Muse Code: the host's catalog over MSP `model/list`. No offline fallback,
+  // since model pickers accept custom IDs and a guessed one would mislead.
+  if (provider === "muse-code") {
+    try {
+      return await probeMuseCodeModels();
+    } catch {
+      return [];
     }
   }
 

@@ -98,7 +98,7 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 
 **`provider`**: Execution backend. The built-ins are `"claude-code"`,
 `"claude-code-pty"`, `"codex"`, `"cursor"`,
-`"grok-build"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
+`"grok-build"`, `"muse-code"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
 `"openrouter"`. Current-Vault and plugin declarative providers extend this set at
 runtime. Legacy `"litellm"` remains accepted as an alias of
 `"openai-compat"`. The standalone `"antigravity"` and `"gemini-cli"` names are

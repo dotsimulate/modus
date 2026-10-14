@@ -41,8 +41,8 @@ Harness: Hono + Bun (:3777)
         | SessionProvider interface
         v
 Providers:
-  claude-code, claude-code-pty, codex, cursor, grok-build, opencode,
-  openai-compat, ollama, openrouter
+  claude-code, claude-code-pty, codex, cursor, grok-build, muse-code,
+  opencode, openai-compat, ollama, openrouter
 
 Shared extension surfaces:
   MCP servers, moves, actions, pages, client extensions, plugins
@@ -180,6 +180,7 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | `codex` | OpenAI Codex CLI | `codex` CLI plus `CODEX_API_KEY`, `OPENAI_API_KEY`, or Codex OAuth |
 | `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
 | `grok-build` | xAI Grok Build CLI | [`grok`](https://docs.x.ai/build/overview) installed; SuperGrok or X Premium+ login, or `XAI_API_KEY` |
+| `muse-code` | Meta Muse Code CLI | `muse` installed and signed in with a Meta Model API account (Muse Code subscription), or `MODEL_API_KEY` |
 | `opencode` | opencode CLI | [opencode](https://opencode.ai) installed |
 | `openai-compat` | OpenAI-compatible endpoint (LiteLLM defaults) | A compatible local or hosted endpoint |
 | `ollama` | Ollama API | Ollama running locally |
@@ -192,6 +193,8 @@ To configure a provider, open project settings and choose its provider and model
 The Provider Status widget may contact configured provider endpoints to check readiness, including a configured key for a definition that requires one. See [provider health](harness/docs/providers.md#provider-health) before enabling it for a remote endpoint.
 
 For Grok Build, install the official CLI (`irm https://x.ai/cli/install.ps1 | iex` on Windows, or `curl -fsSL https://x.ai/cli/install.sh | bash` on macOS/Linux/WSL), then run `grok login`. Grok Build access comes with a SuperGrok or X Premium+ subscription rather than a free tier; limits and eligibility are controlled by xAI and may change. Modus also supports `XAI_API_KEY` for API-backed use, which needs no subscription.
+
+For Muse Code, install Meta's `muse` CLI and sign in. Modus drives that same CLI through its `muse serve` session protocol, so a Muse Code subscription covers Modus sessions; models such as Muse Wonder Full that Meta serves only to subscribers are available the same way. A `MODEL_API_KEY` Modus secret switches it to pay-as-you-go API billing.
 
 The standalone `gemini-cli` and `antigravity` adapters are not included in the distributed app. Existing profiles naming either provider need a different backend. For paid Google API access, use a declarative provider definition with a Google API or Vertex AI protocol and your own API credential; see the [provider guide](harness/docs/providers.md#declarative-pi-providers). Modus does not reuse either CLI's OAuth credentials. Google's [Antigravity terms](https://antigravity.google/terms) restrict third-party access to that service.
 
