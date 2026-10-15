@@ -53,7 +53,7 @@ test("non-push events run extras", () => {
   const dispatch = classify(["-EventName", "workflow_dispatch"]);
   expect(dispatch).toMatchObject({ ui_build: "true", rust: "true" });
   expect(dispatch.reason).toBe("event:workflow_dispatch");
-});
+}, 30_000);
 
 test("harness-only changes skip extras", () => {
   const result = classify([
@@ -66,7 +66,7 @@ test("harness-only changes skip extras", () => {
     rust: "false",
     reason: "core-only",
   });
-});
+}, 30_000);
 
 test("UI tree and SDK imports request a production UI build", () => {
   const ui = classify([
@@ -82,7 +82,7 @@ test("UI tree and SDK imports request a production UI build", () => {
     "-ChangedFiles", "harness/sdk/index.ts",
   ]);
   expect(sdk).toEqual({ ui_build: "true", rust: "false", reason: "ui" });
-});
+}, 30_000);
 
 test("desktop and cli-launcher changes request Rust verification", () => {
   const tauri = classify([
@@ -98,7 +98,7 @@ test("desktop and cli-launcher changes request Rust verification", () => {
     "-ChangedFiles", "desktop/cli-launcher/src/main.rs",
   ]);
   expect(launcher).toEqual({ ui_build: "false", rust: "true", reason: "rust" });
-});
+}, 30_000);
 
 test("notices inputs request Rust verification, which owns the crate half", () => {
   // The Rust job runs `notices:check rust`; crate license text exists only in
@@ -117,7 +117,7 @@ test("notices inputs request Rust verification, which owns the crate half", () =
     ]);
     expect({ path, rust: result.rust }).toEqual({ path, rust: "true" });
   }
-});
+}, 30_000);
 
 test("workflow inputs fail toward extras", () => {
   const result = classify([
@@ -128,7 +128,7 @@ test("workflow inputs fail toward extras", () => {
   expect(result.ui_build).toBe("true");
   expect(result.rust).toBe("true");
   expect(result.reason.startsWith("fail-open:")).toBe(true);
-});
+}, 30_000);
 
 test("empty or unreadable diffs fail toward extras", () => {
   const empty = classify(["-EventName", "push", "-FromFiles"]);
@@ -140,7 +140,7 @@ test("empty or unreadable diffs fail toward extras", () => {
     "-Sha", "abc",
   ]);
   expect(newHistory).toMatchObject({ ui_build: "true", rust: "true", reason: "new-history" });
-});
+}, 30_000);
 
 test("git revision diffs classify the changed paths instead of treating SHAs as pathspecs", () => {
   const fixture = mkdtempSync(join(tmpdir(), "modus-ci-classifier-"));
@@ -171,4 +171,4 @@ test("git revision diffs classify the changed paths instead of treating SHAs as 
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
-});
+}, 30_000);

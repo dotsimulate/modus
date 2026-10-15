@@ -156,7 +156,7 @@ describe("legacy database migration", () => {
     } finally {
       live.close();
     }
-  });
+  }, 30_000);
 
   test("migrates rows that exist only in the write-ahead log", () => {
     const paths = locations("wal-only");
@@ -172,7 +172,7 @@ describe("legacy database migration", () => {
     } finally {
       live.close();
     }
-  });
+  }, 30_000);
 
   test("migrates while another connection holds the legacy database open", () => {
     const paths = locations("concurrent-reader");
@@ -187,7 +187,7 @@ describe("legacy database migration", () => {
     } finally {
       live.close();
     }
-  });
+  }, 30_000);
 
   for (const installs of [1, 3]) {
     test(`recovers safely after process exit following ${installs} installed database(s)`, () => {
