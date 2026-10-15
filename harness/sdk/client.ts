@@ -908,9 +908,9 @@ export class ModusClient {
 
   // ── Stats / Analytics ──
   /** Returns session count and activity stats. */
-  async getSessionStats(userProfile?: string): Promise<SessionStats> { const q = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : ""; return (await this.fetch(`/api/stats/sessions${q}`)).json(); }
+  async getSessionStats(userProfile?: string): Promise<SessionStats> { const q = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : ""; return (await this.fetchOrThrow(`/api/stats/sessions${q}`)).json(); }
   /** Returns account info (API key status, usage). */
-  async getAccountInfo(userProfile?: string): Promise<AccountInfo> { const q = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : ""; return (await this.fetch(`/api/account${q}`)).json(); }
+  async getAccountInfo(userProfile?: string): Promise<AccountInfo> { const q = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : ""; return (await this.fetchOrThrow(`/api/account${q}`)).json(); }
   /** Returns Claude subscription plan limits reported by the authenticated Claude Code CLI. */
   async getClaudePlanUsage(): Promise<ClaudePlanUsageSnapshot> { return (await this.fetch("/api/claude/usage")).json(); }
   /** Returns Gemini-specific usage info. */
