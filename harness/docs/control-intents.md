@@ -1,7 +1,7 @@
 ---
 title: Control Intents
 lastUpdated: 2026-09-12
-lastCommit: 74327c8
+lastCommit: 2477bc3
 covers: harness/control-intents.ts harness/index.ts harness/ui/src/control-intents.ts harness/ui/src/control-intent-routing.ts harness/ui/src/scroll-navigation.ts harness/ui/src/components/ChatView.tsx harness/ui/src/components/VirtualMessageList.tsx harness/ui/src/providers/SessionProvider.tsx harness/ui/src/widgets/session-history.widget.tsx
 audience: dev
 ---

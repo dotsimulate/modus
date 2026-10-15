@@ -1,7 +1,7 @@
 ---
 title: Client Extensions
 lastUpdated: 2026-08-19
-lastCommit: a1e724a
+lastCommit: 150d731
 covers: harness/settings-schema.ts harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/whisper-endpoint.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
 ---
 
