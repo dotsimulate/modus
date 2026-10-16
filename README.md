@@ -4,11 +4,10 @@
 
 # Modus
 
-> **Early source preview.** Modus is used by a small tester group, but its
-> interfaces and security boundaries are still evolving. The old unsigned
-> Windows `v0.1.0` tester asset was withdrawn; the prerelease page/tag remains
-> for history but has no downloadable installer. Packaged macOS and Linux
-> applications have not been released. See [support scope](SUPPORT.md).
+> A signed Windows x64 installer is on the
+> [Releases page](https://github.com/dotsimulate/modus/releases/latest).
+> Packaged macOS and Linux apps are not released yet; run from source there.
+> See [support scope](SUPPORT.md).
 
 Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 
@@ -69,10 +68,11 @@ After setup, `modus` works from any directory.
 The checked-in `modus.sh` and `modus.bat` wrappers remain equivalent bootstrap
 entry points. For a fresh Mac user profile, use the full [macOS setup guide](harness/docs/macos-setup.md).
 
-These commands describe a source-checkout installation. A locally built or future
-qualified Windows NSIS package installs both Modus Desktop and its own `modus`
-console command; that command runs the same CLI and backend from packaged files,
-without a checkout or globally installed Bun. Repository maintenance commands
+These commands describe a source-checkout installation. On Windows you can instead
+use the signed installer from the
+[Releases page](https://github.com/dotsimulate/modus/releases/latest). It installs
+both Modus Desktop and its own `modus` console command; that command runs the same
+CLI and backend from packaged files, without a checkout or globally installed Bun. Repository maintenance commands
 (`setup`, `dev`, and `update`) remain source-checkout-only.
 
 ### 2. Open a project
@@ -275,7 +275,7 @@ On macOS, see [harness/docs/macos-setup.md](harness/docs/macos-setup.md) for the
 
 ## Status
 
-Early and moving fast. Modus runs daily for a small group of testers, but the primitives are still evolving and there are sharp edges. Here be dragons. Issues and feedback are welcome.
+Modus is in daily use. The desktop app ships for Windows x64; macOS and Linux run from source. There is no auto-update yet: install new versions from the Releases page. Issues and feedback are welcome.
 
 ## License
 
