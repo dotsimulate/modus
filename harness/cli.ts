@@ -825,9 +825,9 @@ async function cmdStart(args: string[]): Promise<void> {
     writeStateFiles(proc.pid, usePort, stateFiles);
 
     console.log("Starting modus daemon...");
-    const healthy = await waitForHealth(usePort);
+    const healthy = await waitForHealth(usePort, 60_000);
     if (!healthy) {
-      console.error("Server did not become healthy within 15s. Check logs: modus logs");
+      console.error("Server did not become healthy within 60s. Check logs: modus logs");
       killPid(proc.pid);
       if (!vault) clearTailscaleServe();
       cleanStateFiles(stateFiles);
