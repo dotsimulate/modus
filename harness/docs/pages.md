@@ -47,6 +47,9 @@ chat-route selection, safety, discovery, and fallback contract. See
 5. `scanActionPages(cwd)`           → `origin: "action"`
 6. `scanMissionPages(cwd)`          → `origin: "mission"`
 
+Without a `cwd`, only steps 2 and 3 run: plugin and harness pages do not belong
+to a project, so they are still listed when none is selected.
+
 Plugin standalone and embedded move/action pages are visible only when their
 page id appears in the plugin manifest's `integration.pages` list. Files remain
 at the plugin source path; the loader does not seed them into projects.
@@ -614,7 +617,10 @@ Dispatch by `node.kind`:
 In `App.tsx`:
 
 - On mount and whenever `projectCwd` changes, the client fetches
-  `GET /api/pages?cwd=...` into `configPages`.
+  `GET /api/pages?cwd=...` into `configPages`. With no `projectCwd` (for example
+  "All" after a reload with no session open) `configPages` stays empty, so there
+  is no page nav, and the client fetches `GET /api/pages` only to take the
+  built-in `chat-studio` layout for the sessions view.
 - `customPages = [...configPages, ...profilePages.filter(id not in configPages)]`.
   Profile-defined pages are merged after config pages with the same dedupe rule.
 - Every `page.nav !== false` page becomes a nav entry:

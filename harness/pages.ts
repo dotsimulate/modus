@@ -255,18 +255,25 @@ function scanMissionPages(cwd: string): ConfigPage[] {
  * Deduplicates by page id — first occurrence wins.
  * Project standalone pages override harness defaults; to "fork" a built-in,
  * drop a same-id file into `.modus/pages/`.
+ *
+ * Without a cwd only the project-independent sources (plugin and harness pages)
+ * are listed, so the client can still lay out its built-in views — the
+ * sessions view's `chat-studio` among them — when no project is selected.
  */
 export function listConfigPages(cwd?: string | null): ConfigPage[] {
-  if (!cwd) return [];
-
-  const all = [
-    ...scanStandalonePages(cwd),
-    ...scanPluginStandalonePages(),
-    ...scanHarnessPages(),
-    ...scanMovePages(cwd),
-    ...scanActionPages(cwd),
-    ...scanMissionPages(cwd),
-  ];
+  const all = cwd
+    ? [
+      ...scanStandalonePages(cwd),
+      ...scanPluginStandalonePages(),
+      ...scanHarnessPages(),
+      ...scanMovePages(cwd),
+      ...scanActionPages(cwd),
+      ...scanMissionPages(cwd),
+    ]
+    : [
+      ...scanPluginStandalonePages(),
+      ...scanHarnessPages(),
+    ];
 
   const byId = new Map<string, ConfigPage>();
   for (const page of all) {

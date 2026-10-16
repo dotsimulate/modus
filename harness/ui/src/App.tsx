@@ -465,6 +465,7 @@ function AppContent({ router }: { router: HashRouter }) {
   // would resolve a page id against the outgoing project's pages. Comparing the
   // marker to the current cwd cannot go stale that way.
   const [pagesDiscoveredFor, setPagesDiscoveredFor] = useState<string | null>(null);
+  const [projectlessChatPage, setProjectlessChatPage] = useState<ConfigDashboardPage | null>(null);
   const [mountedCustomPageIds, setMountedCustomPageIds] = useState<string[]>([]);
   const projectCwd = projectRoot
     ?? (activeSessionId ? getSessionState(activeSessionId)?.cwd : undefined)
@@ -474,12 +475,22 @@ function AppContent({ router }: { router: HashRouter }) {
   // projects, and a superseded run is dropped rather than overwriting a newer one.
   useEffect(() => {
     setPagesDiscoveredFor(null);
+    let current = true;
     if (!projectCwd) {
       setMovePages([]);
       setConfigPages([]);
-      return;
+      // No project (e.g. "All" after a reload with no session open) means no
+      // page nav, but the sessions view still needs its built-in layout or it
+      // renders nothing. Kept apart from configPages so it stays out of the nav.
+      fetch(`${API_BASE}/api/pages`, { headers: authHeaders() })
+        .then((res) => res.ok ? res.json() : [])
+        .then((pages) => {
+          if (!current || !Array.isArray(pages)) return;
+          setProjectlessChatPage((pages as ConfigDashboardPage[]).find((page) => page.id === "chat-studio") ?? null);
+        })
+        .catch(() => {});
+      return () => { current = false; };
     }
-    let current = true;
     Promise.all([
       modus.listMoves(projectCwd)
         .then((moves) => moves.filter((m) => m.page))
@@ -527,7 +538,8 @@ function AppContent({ router }: { router: HashRouter }) {
     })),
   ];
   const activeCustomPage = customPages.find((page) => page.id === getCustomPageId(view));
-  const chatStudioPage = configPages.find(p => p.id === "chat-studio");
+  const chatStudioPage = configPages.find(p => p.id === "chat-studio")
+    ?? (projectCwd ? undefined : projectlessChatPage ?? undefined);
   const isFullscreenPage = view === "chat"
     ? !!chatStudioPage?.fullscreen
     : !!activeCustomPage?.fullscreen;
