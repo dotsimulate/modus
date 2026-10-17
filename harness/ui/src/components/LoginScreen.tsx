@@ -286,10 +286,11 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, canManagePin = false
               onChange={setPin}
               autoComplete="current-password"
               label="PIN"
-              onSubmit={submitLogin}
               success={pinSuccess}
             />
-            <button className="login-btn" type="submit" disabled={loading || !name.trim() || !pin.trim()} style={{ display: "none" }} />
+            <button className="login-btn" type="submit" disabled={loading || !name.trim() || !pin.trim()}>
+              {loading ? "..." : "log in"}
+            </button>
           </form>
         )}
         {error && <div className="login-error">{error}</div>}

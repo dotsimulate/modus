@@ -1,5 +1,5 @@
 /**
- * Login — login screen, form fields, floating labels, noise overlay, setup button.
+ * Login — login screen, form fields, floating labels, noise overlay, submit button.
  *
  * View styles for the authentication screen. Self-contained — no other
  * view depends on these classes.
@@ -232,7 +232,7 @@
   color: var(--login-cursor);
 }
 
-/* ── button (setup flow only) ── */
+/* ── submit button ── */
 .login-btn {
   padding: 8px 16px;
   background: transparent;
