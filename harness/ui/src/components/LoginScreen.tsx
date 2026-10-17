@@ -38,7 +38,6 @@ function GlyphField({
   onChange,
   autoComplete,
   label,
-  onSubmit,
   success,
 }: {
   inputRef?: React.RefObject<HTMLInputElement | null>;
@@ -46,7 +45,6 @@ function GlyphField({
   onChange: (v: string) => void;
   autoComplete: string;
   label: string;
-  onSubmit?: () => void;
   success?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
@@ -97,7 +95,6 @@ function GlyphField({
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        onKeyDown={(e) => { if (e.key === "Enter" && onSubmit) onSubmit(); }}
         autoComplete={autoComplete}
         aria-label={label}
       />
@@ -243,7 +240,6 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, canManagePin = false
                   value={confirm}
                   onChange={setConfirm}
                   autoComplete="new-password"
-                  onSubmit={submitSetup}
                   label="confirm PIN"
                 />
                 {confirm && pin && confirm !== pin.slice(0, confirm.length) && (
