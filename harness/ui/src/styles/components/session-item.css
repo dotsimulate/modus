@@ -12,7 +12,8 @@
   transition: background 0.15s ease;
   border-radius: 0;
 }
-.session-item:hover { background: var(--bg-hover); }
+.session-item:hover,
+.session-item--ctx { background: var(--bg-hover); }
 .session-item.active {
   background: var(--bg-surface);
 }
