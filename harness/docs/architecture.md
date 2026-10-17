@@ -218,7 +218,10 @@ the registered folder; the slug never derives or appends a path. The root contai
 - `secrets.env` - named secrets and optional browser PIN
 - `vault.json` — per-Vault execution and egress policy
 - `data/` — SQLite databases
-- `logs/` — backend and desktop logs
+- `logs/` — backend and desktop logs. The desktop shell writes the managed
+  backend's stdout/stderr and its own crash/restart notices to
+  `desktop-backend.log`, one RFC 3339 UTC timestamp per line, rotated at 32 MiB
+  into `desktop-backend.log.1` .. `.3`
 - `runtime/` — ready/supervisor records and other live coordination files
 - `cache/` — disposable runtime cache
 - `history/` — workspace-history shadow repositories and indexes

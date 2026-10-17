@@ -11,7 +11,7 @@ use std::{
         Arc, Mutex, TryLockError,
     },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,9 @@ const BACKEND_LAUNCHER_TIMEOUT: Duration = Duration::from_secs(45);
 const BACKEND_STABLE_RESET: Duration = Duration::from_secs(60);
 const STDERR_TAIL_LINES: usize = 12;
 const STDERR_TAIL_CHARS: usize = 2_000;
+const BACKEND_LOG_FILE: &str = "desktop-backend.log";
+const BACKEND_LOG_MAX_BYTES: u64 = 32 * 1024 * 1024;
+const BACKEND_LOG_ARCHIVES: usize = 3;
 const BACKEND_RESTART_BACKOFF: [Duration; 3] = [
     Duration::from_millis(250),
     Duration::from_secs(1),
@@ -246,6 +249,9 @@ struct VaultBackendSupervisor {
     runtime_state: PathBuf,
     desired_managed: AtomicBool,
     restart_budget_reset: AtomicBool,
+    /// One writer per Vault, shared by every backend it spawns, so a restarted
+    /// backend's drains and the supervisor's own notices rotate one file.
+    log: Arc<Mutex<BackendLog>>,
 }
 
 impl BackendSupervisor {
@@ -434,6 +440,10 @@ impl VaultBackendSupervisor {
             .map_err(display_error("create desktop runtime directory"))?;
         fs::create_dir_all(&paths.logs).map_err(display_error("create desktop logs directory"))?;
         let runtime_state = paths.runtime.join("desktop-supervisor.json");
+        let log = Arc::new(Mutex::new(BackendLog::new(
+            paths.logs.join(BACKEND_LOG_FILE),
+            BACKEND_LOG_MAX_BYTES,
+        )));
         Ok(Self {
             slug,
             paths,
@@ -442,7 +452,17 @@ impl VaultBackendSupervisor {
             runtime_state,
             desired_managed: AtomicBool::new(false),
             restart_budget_reset: AtomicBool::new(false),
+            log,
         })
+    }
+
+    /// Supervisor lifecycle notices go to the backend log as well as stderr: a
+    /// packaged GUI build has no console, so stderr alone is never seen.
+    fn note(&self, message: &str) {
+        eprintln!("[desktop] {message}");
+        if let Ok(mut log) = self.log.lock() {
+            let _ = log.write_line("desktop", message);
+        }
     }
 
     fn bootstrap(&self, request: BootstrapRequest) -> Result<BootstrapResponse, String> {
@@ -709,23 +729,21 @@ impl VaultBackendSupervisor {
                     let mut owned = match supervisor.owned.lock() {
                         Ok(owned) => owned,
                         Err(_) => {
-                            eprintln!(
-                                "[desktop] backend monitor stopped: supervisor lock poisoned"
-                            );
+                            supervisor.note("backend monitor stopped: supervisor lock poisoned");
                             return;
                         }
                     };
                     match owned.as_mut().map(|backend| backend.child.try_wait()) {
                         Some(Ok(Some(status))) => {
-                            eprintln!(
-                                "[desktop] managed backend process exited unexpectedly: {status}"
-                            );
+                            supervisor.note(&format!(
+                                "managed backend process exited unexpectedly: {status}"
+                            ));
                             owned.take()
                         }
                         Some(Err(error)) => {
-                            eprintln!(
-                                "[desktop] managed backend process could not be polled: {error}"
-                            );
+                            supervisor.note(&format!(
+                                "managed backend process could not be polled: {error}"
+                            ));
                             owned.take()
                         }
                         Some(Ok(None)) => {
@@ -745,9 +763,9 @@ impl VaultBackendSupervisor {
                     let instance_id = backend.response.instance_id.as_deref().unwrap_or_default();
                     if let Some(tailscale) = supervisor.tailscale.as_ref() {
                         if let Err(error) = tailscale.release(port, instance_id) {
-                            eprintln!(
-                                "[desktop] Tailnet cleanup after backend crash failed: {error}"
-                            );
+                            supervisor.note(&format!(
+                                "Tailnet cleanup after backend crash failed: {error}"
+                            ));
                         }
                     }
                     let _ = backend.job.terminate(1);
@@ -781,15 +799,19 @@ impl VaultBackendSupervisor {
                     match supervisor.ensure_managed() {
                         Ok(_) => {
                             stable_since = Some(Instant::now());
+                            supervisor.note(&format!(
+                                "managed backend restarted (attempt {restart_attempts}/{})",
+                                BACKEND_RESTART_BACKOFF.len()
+                            ));
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.eval("window.location.reload()");
                             }
                             break;
                         }
-                        Err(error) => eprintln!(
-                            "[desktop] managed backend restart {restart_attempts}/{} failed: {error}",
+                        Err(error) => supervisor.note(&format!(
+                            "managed backend restart {restart_attempts}/{} failed: {error}",
                             BACKEND_RESTART_BACKOFF.len()
-                        ),
+                        )),
                     }
                 }
 
@@ -802,10 +824,10 @@ impl VaultBackendSupervisor {
                 {
                     supervisor.desired_managed.store(false, Ordering::SeqCst);
                     let _ = fs::remove_file(&supervisor.runtime_state);
-                    eprintln!(
-                        "[desktop] managed backend recovery stopped after {} bounded attempts",
+                    supervisor.note(&format!(
+                        "managed backend recovery stopped after {} bounded attempts",
                         BACKEND_RESTART_BACKOFF.len()
-                    );
+                    ));
                 }
             }
         });
@@ -924,13 +946,17 @@ impl VaultBackendSupervisor {
             return Err(format!("release assigned backend launcher: {error}"));
         }
 
-        let log_path = self.paths.logs.join("desktop-backend.log");
         let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
         if let Some(stdout) = child.stdout.take() {
-            spawn_log_drain(stdout, log_path.clone(), "stdout", None);
+            spawn_log_drain(stdout, Arc::clone(&self.log), "stdout", None);
         }
         if let Some(stderr) = child.stderr.take() {
-            spawn_log_drain(stderr, log_path, "stderr", Some(Arc::clone(&stderr_tail)));
+            spawn_log_drain(
+                stderr,
+                Arc::clone(&self.log),
+                "stderr",
+                Some(Arc::clone(&stderr_tail)),
+            );
         }
 
         let ready = match wait_for_ready(&mut child, &ready_path, startup_deadline) {
@@ -1286,7 +1312,7 @@ fn request_local_with_transport_retry(
 
 fn spawn_log_drain(
     reader: impl Read + Send + 'static,
-    path: PathBuf,
+    log: Arc<Mutex<BackendLog>>,
     stream_name: &'static str,
     captured: Option<Arc<Mutex<VecDeque<String>>>>,
 ) {
@@ -1301,8 +1327,8 @@ fn spawn_log_drain(
                     }
                 }
             }
-            if let Ok(mut file) = append_log(&path) {
-                let _ = writeln!(file, "[{stream_name}] {line}");
+            if let Ok(mut log) = log.lock() {
+                let _ = log.write_line(stream_name, &line);
             }
         }
     });
@@ -1328,8 +1354,120 @@ fn startup_error_with_stderr(error: String, captured: &Arc<Mutex<VecDeque<String
     format!("{error}\nRecent backend stderr:\n{excerpt}")
 }
 
-fn append_log(path: &Path) -> std::io::Result<File> {
-    OpenOptions::new().create(true).append(true).open(path)
+/// Size-capped, timestamped backend log. Keeps one handle open instead of
+/// reopening per line, and rotates to `<name>.1` .. `<name>.N` past the cap.
+struct BackendLog {
+    path: PathBuf,
+    file: Option<File>,
+    bytes: u64,
+    max_bytes: u64,
+}
+
+impl BackendLog {
+    fn new(path: PathBuf, max_bytes: u64) -> Self {
+        Self {
+            path,
+            file: None,
+            bytes: 0,
+            max_bytes,
+        }
+    }
+
+    fn archive_path(&self, number: usize) -> PathBuf {
+        let mut name = self.path.file_name().unwrap_or_default().to_os_string();
+        name.push(format!(".{number}"));
+        self.path.with_file_name(name)
+    }
+
+    fn rotate(&mut self) -> std::io::Result<()> {
+        // Close before renaming: Windows refuses to rename over an open archive.
+        self.file.take();
+        for number in (1..=BACKEND_LOG_ARCHIVES).rev() {
+            let target = self.archive_path(number);
+            let source = if number == 1 {
+                self.path.clone()
+            } else {
+                self.archive_path(number - 1)
+            };
+            ignore_not_found(fs::remove_file(&target))?;
+            ignore_not_found(fs::rename(source, target))?;
+        }
+        self.bytes = 0;
+        Ok(())
+    }
+
+    fn open(&mut self) -> std::io::Result<&mut File> {
+        if self.file.is_none() {
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)?;
+            self.bytes = file.metadata()?.len();
+            self.file = Some(file);
+        }
+        Ok(self.file.as_mut().expect("log file opened above"))
+    }
+
+    fn write_line(&mut self, stream: &str, line: &str) -> std::io::Result<()> {
+        self.write_record(&format_log_record(SystemTime::now(), stream, line))
+    }
+
+    fn write_record(&mut self, record: &str) -> std::io::Result<()> {
+        self.open()?;
+        if self.bytes > 0 && self.bytes.saturating_add(record.len() as u64) > self.max_bytes {
+            self.rotate()?;
+            self.open()?;
+        }
+        let file = self.open()?;
+        file.write_all(record.as_bytes())?;
+        self.bytes += record.len() as u64;
+        Ok(())
+    }
+}
+
+fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
+    match result {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
+fn format_log_record(at: SystemTime, stream: &str, line: &str) -> String {
+    format!("{} [{stream}] {line}\n", format_utc_timestamp(at))
+}
+
+/// RFC 3339 UTC with milliseconds, e.g. `2026-10-17T19:11:25.521Z`.
+fn format_utc_timestamp(at: SystemTime) -> String {
+    let since_epoch = at.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let seconds = since_epoch.as_secs();
+    let (year, month, day) = civil_from_days((seconds / 86_400) as i64);
+    let second_of_day = seconds % 86_400;
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
+        second_of_day / 3_600,
+        second_of_day / 60 % 60,
+        second_of_day % 60,
+        since_epoch.subsec_millis()
+    )
+}
+
+/// Days since 1970-01-01 to a proleptic Gregorian date (Howard Hinnant's algorithm).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = (day_of_year - (153 * month_index + 2) / 5 + 1) as u32;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    } as u32;
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    (year, month, day)
 }
 
 fn validated_remote_url(value: Option<&str>) -> Result<String, String> {
@@ -1569,5 +1707,102 @@ mod tests {
             "started"
         );
         let _ = fs::remove_dir_all(directory);
+    }
+
+    fn backend_log_fixture(max_bytes: u64) -> (std::path::PathBuf, super::BackendLog) {
+        let root = std::env::temp_dir().join(format!(
+            "modus-backend-log-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let log = super::BackendLog::new(root.join("backend.log"), max_bytes);
+        (root, log)
+    }
+
+    #[test]
+    fn backend_log_timestamps_are_rfc3339_utc() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let at = |millis: u64| UNIX_EPOCH + Duration::from_millis(millis);
+        assert_eq!(
+            super::format_utc_timestamp(at(0)),
+            "1970-01-01T00:00:00.000Z"
+        );
+        assert_eq!(
+            super::format_utc_timestamp(at(951_782_400_000)),
+            "2000-02-29T00:00:00.000Z"
+        );
+        assert_eq!(
+            super::format_utc_timestamp(at(1_792_264_285_521)),
+            "2026-10-17T19:11:25.521Z"
+        );
+        assert_eq!(
+            super::format_log_record(at(1_792_264_285_521), "stderr", "panic"),
+            "2026-10-17T19:11:25.521Z [stderr] panic\n"
+        );
+    }
+
+    #[test]
+    fn backend_log_rotates_into_bounded_archives() {
+        let (root, mut log) = backend_log_fixture(24);
+        for i in 0..10 {
+            log.write_record(&format!("[stdout] {i}\n")).unwrap();
+        }
+        drop(log);
+        let read = |name: &str| std::fs::read_to_string(root.join(name)).unwrap();
+        assert_eq!(read("backend.log"), "[stdout] 8\n[stdout] 9\n");
+        assert_eq!(read("backend.log.1"), "[stdout] 6\n[stdout] 7\n");
+        assert_eq!(read("backend.log.3"), "[stdout] 2\n[stdout] 3\n");
+        assert!(!root.join("backend.log.4").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backend_log_archives_an_oversized_existing_log_on_first_write() {
+        let (root, mut log) = backend_log_fixture(24);
+        std::fs::write(root.join("backend.log"), "old log ".repeat(10)).unwrap();
+        log.write_record("[stderr] new\n").unwrap();
+        drop(log);
+        assert_eq!(
+            std::fs::read_to_string(root.join("backend.log.1")).unwrap(),
+            "old log ".repeat(10)
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("backend.log")).unwrap(),
+            "[stderr] new\n"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn backend_log_serializes_concurrent_streams() {
+        let (root, log) = backend_log_fixture(1_000_000);
+        let log = Arc::new(Mutex::new(log));
+        let writers: Vec<_> = ["stdout", "stderr"]
+            .into_iter()
+            .map(|stream| {
+                let log = Arc::clone(&log);
+                std::thread::spawn(move || {
+                    for i in 0..100 {
+                        log.lock()
+                            .unwrap()
+                            .write_line(stream, &i.to_string())
+                            .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+        drop(log);
+        let text = std::fs::read_to_string(root.join("backend.log")).unwrap();
+        assert_eq!(text.lines().count(), 200);
+        for stream in ["[stdout]", "[stderr]"] {
+            assert_eq!(
+                text.lines().filter(|line| line.contains(stream)).count(),
+                100
+            );
+        }
+        let _ = std::fs::remove_dir_all(root);
     }
 }
