@@ -120,10 +120,13 @@ import {
   type DesktopBootstrapResponse,
   type DesktopBootstrapMode,
 } from './desktopBridge'
+import { installDesktopContextMenuGuard } from './desktop-context-menu'
 import { BACKEND_TARGET, configureBackendTarget } from './backendTarget'
 import { configureModusClient, modus } from './modusClient'
 
 initFavicon()
+// Before bootstrap, so the connection-error screen is covered as well.
+if (isTauriRuntime()) installDesktopContextMenuGuard()
 
 const LOCAL_PORTS = [3777, 3778, 3779, 3780, 3781] as const
 

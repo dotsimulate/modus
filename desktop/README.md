@@ -73,6 +73,12 @@ target per page load.
   terminates the owned backend/provider process tree.
 - A second desktop launch focuses the existing instance and cannot create a
   second managed backend.
+- Right-clicking in a desktop window never opens the WebView's browser menu
+  (Back, Refresh, Print): Back and Refresh would navigate the app window itself.
+  Surfaces with their own menu, such as session rows, the file tree, and links,
+  show it instead. Text fields and selected text keep the native cut, copy, and
+  paste menu. A browser tab keeps its browser menu. The guard lives in
+  `harness/ui/src/desktop-context-menu.ts`.
 
 ## Opening Markdown and text files
 
