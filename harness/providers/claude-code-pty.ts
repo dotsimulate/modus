@@ -49,12 +49,11 @@ import {
 import { logProviderDiagnostic, redactProviderDiagnostic } from "./provider-diagnostics";
 import { providerChildEnv } from "./child-env";
 import { applyContextWindowCap, resolveClaudeFlagSettings, type ClaudeFlagSettings } from "./claude-settings";
-import { cliExists, resolveCli } from "./resolve-cli";
+import { cliExists, resolveClaudeCli } from "./resolve-cli";
 
 // ── Constants ──
 
-const CLAUDE_PATH = process.env.CLAUDE_PATH
-  || (process.platform === "win32" ? "claude.cmd" : resolveCli("claude") ?? "claude");
+const CLAUDE_PATH = resolveClaudeCli();
 
 // Universe of gate-able built-ins (catalog). Used to turn a profile tool
 // allowlist into a --disallowedTools blocklist for the CLI.

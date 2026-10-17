@@ -26,7 +26,7 @@
 import { spawn } from "child_process";
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { providerChildEnv } from "./child-env";
-import { resolveCli } from "./resolve-cli";
+import { resolveClaudeCli } from "./resolve-cli";
 import {
   createSensitiveTempDirectory,
   removeSensitiveTempDirectory,
@@ -34,8 +34,7 @@ import {
 } from "../sensitive-temp";
 
 // Same resolution as the PTY session provider (claude-code-pty.ts).
-const CLAUDE_PATH = process.env.CLAUDE_PATH
-  || (process.platform === "win32" ? "claude.cmd" : resolveCli("claude") ?? "claude");
+const CLAUDE_PATH = resolveClaudeCli();
 
 /** A stuck CLI must not hang a one-shot forever; print mode has no legitimate
  *  reason to run this long with tools disabled. */

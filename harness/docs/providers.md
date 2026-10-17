@@ -465,6 +465,13 @@ started it, which is a snapshot taken before the user's most recent CLI install:
   cached for the process lifetime. The Grok Build CLI installs to
   `%USERPROFILE%\.grok\bin` and is the common case.
 
+On Windows, Claude Code is launched through a native `claude.exe`, never npm's
+`claude.cmd` batch shim. `claude` resolves the way a terminal would; when that
+is the npm shim, Modus launches the `claude.exe` the shim wraps
+(`node_modules\@anthropic-ai\claude-code\bin\claude.exe` beside it). A
+native-installer `claude.exe` is used as found. A shim with no binary behind it
+is still launched as a last resort.
+
 A provider that cannot find its CLI fails the turn before it starts and reports
 the reason as a persisted system message, so the explanation survives a reload
 rather than living only on whichever stream happened to be open. Setting the

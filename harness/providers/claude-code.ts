@@ -45,14 +45,12 @@ import type { ProviderCapabilities } from "./types";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { providerChildEnv } from "./child-env";
 import { applyContextWindowCap, resolveClaudeFlagSettings } from "./claude-settings";
-import { cliExists, resolveCli } from "./resolve-cli";
+import { cliExists, resolveClaudeCli } from "./resolve-cli";
 import { logProviderDiagnostic as providerLog } from "./provider-diagnostics";
 
-// On Windows we deliberately use the .cmd shim because that's the only thing the
-// Claude Code installer puts on PATH. The cmd.exe -> node.exe tree it creates is
-// killed reliably below via taskkill /T /F on the wrapper PID.
-const CLAUDE_PATH = process.env.CLAUDE_PATH
-  || (process.platform === "win32" ? "claude.cmd" : resolveCli("claude") ?? "claude");
+// On Windows this resolves to a native claude.exe (see resolveClaudeCli); any
+// process tree it starts is killed below via taskkill /T /F on the root PID.
+const CLAUDE_PATH = resolveClaudeCli();
 
 // Universe of gate-able built-ins (catalog). Used to convert a profile tool
 // allowlist into an SDK disallowedTools blocklist, so it must list every tool

@@ -24,7 +24,7 @@
 import { execFileSync } from "child_process";
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 
 /** Per-user install prefixes worth probing when PATH comes up empty. */
 export function posixUserInstallDirs(home = homedir()): string[] {
@@ -150,6 +150,43 @@ export function resolveCli(command: string): string | null {
     return fallback ? Bun.which(command, { PATH: fallback }) : null;
   }
   return resolveCliFrom(command, posixUserInstallDirs());
+}
+
+/**
+ * The native `claude.exe` behind npm's Windows `claude.cmd` shim, when present.
+ * The shim only forwards to this binary; older JavaScript-based npm releases
+ * have no binary here and return null.
+ */
+export function npmShimNativeClaude(
+  shimPath: string,
+  exists: (path: string) => boolean = existsSync,
+): string | null {
+  if (!/\.cmd$/i.test(shimPath)) return null;
+  const native = join(dirname(shimPath), "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+  return exists(native) ? native : null;
+}
+
+/**
+ * The Claude Code executable to launch. `CLAUDE_PATH` wins when set.
+ *
+ * On Windows this must be a native `claude.exe`, not npm's `claude.cmd` batch
+ * shim: batch files only run through cmd.exe, which `spawn` without a shell
+ * does not do reliably, and the Agent SDK documents a `.cmd` path as a launch
+ * failure. `claude` resolves the way a terminal would (PATHEXT), then a shim is
+ * swapped for the binary it wraps. A shim with no binary behind it, or no
+ * install at all, falls back to the bare shim name as before.
+ */
+export function resolveClaudeCli(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  resolve: (command: string) => string | null = resolveCli,
+  exists: (path: string) => boolean = existsSync,
+): string {
+  if (env.CLAUDE_PATH) return env.CLAUDE_PATH;
+  const found = resolve("claude");
+  if (platform !== "win32") return found ?? "claude";
+  if (!found) return "claude.cmd";
+  return npmShimNativeClaude(found, exists) ?? found;
 }
 
 /** True when the value is launchable — a resolvable command name or an existing file path. */

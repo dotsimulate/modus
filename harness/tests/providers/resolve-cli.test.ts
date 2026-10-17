@@ -5,6 +5,8 @@ import {
   posixUserInstallDirs,
   readPersistedWindowsPath,
   regExecutable,
+  npmShimNativeClaude,
+  resolveClaudeCli,
   resolveCliFrom,
 } from "../../providers/resolve-cli";
 import { join } from "path";
@@ -109,5 +111,48 @@ describe("readPersistedWindowsPath", () => {
 
   test("returns empty when nothing is readable, so the caller keeps PATH's answer", () => {
     expect(readPersistedWindowsPath(() => { throw new Error("no reg"); }, {})).toBe("");
+  });
+});
+
+describe("resolveClaudeCli", () => {
+  const npmDir = join("C:", "Users", "example", "AppData", "Roaming", "npm");
+  const shim = join(npmDir, "claude.cmd");
+  const npmNative = join(npmDir, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+  const nativeInstall = join("C:", "Users", "example", ".local", "bin", "claude.exe");
+
+  test("an explicit CLAUDE_PATH wins on every platform", () => {
+    expect(resolveClaudeCli({ CLAUDE_PATH: "D:/custom/claude.exe" }, "win32", () => shim, () => true))
+      .toBe("D:/custom/claude.exe");
+    expect(resolveClaudeCli({ CLAUDE_PATH: "/opt/claude" }, "linux", () => "/usr/bin/claude"))
+      .toBe("/opt/claude");
+  });
+
+  test("on Windows swaps npm's claude.cmd shim for the native binary it wraps", () => {
+    expect(resolveClaudeCli({}, "win32", () => shim, (path) => path === npmNative)).toBe(npmNative);
+  });
+
+  test("on Windows keeps a native-installer claude.exe as found", () => {
+    expect(resolveClaudeCli({}, "win32", () => nativeInstall, () => false)).toBe(nativeInstall);
+  });
+
+  test("on Windows keeps a shim with no native binary behind it", () => {
+    expect(resolveClaudeCli({}, "win32", () => shim, () => false)).toBe(shim);
+  });
+
+  test("on Windows falls back to the bare shim name when nothing resolves", () => {
+    expect(resolveClaudeCli({}, "win32", () => null)).toBe("claude.cmd");
+  });
+
+  test("elsewhere returns the resolved path or the bare command", () => {
+    expect(resolveClaudeCli({}, "linux", () => "/home/example/.local/bin/claude")).toBe("/home/example/.local/bin/claude");
+    expect(resolveClaudeCli({}, "darwin", () => null)).toBe("claude");
+  });
+});
+
+describe("npmShimNativeClaude", () => {
+  test("only maps .cmd shims", () => {
+    expect(npmShimNativeClaude(join("C:", "bin", "claude.exe"), () => true)).toBeNull();
+    expect(npmShimNativeClaude(join("C:", "npm", "CLAUDE.CMD"), () => true))
+      .toBe(join("C:", "npm", "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"));
   });
 });
