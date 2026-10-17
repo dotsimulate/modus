@@ -277,8 +277,8 @@
 
 .ssw-mini-btn {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--font-scale, 1));
+  height: calc(20px * var(--font-scale, 1));
   border-radius: 4px;
   font-size: calc(10px * var(--font-scale, 1));
   line-height: 1;
@@ -438,8 +438,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 19px;
-  height: 19px;
+  width: calc(19px * var(--font-scale, 1));
+  height: calc(19px * var(--font-scale, 1));
   border-radius: 4px;
   font-size: calc(9px * var(--font-scale, 1));
   line-height: 1;

@@ -150,8 +150,8 @@
 
 /* ── SVG Icons ── */
 .aa-svg {
-  width: 12px;
-  height: 12px;
+  width: calc(12px * var(--font-scale, 1));
+  height: calc(12px * var(--font-scale, 1));
   flex-shrink: 0;
 }
 

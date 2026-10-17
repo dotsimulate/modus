@@ -25,6 +25,54 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* ── Icon scale ──
+ * Inline SVG icons are sized by their width/height attributes, which ignore
+ * --font-scale, so the text-size setting grew labels but left icons (session
+ * row pin/archive, toolbar glyphs, lucide icons) at their default size. A CSS
+ * width/height beats a presentation attribute, so each icon-sized attribute value
+ * is mapped to its scaled length here. :where() keeps specificity at zero: any
+ * component rule that sizes its own svg still wins. Sizes above 24 are
+ * illustrations or dynamic canvases and keep their declared size.
+ * tests/ui/fontScale.test.ts checks every literal icon size used in the UI is covered. */
+:where(svg[width="6"]) { width: calc(6px * var(--font-scale, 1)); }
+:where(svg[width="7"]) { width: calc(7px * var(--font-scale, 1)); }
+:where(svg[width="8"]) { width: calc(8px * var(--font-scale, 1)); }
+:where(svg[width="9"]) { width: calc(9px * var(--font-scale, 1)); }
+:where(svg[width="10"]) { width: calc(10px * var(--font-scale, 1)); }
+:where(svg[width="11"]) { width: calc(11px * var(--font-scale, 1)); }
+:where(svg[width="12"]) { width: calc(12px * var(--font-scale, 1)); }
+:where(svg[width="13"]) { width: calc(13px * var(--font-scale, 1)); }
+:where(svg[width="14"]) { width: calc(14px * var(--font-scale, 1)); }
+:where(svg[width="15"]) { width: calc(15px * var(--font-scale, 1)); }
+:where(svg[width="16"]) { width: calc(16px * var(--font-scale, 1)); }
+:where(svg[width="17"]) { width: calc(17px * var(--font-scale, 1)); }
+:where(svg[width="18"]) { width: calc(18px * var(--font-scale, 1)); }
+:where(svg[width="19"]) { width: calc(19px * var(--font-scale, 1)); }
+:where(svg[width="20"]) { width: calc(20px * var(--font-scale, 1)); }
+:where(svg[width="21"]) { width: calc(21px * var(--font-scale, 1)); }
+:where(svg[width="22"]) { width: calc(22px * var(--font-scale, 1)); }
+:where(svg[width="23"]) { width: calc(23px * var(--font-scale, 1)); }
+:where(svg[width="24"]) { width: calc(24px * var(--font-scale, 1)); }
+:where(svg[height="6"]) { height: calc(6px * var(--font-scale, 1)); }
+:where(svg[height="7"]) { height: calc(7px * var(--font-scale, 1)); }
+:where(svg[height="8"]) { height: calc(8px * var(--font-scale, 1)); }
+:where(svg[height="9"]) { height: calc(9px * var(--font-scale, 1)); }
+:where(svg[height="10"]) { height: calc(10px * var(--font-scale, 1)); }
+:where(svg[height="11"]) { height: calc(11px * var(--font-scale, 1)); }
+:where(svg[height="12"]) { height: calc(12px * var(--font-scale, 1)); }
+:where(svg[height="13"]) { height: calc(13px * var(--font-scale, 1)); }
+:where(svg[height="14"]) { height: calc(14px * var(--font-scale, 1)); }
+:where(svg[height="15"]) { height: calc(15px * var(--font-scale, 1)); }
+:where(svg[height="16"]) { height: calc(16px * var(--font-scale, 1)); }
+:where(svg[height="17"]) { height: calc(17px * var(--font-scale, 1)); }
+:where(svg[height="18"]) { height: calc(18px * var(--font-scale, 1)); }
+:where(svg[height="19"]) { height: calc(19px * var(--font-scale, 1)); }
+:where(svg[height="20"]) { height: calc(20px * var(--font-scale, 1)); }
+:where(svg[height="21"]) { height: calc(21px * var(--font-scale, 1)); }
+:where(svg[height="22"]) { height: calc(22px * var(--font-scale, 1)); }
+:where(svg[height="23"]) { height: calc(23px * var(--font-scale, 1)); }
+:where(svg[height="24"]) { height: calc(24px * var(--font-scale, 1)); }
+
 ::selection { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 
 ::-webkit-scrollbar { width: 4px; }

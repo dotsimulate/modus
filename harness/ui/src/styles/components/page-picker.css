@@ -88,8 +88,8 @@
 
 .page-picker-search-clear {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--font-scale, 1));
+  height: calc(20px * var(--font-scale, 1));
   padding: 0;
   border: none;
   background: none;

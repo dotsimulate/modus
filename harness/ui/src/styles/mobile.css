@@ -178,8 +178,8 @@
     opacity: 0.55;
   }
   .split-collapse-tab svg {
-    width: 14px;
-    height: 14px;
+    width: calc(14px * var(--font-scale, 1));
+    height: calc(14px * var(--font-scale, 1));
   }
 
   .user-meta {

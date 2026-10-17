@@ -96,8 +96,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--font-scale, 1));
+  height: calc(24px * var(--font-scale, 1));
   padding: 0;
 }
 .mini-bar-btn:hover { color: var(--text); border-color: var(--border); }

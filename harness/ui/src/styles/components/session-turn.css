@@ -309,8 +309,8 @@
 }
 
 .session-turn-nav-scroll svg {
-  width: 13px;
-  height: 13px;
+  width: calc(13px * var(--font-scale, 1));
+  height: calc(13px * var(--font-scale, 1));
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
@@ -361,8 +361,8 @@
 }
 
 .session-turn-nav-button svg {
-  width: 14px;
-  height: 14px;
+  width: calc(14px * var(--font-scale, 1));
+  height: calc(14px * var(--font-scale, 1));
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
@@ -406,8 +406,8 @@
 }
 
 .session-turn-nav-latest svg {
-  width: 13px;
-  height: 13px;
+  width: calc(13px * var(--font-scale, 1));
+  height: calc(13px * var(--font-scale, 1));
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;

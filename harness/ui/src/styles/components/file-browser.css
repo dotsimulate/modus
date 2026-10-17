@@ -198,8 +198,8 @@
 
 .fb-file-icon {
   flex-shrink: 0;
-  width: 11px;
-  height: 11px;
+  width: calc(11px * var(--font-scale, 1));
+  height: calc(11px * var(--font-scale, 1));
   display: flex;
   align-items: center;
   justify-content: center;

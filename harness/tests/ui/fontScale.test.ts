@@ -229,3 +229,120 @@ describe("font-scale box fit", () => {
     expect(overflowingRules(nested, "x.css")).toHaveLength(1);
   });
 });
+
+/**
+ * Icons are the third half of the setting. Inline SVGs are sized by width/height
+ * attributes, which CSS variables cannot reach, so a scaled label sat next to a
+ * fixed-size icon (the session-row pin and archive buttons were the reported case).
+ * theme.css maps each icon-sized attribute value to a scaled CSS length; this
+ * checks that every literal icon size the UI uses is in that map, and that no
+ * stylesheet sizes an svg with a bare px literal behind its back.
+ */
+
+const UI_SRC_DIR = join(resolveTestSourceDir(import.meta.dir, "..", "..", "ui"), "src");
+const THEME_CSS = join(STYLES_DIR, "theme.css");
+
+/** Above this an svg is an illustration or a dynamic canvas, not an icon. */
+const MAX_ICON_PX = 24;
+
+function tsxFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...tsxFiles(full));
+    else if (entry.name.endsWith(".tsx")) out.push(full);
+  }
+  return out;
+}
+
+/** Literal icon sizes rendered as svg attributes: `<svg width="10">` and lucide `size={14}`. */
+function iconSizes(source: string): { width: Set<number>; height: Set<number> } {
+  const width = new Set<number>();
+  const height = new Set<number>();
+  for (const tag of source.match(/<svg\b[^>]*>/g) ?? []) {
+    for (const [, prop, value] of tag.matchAll(/\s(width|height)="([0-9.]+)"/g)) {
+      (prop === "width" ? width : height).add(Number(value));
+    }
+  }
+  if (source.includes("lucide-react")) {
+    for (const [, value] of source.matchAll(/\bsize=\{([0-9.]+)\}/g)) {
+      width.add(Number(value));
+      height.add(Number(value));
+    }
+  }
+  return { width, height };
+}
+
+function scaledAttributeSizes(css: string, prop: "width" | "height"): Set<number> {
+  const out = new Set<number>();
+  const pattern = new RegExp(
+    `svg\\[${prop}="([0-9.]+)"\\]\\)\\s*\\{\\s*${prop}:\\s*calc\\(([0-9.]+)px \\* var\\(--font-scale, 1\\)\\)`,
+    "g",
+  );
+  for (const [, attr, px] of css.matchAll(pattern)) if (attr === px) out.add(Number(attr));
+  return out;
+}
+
+/** Rules that size an svg directly with a px literal the setting cannot reach. */
+function fixedSvgRules(css: string, label: string): string[] {
+  const offenders: string[] = [];
+  for (const rule of rules(blankComments(css))) {
+    if (!/(^|[\s>+~,])svg\b|-svg\b/.test(rule.selector)) continue;
+    for (const d of rule.decls) {
+      if ((d.prop === "width" || d.prop === "height") && isFixedPx(d.value)) {
+        offenders.push(`${label}:${rule.line}  ${rule.selector} { ${d.prop}: ${d.value} }`);
+      }
+    }
+  }
+  return offenders;
+}
+
+describe("font-scale icon sizes", () => {
+  test("every literal icon size used in the UI scales with the setting", () => {
+    const css = readFileSync(THEME_CSS, "utf-8");
+    const scaled = { width: scaledAttributeSizes(css, "width"), height: scaledAttributeSizes(css, "height") };
+    const missing: string[] = [];
+    for (const file of tsxFiles(UI_SRC_DIR)) {
+      const sizes = iconSizes(readFileSync(file, "utf-8"));
+      for (const prop of ["width", "height"] as const) {
+        for (const size of sizes[prop]) {
+          if (size <= MAX_ICON_PX && !scaled[prop].has(size)) {
+            missing.push(`${relative(UI_SRC_DIR, file).replace(/\\/g, "/")}  svg ${prop}="${size}"`);
+          }
+        }
+      }
+    }
+    expect(
+      missing,
+      `These icon sizes have no scaled rule in styles/theme.css, so the icon ignores `
+        + `the text-size setting. Add the matching :where(svg[...]) rule:\n  ${missing.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
+  test("no stylesheet sizes an svg with a bare px length", () => {
+    const offenders: string[] = [];
+    for (const file of cssFiles(STYLES_DIR)) {
+      const label = relative(STYLES_DIR, file).replace(/\\/g, "/");
+      offenders.push(...fixedSvgRules(readFileSync(file, "utf-8"), label));
+    }
+    expect(
+      offenders,
+      `These svg rules ignore the text-size setting. Use calc(Npx * var(--font-scale, 1)):\n  `
+        + offenders.join("\n  "),
+    ).toEqual([]);
+  });
+
+  // Proves both checks can actually fail, so a green run means something.
+  test("the checks recognise a violation", () => {
+    const sizes = iconSizes(`<svg width="10" height="8" viewBox="0 0 10 8"/>`);
+    expect([...sizes.width]).toEqual([10]);
+    expect([...sizes.height]).toEqual([8]);
+    expect(scaledAttributeSizes(`:where(svg[width="10"]) { width: calc(10px * var(--font-scale, 1)); }`, "width").has(10)).toBe(true);
+    expect(scaledAttributeSizes(`:where(svg[width="10"]) { width: calc(12px * var(--font-scale, 1)); }`, "width").has(10)).toBe(false);
+
+    expect(fixedSvgRules(`.btn svg { width: 13px; height: 13px; }`, "x.css")).toHaveLength(2);
+    expect(fixedSvgRules(`.aa-svg { width: 12px; }`, "x.css")).toHaveLength(1);
+    expect(fixedSvgRules(`.btn svg { width: calc(13px * var(--font-scale, 1)); }`, "x.css")).toEqual([]);
+    expect(fixedSvgRules(`.mermaid-diagram svg { max-width: 100%; height: auto; }`, "x.css")).toEqual([]);
+  });
+});

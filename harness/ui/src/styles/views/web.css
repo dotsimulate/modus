@@ -703,8 +703,8 @@
 
 .web-detail-color-trigger {
   --web-node-color: var(--border);
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--font-scale, 1));
+  height: calc(16px * var(--font-scale, 1));
   padding: 0;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--web-node-color) 55%, var(--border));
@@ -1068,8 +1068,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 16px;
+  width: calc(20px * var(--font-scale, 1));
+  height: calc(16px * var(--font-scale, 1));
   border: none;
   background: transparent;
   color: var(--text-muted);
