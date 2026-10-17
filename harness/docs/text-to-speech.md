@@ -63,10 +63,13 @@ Modus also accepts a `provider` field for explicit routing:
 
 There is **no `ctx.tts` binding on the Harness Context.** Authored moves and
 actions reach speech the same way any other client does — an HTTP POST to the
-harness's own compatibility route:
+harness's own compatibility route. Authored code runs inside the harness
+process, and the harness writes its bound port back to `HARNESS_PORT` at
+startup, so read the port from there. Never hardcode `3777`: the desktop app
+starts the harness on an OS-assigned port.
 
 ```ts
-const res = await fetch("http://127.0.0.1:3777/v1/audio/speech", {
+const res = await fetch(`http://127.0.0.1:${process.env.HARNESS_PORT}/v1/audio/speech`, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ input: script, voice: "am_michael", response_format: "wav" }),
