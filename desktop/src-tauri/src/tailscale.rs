@@ -683,12 +683,9 @@ impl TailscaleManager {
                 None => {
                     let _ = child.kill();
                     let _ = child.wait();
-                    let _ = stdout_reader.join();
-                    let _ = stderr_reader.join();
-                    return Err(format!(
-                        "Tailscale command timed out after {} ms",
-                        self.command_timeout.as_millis()
-                    ));
+                    let stdout = stdout_reader.join().unwrap_or_default();
+                    let stderr = stderr_reader.join().unwrap_or_default();
+                    return Err(timeout_error(self.command_timeout, &stdout, &stderr));
                 }
             }
         };
@@ -887,6 +884,26 @@ fn command_error(label: &str, output: &CliOutput) -> String {
         format!("{label} failed with exit code {}", output.code)
     } else {
         format!("{label} failed: {detail}")
+    }
+}
+
+/// A Serve command on a tailnet without HTTPS certificates prints a consent
+/// link and waits for someone to approve it, so it reaches the timeout with
+/// the only actionable detail in its output. Surface that link.
+fn timeout_error(timeout: Duration, stdout: &[u8], stderr: &[u8]) -> String {
+    let base = format!(
+        "Tailscale command timed out after {} ms",
+        timeout.as_millis()
+    );
+    let output = [stdout, stderr].map(String::from_utf8_lossy).join(" ");
+    match output
+        .split_whitespace()
+        .find(|token| token.starts_with("https://"))
+    {
+        Some(link) => {
+            format!("{base} waiting for Tailscale setup; open {link} to approve it, then retry")
+        }
+        None => base,
     }
 }
 
@@ -1515,5 +1532,23 @@ mod tests {
         let unrelated = r#"{"Web":{"desktop.example.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:9000"}}}}}"#;
         assert!(can_adopt_legacy_rule(legacy, "desktop.example.ts.net"));
         assert!(!can_adopt_legacy_rule(unrelated, "desktop.example.ts.net"));
+    }
+
+    #[test]
+    fn timeout_surfaces_a_pending_consent_link() {
+        let timeout = Duration::from_millis(10_000);
+        let waiting = b"Serve is not enabled on your tailnet.
+To enable, visit:
+
+         https://login.tailscale.com/f/serve?node=abc123
+";
+        assert_eq!(
+            timeout_error(timeout, waiting, b""),
+            "Tailscale command timed out after 10000 ms waiting for Tailscale setup; open https://login.tailscale.com/f/serve?node=abc123 to approve it, then retry"
+        );
+        assert_eq!(
+            timeout_error(timeout, b"", b""),
+            "Tailscale command timed out after 10000 ms"
+        );
     }
 }

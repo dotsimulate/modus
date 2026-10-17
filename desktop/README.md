@@ -243,6 +243,11 @@ enabled machine needs no extra command: launch Modus Desktop and Rust rebinds
 the exact Modus-owned HTTPS `:443` root route after the managed backend is
 ready. The stable URL is shown in the panel.
 
+Serve needs MagicDNS and HTTPS certificates enabled for the tailnet (Tailscale
+admin console, **DNS** page). Without them `tailscale serve` waits for someone
+to approve a consent link, so the publish step times out; the panel shows that
+link when Tailscale printed one. Approve it, then press **Retry**.
+
 Modus never runs `tailscale serve reset`. It leaves foreign paths, Funnel,
 raw-TCP services, other ports, and the existing `:8443` service untouched. A
 foreign `:443` rule blocks activation and is reported in the panel. Enabling
