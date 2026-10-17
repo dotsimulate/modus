@@ -186,6 +186,7 @@ options, and AI artifact helpers below do not apply to Command/Code.
   // Session event trigger:
   // "trigger": { "type": "session", "on": { "role": "assistant", "round": 1, "at": "end" } }
   // on also accepts "archived" or "deleted"; excludeTags defaults to ["internal"].
+  // Add "includeTags": ["opted-in"] to the trigger to fire only on sessions carrying one of its tags.
 
   // ── Run Layer ──
   "maxRuns": 3,                        // per-cycle limit (or lifetime cap without cycleInterval)

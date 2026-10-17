@@ -136,7 +136,7 @@ follow-ups into an existing tagged session), `manual`, `action` (chain:
 `source`, `condition: any|done|error`, max depth 8), `session` (fire on session
 events: `{role, round: N|every:N|after:N, at: start|end}` or
 `archived`/`deleted`; `excludeTags` defaults to `["internal"]` to prevent
-cascades).
+cascades; `includeTags` fires only on sessions carrying one of its tags).
 
 **Layers**: run (one spawned session) → cycle (`cycleInterval` resets run
 counter, `maxCycles` caps) → execution (lifecycle instance, `concurrency`,

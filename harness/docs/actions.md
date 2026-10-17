@@ -208,11 +208,20 @@ An unreadable overlay is ignored rather than failing action loading.
 | `webhook` | HTTP POST to `/api/actions/:name/hook?token=<token>` | `token` (auto-generated, passed as a **query param**), `sessionKey?` |
 | `manual` | API call to `/api/actions/:name/trigger` | — |
 | `action` | Another action completes | `source` (action name), `condition` ("any"/"done"/"error") |
-| `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags` — payload includes `assistantSeq` + `assistantMessageUuid` on assistant rounds |
+| `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags`, `includeTags` — payload includes `assistantSeq` + `assistantMessageUuid` on assistant rounds |
 
 A session trigger is filtered by the same user-profile `actions` allowlist that
 decides what the Actions list shows. An action a profile excludes is neither
 listed for that profile nor fired on its sessions.
+
+Session tags filter it too. `excludeTags` skips a session carrying any of its
+tags and defaults to `["internal"]`, so an action never fires on the sessions
+actions spawn. `includeTags` is the opt-in half: when present and non-empty, the
+session must carry at least one of them. That makes a session trigger a
+per-conversation switch — tag a session to turn the behavior on for it, untag
+it to turn it off — without the action running on every conversation in the
+Vault. Exclusion wins when a session carries both. Tags are read when the event
+fires, so a tag added mid-conversation applies from the next event.
 
 ## AI Execution Model
 

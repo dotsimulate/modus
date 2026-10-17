@@ -74,6 +74,7 @@ import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, w
 import { CORE_PLUGIN_ID, getPluginActionsDir, listEnabledModusPlugins, type ModusPlugin } from "./modus-plugins";
 import { patchCoreActionOverlay, readCoreActionOverlay } from "./core-action-overlay";
 import { resolveActionSettingReference } from "./action-setting-reference";
+import { sessionTagsMatchTrigger } from "./session-trigger-tags";
 import { buildHarnessContext } from "./harness-context";
 import { isPluginAllowed, isProjectAutomationAllowed } from "./vault-policy";
 import {
@@ -2047,9 +2048,8 @@ export function onSessionEvent(
     const trigger = state.config.trigger;
     if (trigger.type !== "session") continue;
 
-    // Check excludeTags (default: ["internal"])
-    const excludeTags = trigger.excludeTags ?? ["internal"];
-    if (excludeTags.some(t => session.tags.includes(t))) continue;
+    // excludeTags (default: ["internal"]) and the opt-in includeTags gate
+    if (!sessionTagsMatchTrigger(trigger, session.tags)) continue;
 
     // Check userProfile scoping
     if (state.config.userProfile && session.userProfile !== state.config.userProfile) continue;

@@ -68,7 +68,7 @@ is needed. See the schema reference for parameterized commands and Code examples
 | `webhook` | HTTP POST to `/api/actions/<name>/hook?token=...` | `token` (auto-generated) |
 | `manual` | UI button or API call | (none) |
 | `action` | After another action completes | `source`, `condition` |
-| `session` | Matching session event | `on`, `excludeTags` |
+| `session` | Matching session event | `on`, `excludeTags`, `includeTags` |
 
 ## AI examples and execution guidance
 

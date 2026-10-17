@@ -62,6 +62,7 @@ export type SessionTrigger = {
   type: "session";
   on: SessionTriggerEvent;
   excludeTags?: string[];      // default: ["internal"] — prevents cascade
+  includeTags?: string[];      // fire only on sessions carrying at least one of these
 };
 
 export type Trigger = IntervalTrigger | WebhookTrigger | ManualTrigger | ActionChainTrigger | SessionTrigger;
