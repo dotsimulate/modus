@@ -340,6 +340,26 @@ export function contentPreview(content: MessageContent, maxLen = 80): string {
 
 const activeSessions = new Map<string, ActiveSession>();
 
+// Modules that hold per-session resources (move API registrations) release them
+// here when a session leaves the active map while the harness keeps running.
+// A listener rather than an import, because those modules import this one.
+const sessionReleaseListeners = new Set<(sessionId: string) => void>();
+
+export function onSessionReleased(listener: (sessionId: string) => void): () => void {
+  sessionReleaseListeners.add(listener);
+  return () => { sessionReleaseListeners.delete(listener); };
+}
+
+function notifySessionReleased(sessionId: string): void {
+  for (const listener of sessionReleaseListeners) {
+    try {
+      listener(sessionId);
+    } catch (err) {
+      console.error(`[session-manager] session release listener failed for ${sessionId}:`, err);
+    }
+  }
+}
+
 // A provider that renames its session (ctx.rekeySession) strands every client
 // still holding the old id: a create call that returned before provider init,
 // a tab that missed the live notice, an agent's MCP handle. Old ids resolve to
@@ -2575,6 +2595,7 @@ export function forceClearActiveSession(
   } finally {
     revokeSessionMcpCredentials(sessionId);
     activeSessions.delete(sessionId);
+    notifySessionReleased(sessionId);
     sseLog("SESSION-FORCE-CLEARED", sessionId, `${reason} status=${status}`);
   }
 
@@ -2672,6 +2693,9 @@ function reclaimSession(sessionId: string, reason: string, now: number): void {
     try { sub.close(); } catch { /* the stream may already be gone */ }
   }
   session.subscribers.clear();
+
+  // Last, so the final assistant turn flushed above still reaches move hooks.
+  notifySessionReleased(sessionId);
 
   sseLog("SESSION-REAPED", sessionId,
     `status=${previousStatus} age=${idleSeconds}s announced=${announce ? "yes" : "no"} `

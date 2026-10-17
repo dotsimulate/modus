@@ -4701,7 +4701,7 @@ app.get("/api/activity/summary", (c) => {
 
 // ── Moves ──
 
-import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, resolveMoveToolViewToken, getActiveWidgetForSession, rekeyMoveRegistrySession, rekeyMoveByToken, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
+import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, resolveMoveToolViewToken, getActiveWidgetForSession, recoverSessionMoveApis, rekeyMoveRegistrySession, rekeyMoveByToken, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { isMoveOpParseError, parseMoveOpFormData, parseMoveOpJson } from "./move-op-request";
 import { resolveDeclaredMoveComponent } from "./move-component";
@@ -4830,8 +4830,13 @@ app.get("/api/sessions/:id/moves/active", (c) => {
 });
 
 // Get all active move widgets for a session (for restoring on refresh)
-app.get("/api/sessions/:id/moves/widget", (c) => {
+app.get("/api/sessions/:id/moves/widget", async (c) => {
   const sessionId = c.req.param("id");
+  const widgets = getActiveWidgetForSession(sessionId);
+  if (widgets.length > 0) return c.json(widgets);
+  // A reclaimed session's registrations are evicted from memory; bring back
+  // only the widget moves so viewing a session does not re-pin every token.
+  if (await recoverSessionMoveApis(sessionId, { onlyWidgetMoves: true }) === 0) return c.json(widgets);
   return c.json(getActiveWidgetForSession(sessionId));
 });
 

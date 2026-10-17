@@ -104,6 +104,10 @@ naming the reason, broadcasts a status change, and closes its SSE subscribers.
 An open transcript therefore shows why the session ended rather than silently
 never emitting again.
 
+Reclaiming also releases the session's move API registrations from memory. Their
+tokens stay recoverable from the project's move registry, as after a restart; see
+`moves`.
+
 ## Configuration
 
 Environment variables set the startup values. The concurrency limit can also be

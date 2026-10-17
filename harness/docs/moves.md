@@ -410,6 +410,12 @@ that never appeared in that boot scan is still recoverable. A token that cannot 
 recovered reports a lifecycle failure naming the recovery step; it is never described
 as expired, because API tokens have no TTL.
 
+When a session is reclaimed or force-cleared (see `session-lifecycle`), its persisted registrations are
+evicted from memory, together with their in-memory state and `store()` value. The
+registry row stays, so the token recovers on its next submit, tool-view lookup, or
+widget restore — the same outcome as a harness restart. Persist anything that must
+outlive the session's process with `api.state.persist: true`.
+
 `ctx.emit(event)` immediately broadcasts a `move-widget-event` to this move instance's
 mounted widget or tool view, regardless of whether the op was called by an agent or a
 user. Call it after a handler changes state when the UI should refresh immediately;

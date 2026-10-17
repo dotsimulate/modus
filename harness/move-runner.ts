@@ -35,7 +35,8 @@ import type {
 import { CURRENT_PROFILE_SENTINEL } from "./move-types";
 import {
   type StartSessionOpts,
-  attachArtifactToSession, broadcastUiEvent, getActiveSession, interactWithSession, startSession, stopSession, watchSessionExchanges,
+  attachArtifactToSession, broadcastUiEvent, getActiveSession, interactWithSession, onSessionReleased, startSession, stopSession,
+  watchSessionExchanges,
 } from "./session-manager";
 import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
@@ -2028,6 +2029,35 @@ export function detachMove(apiToken: string): boolean {
   return true;
 }
 
+/**
+ * Evict a released session's persisted move API registrations from memory.
+ *
+ * Every activation mints a registration, so without this an interval action
+ * leaves one resident per run for the life of the process. The persisted row
+ * stays on disk: a later submit, tool view, or widget restore recovers the token
+ * on demand, exactly as after a harness restart — including the loss of any
+ * in-memory state the move did not persist. Registrations that were never
+ * persisted stay, because nothing could recover them.
+ */
+export function releaseSessionMoveApis(sessionId: string): number {
+  if (!sessionId) return 0;
+  let released = 0;
+  for (const [token, reg] of moveApiRegistry) {
+    if (reg.sessionId !== sessionId || !reg.persistRegistration) continue;
+    clearMoveAssistantTurnListener(token);
+    instanceStore.delete(reg.instanceId);
+    moveApiState.delete(reg.instanceId);
+    moveApiRegistry.delete(token);
+    released++;
+  }
+  if (released > 0) {
+    console.log(`[move-runner] released ${released} API move instance(s) for session ${sessionId}`);
+  }
+  return released;
+}
+
+onSessionReleased(releaseSessionMoveApis);
+
 // ── Activate Move ──
 
 export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMoveResult | { error: string }> {
@@ -2523,12 +2553,19 @@ export function getActiveTokensForSession(sessionId: string): MoveToken[] {
  * submitted — a project whose cwd was not yet in session history at boot, or a
  * registration written by a later process, is only reachable that way.
  */
-async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<number> {
+async function rehydrateMoveApiRegistry(
+  opts?: { onlyToken?: string; onlySessionId?: string; sessionCwd?: string; onlyWidgetMoves?: boolean },
+): Promise<number> {
   const scopes = new Set<string>([
     resolve(process.cwd()),
     APP_PATHS.resourcesDir,
-    ...listSessionCwds().map((cwd) => resolve(cwd)),
+    ...(opts?.sessionCwd ? [resolve(opts.sessionCwd)] : listSessionCwds().map((cwd) => resolve(cwd))),
   ]);
+  const wanted = (token: string, entry: PersistedMoveRegistration) =>
+    (!opts?.onlyToken || token === opts.onlyToken)
+    && (!opts?.onlySessionId || entry.sessionId === opts.onlySessionId)
+    // A partial recovery must never replace a live registration and its state.
+    && (!(opts?.onlyToken || opts?.onlySessionId) || !moveApiRegistry.has(token));
   let rehydrated = 0;
 
   for (const cwd of scopes) {
@@ -2541,7 +2578,7 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
     for (const name of names) {
       const registry = readMoveRegistry(cwd, name);
       if (Object.keys(registry).length === 0) continue;
-      if (opts?.onlyToken && !registry[opts.onlyToken]) continue;
+      if (!Object.entries(registry).some(([token, entry]) => wanted(token, entry))) continue;
 
       const config = getMove(name, cwd);
       if (!config?.api) continue;
@@ -2549,6 +2586,7 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
       // not inherit that filter — a disabled move's persisted tokens would
       // otherwise come back live at every boot and stay callable forever.
       if (config.enabled === false) continue;
+      if (opts?.onlyWidgetMoves && !config.widget?.component) continue;
 
       const mod = await loadMoveModule(name, cwd);
       if (!mod?.handlers) {
@@ -2557,7 +2595,7 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
       }
 
       for (const [token, entry] of Object.entries(registry)) {
-        if (opts?.onlyToken && token !== opts.onlyToken) continue;
+        if (!wanted(token, entry)) continue;
         const entryCwd = entry.cwd ? resolve(entry.cwd) : cwd;
         const persistState = entry.persistState ?? config.api.state?.persist ?? false;
 
@@ -2599,6 +2637,28 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
     console.log(`[move-runner] rehydrated ${rehydrated} API move instance(s) from disk`);
   }
   return rehydrated;
+}
+
+/**
+ * Recover a session's persisted registrations that are not in memory — after
+ * `releaseSessionMoveApis` evicted them, or after a restart. Scans only the
+ * session's own project plus the harness roots, not every session cwd.
+ */
+export async function recoverSessionMoveApis(
+  sessionId: string,
+  opts?: { onlyWidgetMoves?: boolean },
+): Promise<number> {
+  if (!sessionId) return 0;
+  try {
+    return await rehydrateMoveApiRegistry({
+      onlySessionId: sessionId,
+      sessionCwd: dbGetSession(sessionId)?.cwd ?? undefined,
+      onlyWidgetMoves: opts?.onlyWidgetMoves,
+    });
+  } catch (err) {
+    console.error(`[move-runner] session rehydration failed for ${sessionId}:`, err);
+    return 0;
+  }
 }
 
 /**
