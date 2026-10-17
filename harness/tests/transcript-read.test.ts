@@ -176,3 +176,13 @@ test("a bundled reader finds its staged worker beside it", async () => {
     await removeTreeAfterExit(root);
   }
 }, 30_000);
+
+test("the worker is never stopped on a timer", async () => {
+  // Bun 1.3.12 on Windows leaks native memory on every Worker start/terminate
+  // cycle, so the worker must stay resident once started. A timing test cannot
+  // prove an absence across a multi-day uptime; pin the source instead: only an
+  // explicit stop or a worker failure may terminate it.
+  const source = await Bun.file(join(import.meta.dir, "..", "transcript-read.ts")).text();
+  expect(source).not.toMatch(/setTimeout|setInterval/);
+  expect(source.match(/\.terminate\(\)/g)).toHaveLength(1);
+});

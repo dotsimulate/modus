@@ -7,6 +7,12 @@
  * A read resolves to `null` whenever no worker can answer it — it would not
  * start, it crashed, or the query failed — and the caller then takes the
  * synchronous path. That is slower for everyone but never a missing answer.
+ *
+ * The worker lives for the life of the process once started. It is not stopped
+ * when idle: on Bun 1.3.12 for Windows every Worker start/terminate cycle leaks
+ * roughly 25 MB of native memory that is never returned, and an idle stop made
+ * every read after a quiet minute one more cycle over a multi-day uptime. One resident
+ * worker costs a fixed few tens of MB instead.
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -34,8 +40,6 @@ export type TranscriptReadReply =
   | { id: number; value: unknown }
   | { id: number; error: string };
 
-/** A worker nobody has used for this long is stopped; the next read starts another. */
-const IDLE_MS = 60_000;
 /** Worker exits in a row, none of which answered anything, before reads stay on the main thread. */
 const MAX_DEAD_STARTS = 3;
 
@@ -45,7 +49,6 @@ let deadStarts = 0;
 let disabled = false;
 let reportedReadError = false;
 let nextId = 0;
-let idleTimer: ReturnType<typeof setTimeout> | null = null;
 const pending = new Map<number, (value: unknown) => void>();
 
 function workerPath(): string {
@@ -55,8 +58,6 @@ function workerPath(): string {
 }
 
 function stopWorker(): void {
-  if (idleTimer) clearTimeout(idleTimer);
-  idleTimer = null;
   const current = worker;
   worker = null;
   for (const resolve of pending.values()) resolve(null);
@@ -104,7 +105,6 @@ function ensureWorker(): Worker | null {
     } else {
       resolve?.(reply.value);
     }
-    if (pending.size === 0) scheduleIdleStop();
   };
   created.addEventListener("error", (event) => {
     onWorkerDied(created, (event as ErrorEvent).message ?? "error");
@@ -116,22 +116,9 @@ function ensureWorker(): Worker | null {
   return created;
 }
 
-function scheduleIdleStop(): void {
-  if (idleTimer) clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => {
-    idleTimer = null;
-    if (pending.size === 0) stopWorker();
-  }, IDLE_MS);
-  (idleTimer as { unref?: () => void }).unref?.();
-}
-
 function request(dbPath: string, query: TranscriptReadQuery): Promise<unknown> {
   const current = ensureWorker();
   if (!current) return Promise.resolve(null);
-  if (idleTimer) {
-    clearTimeout(idleTimer);
-    idleTimer = null;
-  }
   const id = ++nextId;
   return new Promise((resolve) => {
     pending.set(id, resolve);
