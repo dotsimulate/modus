@@ -27,6 +27,11 @@ try {
   assert.deepEqual(ids("user"), []); // role metadata is not conversation text
   assert.deepEqual(ids("  \"\" * - : () "), []);
   assert.deepEqual(ids("auth nonexistent"), []);
+  assert.equal(searchSessions("auth nonexistent", 20)[0]?.matched_terms, undefined);
+  const partial = searchSessions("auth nonexistent", 20, undefined, { minTerms: 1 });
+  assert.deepEqual(partial.map(hit => hit.matched_terms), [1, 1, 1]);
+  assert.deepEqual(searchSessions("auth refactor", 20, undefined, { minTerms: 1 }).map(hit => hit.matched_terms), [2, 2, 2]);
+  assert(searchSessions("refactor", 20, undefined, { snippetLength: 40 }).every(hit => hit.snippet.length <= 46));
   assert.deepEqual(searchSessions("auth refactor", 20, { role: "user" }), []);
   assert.equal(searchSessions("refactor", 20, { role: "assistant" }).length, 3);
   indexSessionTitle("old", "nebulous topic");

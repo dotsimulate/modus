@@ -105,6 +105,12 @@ try {
   assert.match(search, /match some of the words/);
   assert.match(search, /\*\*asks\*\*.*matches 1 of 2 words/);
   assert.doesNotMatch(search, /\*\*elsewhere\*\*/);
+  // Full matches rank above partial ones, and snippets come from the index.
+  const mixed = await call("search", { query: "parser commit" });
+  assert.match(mixed, /\(1 match every word;/);
+  assert.match(mixed, /\*\*done\*\*.*matches 1 of 2 words/);
+  assert.ok(mixed.indexOf("**asks**") < mixed.indexOf("**done**"));
+  assert.match(mixed, /\*\*asks\*\*[^\n]*\n[^\n]*\n {2}> [^\n]*(parser|commit)/i);
   const exact = await call("search", { query: "parser", date: "2026-10-08", timeZone: "America/New_York" });
   assert.doesNotMatch(exact, /match some of the words/);
   assert.doesNotMatch(exact, /\*\*yesterday\*\*/);

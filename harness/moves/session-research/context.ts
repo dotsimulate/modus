@@ -241,77 +241,38 @@ export const handlers: Record<string, MoveApiHandler> = {
       ...(window.after !== undefined ? { lastMessageAfter: window.after } : {}),
       ...(window.before !== undefined ? { lastMessageBefore: window.before } : {}),
     };
-    // Full-text ranking can take hundreds of milliseconds on a large index;
-    // run it off the main thread when this backend can.
-    const search = typeof searchSessionsOffThread === "function" ? searchSessionsOffThread : searchSessions;
-    const run = async (q: string) => (await search(q, fetchLimit, Object.keys(scope).length ? scope : undefined))
-      .filter(h => inWindow(h.last_message_at, window));
-
-    let hits = (await run(query)).slice(0, requestedLimit);
-    const matchedTerms = new Map<string, number>();
-
     // Every word must match for a hit. Remembered wording rarely matches the
-    // transcript exactly, so when that finds too little, rank sessions by how
-    // many of the words they contain.
+    // transcript exactly, so unless the query quotes a phrase, the same query
+    // also returns sessions matching some of the words, ranked below the full
+    // matches by how many they contain. One full-text pass, not one per word.
     const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}\p{M}]+/gu) ?? [])];
-    let partial = false;
-    if (hits.length < requestedLimit && words.length > 1 && !query.includes('"')) {
-      const seen = new Set(hits.map(h => h.session_id));
-      const extra = new Map<string, { hit: (typeof hits)[number]; count: number }>();
-      for (const word of words) {
-        for (const hit of await run(word)) {
-          if (seen.has(hit.session_id)) continue;
-          const entry = extra.get(hit.session_id);
-          if (entry) entry.count++;
-          else extra.set(hit.session_id, { hit, count: 1 });
-        }
-      }
-      const ranked = [...extra.values()]
-        .sort((a, b) => b.count - a.count || b.hit.last_message_at - a.hit.last_message_at)
-        .slice(0, requestedLimit - hits.length);
-      for (const { hit, count } of ranked) matchedTerms.set(hit.session_id, count);
-      partial = ranked.length > 0;
-      hits = [...hits, ...ranked.map(r => r.hit)];
-    }
+    const allowPartial = words.length > 1 && !query.includes('"');
+    // Full-text ranking can take hundreds of milliseconds on a large index;
+    // run it off the main thread when this backend can. Snippets come from the
+    // index itself: rebuilding each hit's whole transcript to cut one was most
+    // of this op's time on long sessions.
+    const search = typeof searchSessionsOffThread === "function" ? searchSessionsOffThread : searchSessions;
+    const found = (await search(query, fetchLimit, Object.keys(scope).length ? scope : undefined, {
+      snippetLength: 400,
+      ...(allowPartial ? { minTerms: 1 } : {}),
+    })).filter(h => inWindow(h.last_message_at, window));
+    // A backend without partial matching returns full matches only, unmarked.
+    const isPartial = (h: (typeof found)[number]) => h.matched_terms !== undefined && h.matched_terms < words.length;
+    const hits = [...found.filter(h => !isPartial(h)), ...found.filter(isPartial)].slice(0, requestedLimit);
 
     if (hits.length === 0) {
       return { ok: true, message: `No sessions found for "${query}"${window.label}` };
     }
 
-    const exactCount = hits.length - matchedTerms.size;
+    const partialCount = hits.filter(isPartial).length;
     const lines = [`Found ${hits.length} session${hits.length > 1 ? "s" : ""} for "${query}"${window.label}:`];
-    if (partial) lines.push(`(${exactCount} match every word; the rest match some of the words, marked with how many)`);
+    if (partialCount > 0) lines.push(`(${hits.length - partialCount} match every word; the rest match some of the words, marked with how many)`);
     lines.push("");
     for (const hit of hits) {
-      const partialMark = matchedTerms.has(hit.session_id) ? ` (matches ${matchedTerms.get(hit.session_id)} of ${words.length} words)` : "";
+      const partialMark = isPartial(hit) ? ` (matches ${hit.matched_terms} of ${words.length} words)` : "";
       lines.push(`- **${hit.session_id}** [${hit.profile ?? "no-profile"}] ${formatLocal(hit.last_message_at, timeZone)} $${hit.total_cost_usd.toFixed(2)}${partialMark}`);
       lines.push(`  ${truncate(hit.preview, 120)}`);
-
-      // Get a richer snippet: find the best matching turn and show more context
-      try {
-        const turns = await turnsOf(ctx, hit.session_id);
-        const targetTurns = role ? turns.filter(t => t.role === role) : turns;
-        let bestTurn: TurnContent | undefined;
-        let bestScore = 0;
-        for (const t of targetTurns) {
-          const lower = t.text.toLowerCase();
-          const score = words.reduce((s, term) => s + (lower.includes(term) ? 1 : 0), 0);
-          if (score > bestScore) { bestScore = score; bestTurn = t; }
-        }
-        if (bestTurn) {
-          const lower = bestTurn.text.toLowerCase();
-          const idx = words.map(w => lower.indexOf(w)).filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
-          let snippet: string;
-          if (idx >= 0) {
-            const start = Math.max(0, idx - 100);
-            snippet = (start > 0 ? "..." : "") + bestTurn.text.slice(start, start + 400).trim();
-            if (start + 400 < bestTurn.text.length) snippet += "...";
-          } else {
-            snippet = truncate(bestTurn.text.trim(), 400);
-          }
-          lines.push(`  > [${bestTurn.role}] ${snippet}`);
-        }
-      } catch { /* fallback — no rich snippet */ }
+      if (hit.snippet) lines.push(`  > ${hit.snippet.trim()}`);
     }
 
     return { ok: true, message: lines.join("\n") };

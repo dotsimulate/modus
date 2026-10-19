@@ -2904,6 +2904,8 @@ export type SearchHit = {
   last_message_at: number;
   total_cost_usd: number;
   snippet: string;
+  /** How many of the query's terms matched; only when searched with `minTerms`. */
+  matched_terms?: number;
 };
 
 export function searchSessions(

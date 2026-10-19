@@ -20,7 +20,16 @@ export type SessionSearchScope = {
   lastMessageBefore?: number;
 };
 
-export type SessionSearchOptions = Pick<SearchOptions, "sort" | "offset">;
+export type SessionSearchOptions = Pick<SearchOptions, "sort" | "offset"> & {
+  /**
+   * Also return sessions matching at least this many of the terms, ranked by
+   * how many they match, each hit carrying `matched_terms`. One query instead
+   * of a search per word. Omitted: every term must match.
+   */
+  minTerms?: number;
+  /** Characters of matching text in each snippet (default 160). */
+  snippetLength?: number;
+};
 
 export function querySessionSearch(
   db: Database,
@@ -31,6 +40,10 @@ export function querySessionSearch(
 ): SearchHit[] {
   const terms = parseSessionSearch(query);
   if (!terms.length) return [];
+  const minTerms = options?.minTerms === undefined ? terms.length
+    : Math.max(1, Math.min(terms.length, Math.trunc(options.minTerms) || 1));
+  const partial = options?.minTerms !== undefined;
+  const snippetLength = Math.max(40, Math.min(2000, Math.trunc(options?.snippetLength ?? 160) || 160));
   const termQueries = terms.map(({ fts }) => scope?.role && ["user", "assistant"].includes(scope.role)
     ? `role:"${scope.role}" AND {content title}: (${fts})`
     : `{content title}: (${fts})`);
@@ -85,19 +98,20 @@ export function querySessionSearch(
   const sort = normalizeSearchSort(options?.sort);
   const order = sort === "latest" ? "lma DESC, sid ASC"
     : sort === "oldest" ? "lma ASC, sid ASC" : "blended ASC, lma DESC, sid ASC";
+  const matchedOrder = partial ? "matched DESC, " : "";
   const matches = db.prepare(`
-    SELECT sid, best_rank, lma,
+    SELECT sid, best_rank, lma, matched,
       (best_rank - 2.0 * (CAST(lma AS REAL) / ${now})) AS blended
     FROM (
       SELECT
-        sid, MIN(best_rank) AS best_rank, MAX(lma) AS lma
+        sid, MIN(best_rank) AS best_rank, MAX(lma) AS lma, COUNT(DISTINCT term) AS matched
       FROM (${termSelects.join(" UNION ALL ")})
       GROUP BY sid
-      HAVING COUNT(DISTINCT term) = ${terms.length}
+      HAVING COUNT(DISTINCT term) >= ${minTerms}
     )
-    ORDER BY ${order}
+    ORDER BY ${matchedOrder}${order}
     LIMIT ? OFFSET ?
-  `).all(...termQueries.flatMap(term => [term, ...matchParams]), normalizeSearchLimit(limit), normalizeSearchOffset(options?.offset)) as { sid: string; best_rank: number; lma: number }[];
+  `).all(...termQueries.flatMap(term => [term, ...matchParams]), normalizeSearchLimit(limit), normalizeSearchOffset(options?.offset)) as { sid: string; best_rank: number; lma: number; matched: number }[];
 
   if (matches.length === 0) return [];
 
@@ -129,10 +143,10 @@ export function querySessionSearch(
           const idx = positions.length ? Math.min(...positions) : -1;
           if (idx >= 0) {
             const start = Math.max(0, idx - 60);
-            const raw = source.slice(start, start + 160);
-            snippet = (start > 0 ? "..." : "") + raw + (start + 160 < source.length ? "..." : "");
+            const raw = source.slice(start, start + snippetLength);
+            snippet = (start > 0 ? "..." : "") + raw + (start + snippetLength < source.length ? "..." : "");
           } else {
-            snippet = source.slice(0, 160) + (source.length > 160 ? "..." : "");
+            snippet = source.slice(0, snippetLength) + (source.length > snippetLength ? "..." : "");
           }
         }
       }
@@ -147,6 +161,7 @@ export function querySessionSearch(
       last_message_at: s.last_message_at,
       total_cost_usd: s.total_cost_usd,
       snippet,
+      ...(partial ? { matched_terms: m.matched } : {}),
     }];
   });
 }
