@@ -31,6 +31,17 @@ export type SessionSearchOptions = Pick<SearchOptions, "sort" | "offset"> & {
   snippetLength?: number;
 };
 
+/**
+ * The index searches read. db.ts rebuilds v2 databases into v3 in the
+ * background and reads v2 until the rebuild drops search_index_build.
+ */
+export function searchIndexTable(db: Database): "search_index_v2" | "search_index_v3" {
+  const building = db.query(
+    `SELECT COUNT(*) AS n FROM sqlite_master WHERE name IN ('search_index_build', 'search_index_v2')`,
+  ).get() as { n: number };
+  return building.n === 2 ? "search_index_v2" : "search_index_v3";
+}
+
 export function querySessionSearch(
   db: Database,
   query: string,
@@ -40,6 +51,7 @@ export function querySessionSearch(
 ): SearchHit[] {
   const terms = parseSessionSearch(query);
   if (!terms.length) return [];
+  const index = searchIndexTable(db);
   const minTerms = options?.minTerms === undefined ? terms.length
     : Math.max(1, Math.min(terms.length, Math.trunc(options.minTerms) || 1));
   const partial = options?.minTerms !== undefined;
@@ -50,7 +62,7 @@ export function querySessionSearch(
   const ftsQuery = termQueries.map(term => `(${term})`).join(" OR ");
 
   const matchConditions = [
-    `search_index_v2 MATCH ?`,
+    `${index} MATCH ?`,
     `s.tags NOT LIKE '%"archived"%'`,
     `s.tags NOT LIKE '%"internal"%'`,
   ];
@@ -87,13 +99,13 @@ export function querySessionSearch(
   // rank is negative (lower = better), recency term is 0..2 (higher = more recent).
   const now = Date.now();
   // Each term may occur in a different message or title within the session.
-  const termSelects = termQueries.map((_, index) => `
-    SELECT search_index_v2.session_id AS sid, MIN(rank) AS best_rank,
-      s.last_message_at AS lma, ${index} AS term
-    FROM search_index_v2
-    JOIN sessions s ON s.id = search_index_v2.session_id
+  const termSelects = termQueries.map((_, termIndex) => `
+    SELECT ${index}.session_id AS sid, MIN(rank) AS best_rank,
+      s.last_message_at AS lma, ${termIndex} AS term
+    FROM ${index}
+    JOIN sessions s ON s.id = ${index}.session_id
     WHERE ${matchConditions.join(" AND ")}
-    GROUP BY search_index_v2.session_id
+    GROUP BY ${index}.session_id
   `);
   const sort = normalizeSearchSort(options?.sort);
   const order = sort === "latest" ? "lma DESC, sid ASC"
@@ -124,7 +136,7 @@ export function querySessionSearch(
 
   // Build snippets: prefer title matches, then content matches with context
   const snippetStmt = db.prepare(
-    `SELECT role, content, title FROM search_index_v2 WHERE session_id = $sid AND search_index_v2 MATCH $fts ORDER BY rank LIMIT 1`
+    `SELECT role, content, title FROM ${index} WHERE session_id = $sid AND ${index} MATCH $fts ORDER BY rank LIMIT 1`
   );
 
   return matches.flatMap(m => {

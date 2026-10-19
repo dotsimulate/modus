@@ -824,7 +824,8 @@ export function renameSession(oldId: string, newId: string) {
     db.prepare(`UPDATE file_observations SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
-    db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
+    deleteIndexRows(oldId);
+    reindexSession(newId);
   })();
 }
 
@@ -2794,105 +2795,222 @@ export function getSessionTurnIndex(
   return { turns, source: useEvents ? "events" : "messages", olderTurnCount };
 }
 
-// ── Full-Text Search (FTS5 v2) ──
-// v2: adds title column (weight 10x), indexes assistant text, recency-blended ranking
+// ── Full-Text Search (FTS5 v3) ──
+// Title column (weight 10x), user prompts and assistant text, recency-blended ranking.
+//
+// v3 keeps each row's column sizes. v2 was created with columnsize=0, which
+// makes bm25 re-read and re-tokenize every matching row on every search — a
+// common word meant re-tokenizing much of the history. v3 also indexes the text
+// of prompts sent as content blocks (a prompt with an attachment), which v2
+// skipped.
+//
+// A v2 database is rebuilt into v3 in small batches after startup rather than
+// in one pass: a long history takes minutes to reindex, and the backend has to
+// serve requests meanwhile. Until the rebuild finishes, searches read v2 and
+// every index write goes to both, so neither misses an event. The rebuild's
+// cursor lives in search_index_build; dropping that table together with v2 is
+// what marks the rebuild done (session-search-query.ts searchIndexTable).
 
 // Drop v1 table if it exists (schema changed — needs rebuild)
 try { db.run(`DROP TABLE IF EXISTS search_index`); } catch { /* already gone */ }
 
-db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index_v2 USING fts5(
+db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index_v3 USING fts5(
   session_id UNINDEXED,
   role,
   content,
   title,
-  tokenize = 'porter unicode61',
-  columnsize = 0
+  tokenize = 'porter unicode61'
 )`);
 
 // Weights follow every column, including UNINDEXED: session_id=0, role=0, content=1, title=10.
-try { db.run(`INSERT INTO search_index_v2(search_index_v2, rank) VALUES('rank', 'bm25(0.0, 0.0, 1.0, 10.0)')`); } catch { /* already set */ }
+try { db.run(`INSERT INTO search_index_v3(search_index_v3, rank) VALUES('rank', 'bm25(0.0, 0.0, 1.0, 10.0)')`); } catch { /* already set */ }
 
-/** Extract text blocks from an assistant event's message.content array */
-function extractAssistantText(data: string): string | null {
-  try {
-    const content = JSON.parse(data)?.message?.content;
-    if (!Array.isArray(content)) return null;
-    const parts: string[] = [];
-    for (const block of content) {
-      if (block.type === "text" && block.text) parts.push(block.text);
-      if (block.type === "tool_use" && block.name) parts.push(`[tool: ${block.name}]`);
-    }
-    return parts.length > 0 ? parts.join(" ") : null;
-  } catch { return null; }
+/** Text blocks of a message.content array, with tool calls named but tool results left out. */
+function contentBlockText(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block?.type === "text" && block.text) parts.push(block.text);
+    if (block?.type === "tool_use" && block.name) parts.push(`[tool: ${block.name}]`);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
-// Populate FTS from existing events + session titles (only if empty)
-const ftsCount = (db.prepare(`SELECT COUNT(*) as n FROM search_index_v2`).get() as any).n;
-if (ftsCount === 0) {
-  const rebuildStmt = db.prepare(
-    `INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, $role, $text, $title)`
-  );
-  // Index events: user prompts, result summaries, assistant text
-  const events = db.prepare(
-    `SELECT session_id, type, data FROM events WHERE type IN ('user', 'result', 'assistant')`
-  ).all() as any[];
+/** The searchable text of a user, assistant, or result event; null for anything else. */
+function searchableEventText(type: string, data: string): string | null {
+  if (type !== "user" && type !== "assistant" && type !== "result") return null;
+  let text: unknown;
+  try {
+    const parsed = JSON.parse(data);
+    text = type === "result" ? parsed?.result : contentBlockText(parsed?.message?.content);
+  } catch { return null; }
+  return typeof text === "string" && text.length > 0 ? text : null;
+}
+
+type SearchIndexBuild = { nextEventId: number; highWater: number };
+
+function tableExists(name: string): boolean {
+  return db.prepare(`SELECT 1 FROM sqlite_master WHERE name = ?`).get(name) != null;
+}
+
+/**
+ * v2 with no rebuild under way: the first start on v3, or a start after an older
+ * Modus wrote only to v2. Either way v3 is rebuilt from the events. Titles are
+ * small and go in now; events above the high-water mark are indexed live.
+ */
+if (tableExists("search_index_v2") && !tableExists("search_index_build")) {
   db.transaction(() => {
-    for (const ev of events) {
-      let text: string | null = null;
-      if (ev.type === "user") {
-        try { text = JSON.parse(ev.data)?.message?.content; } catch { /* skip */ }
-        if (typeof text !== "string") text = null;
-      } else if (ev.type === "result") {
-        try { text = JSON.parse(ev.data)?.result; } catch { /* skip */ }
-      } else if (ev.type === "assistant") {
-        text = extractAssistantText(ev.data);
-      }
-      if (typeof text === "string" && text.length > 0) {
-        rebuildStmt.run({ $sid: ev.session_id, $role: ev.type, $text: text, $title: "" });
-      }
-    }
-    // Index session titles/previews as high-signal rows
-    const sessions = db.prepare(`SELECT id, preview, title FROM sessions`).all() as any[];
-    for (const s of sessions) {
+    db.run(`DELETE FROM search_index_v3`);
+    db.run(`CREATE TABLE search_index_build (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      next_event_id INTEGER NOT NULL,
+      high_water INTEGER NOT NULL
+    )`);
+    db.run(`INSERT INTO search_index_build (id, next_event_id, high_water) VALUES (1, 0, (SELECT COALESCE(MAX(id), 0) FROM events))`);
+    const insertTitle = db.prepare(`INSERT INTO search_index_v3 (session_id, role, content, title) VALUES ($sid, 'title', '', $title)`);
+    for (const s of db.prepare(`SELECT id, preview, title FROM sessions`).all() as { id: string; preview: string | null; title: string | null }[]) {
       const titleText = [s.title, s.preview].filter(Boolean).join(" — ");
-      if (titleText) {
-        rebuildStmt.run({ $sid: s.id, $role: "title", $text: "", $title: titleText });
-      }
+      if (titleText) insertTitle.run({ $sid: s.id, $title: titleText });
     }
   })();
 }
 
-/** Insert into FTS index — call alongside addEvent for user/result/assistant events */
-export function indexEvent(sessionId: string, type: string, data: string) {
-  let text: string | null = null;
-  if (type === "user") {
-    try {
-      const parsed = JSON.parse(data);
-      text = parsed?.message?.content;
-      if (typeof text !== "string") text = null;
-    } catch { return; }
-  } else if (type === "result") {
-    try { text = JSON.parse(data)?.result; } catch { return; }
-  } else if (type === "assistant") {
-    text = extractAssistantText(data);
-  } else {
+let searchIndexBuild: SearchIndexBuild | null = tableExists("search_index_build")
+  ? (() => {
+      const row = db.prepare(`SELECT next_event_id, high_water FROM search_index_build WHERE id = 1`).get() as { next_event_id: number; high_water: number } | null;
+      return row ? { nextEventId: row.next_event_id, highWater: row.high_water } : null;
+    })()
+  : null;
+
+/** Whether search still reads the v2 index while v3 is rebuilt. */
+export function searchIndexRebuildPending(): boolean {
+  return searchIndexBuild !== null;
+}
+
+/** Whether v3 already holds this event, or the rebuild will add it later. */
+function v3HasEvent(eventId: number): boolean {
+  return !searchIndexBuild || eventId < searchIndexBuild.nextEventId || eventId > searchIndexBuild.highWater;
+}
+
+function insertIndexRow(sessionId: string, role: string, content: string, title: string, toV3 = true) {
+  const row = { $sid: sessionId, $role: role, $content: content, $title: title };
+  if (toV3) {
+    db.query(`INSERT INTO search_index_v3 (session_id, role, content, title) VALUES ($sid, $role, $content, $title)`).run(row);
+  }
+  if (searchIndexBuild) {
+    db.query(`INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, $role, $content, $title)`).run(row);
+  }
+}
+
+function deleteIndexRows(sessionId: string, role?: string) {
+  const tables = searchIndexBuild ? ["search_index_v3", "search_index_v2"] : ["search_index_v3"];
+  for (const table of tables) {
+    if (role) db.query(`DELETE FROM ${table} WHERE session_id = $sid AND role = $role`).run({ $sid: sessionId, $role: role });
+    else db.query(`DELETE FROM ${table} WHERE session_id = $sid`).run({ $sid: sessionId });
+  }
+}
+
+/** Per batch of the rebuild: main-thread time it may take, then the pause before the next. */
+const INDEX_BUILD_BUDGET_MS = 25;
+const INDEX_BUILD_PAUSE_MS = 75;
+const INDEX_BUILD_RETRY_MS = 30_000;
+let indexBuildStartedAt = 0;
+let indexBuildRows = 0;
+
+function continueSearchIndexBuild() {
+  const state = searchIndexBuild;
+  if (!state) return;
+  if (!indexBuildStartedAt) {
+    indexBuildStartedAt = performance.now();
+    console.log(`[search-index] rebuilding the session search index in the background from event ${state.nextEventId} to ${state.highWater}`);
+  }
+  let pause = INDEX_BUILD_PAUSE_MS;
+  try {
+    const select = db.query(
+      `SELECT id, session_id, type, data FROM events
+       WHERE id >= $from AND id <= $to AND type IN ('user', 'assistant', 'result')
+       ORDER BY id LIMIT 100`,
+    );
+    const insert = db.query(`INSERT INTO search_index_v3 (session_id, role, content, title) VALUES ($sid, $role, $content, '')`);
+    db.transaction(() => {
+      const deadline = performance.now() + INDEX_BUILD_BUDGET_MS;
+      while (performance.now() < deadline) {
+        const rows = select.all({ $from: state.nextEventId, $to: state.highWater }) as { id: number; session_id: string; type: string; data: string }[];
+        if (rows.length === 0) {
+          db.run(`DROP TABLE search_index_v2`);
+          db.run(`DROP TABLE search_index_build`);
+          searchIndexBuild = null;
+          return;
+        }
+        for (const row of rows) {
+          const text = searchableEventText(row.type, row.data);
+          if (text) insert.run({ $sid: row.session_id, $role: row.type, $content: text });
+          indexBuildRows++;
+        }
+        state.nextEventId = rows[rows.length - 1]!.id + 1;
+      }
+      db.query(`UPDATE search_index_build SET next_event_id = $next WHERE id = 1`).run({ $next: state.nextEventId });
+    })();
+  } catch (error) {
+    // The batch rolled back as a whole; the cursor in memory may be ahead of it.
+    const row = db.prepare(`SELECT next_event_id FROM search_index_build WHERE id = 1`).get() as { next_event_id: number } | null;
+    if (row && searchIndexBuild) searchIndexBuild.nextEventId = row.next_event_id;
+    console.error(`[search-index] rebuild batch failed; retrying in ${INDEX_BUILD_RETRY_MS / 1000}s:`, error);
+    pause = INDEX_BUILD_RETRY_MS;
+  }
+  if (!searchIndexBuild) {
+    console.log(`[search-index] rebuild done: ${indexBuildRows} events in ${((performance.now() - indexBuildStartedAt) / 1000).toFixed(1)}s`);
     return;
   }
-  if (typeof text === "string" && text.length > 0) {
-    db.prepare(`INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, $role, $text, '')`)
-      .run({ $sid: sessionId, $role: type, $text: text });
-  }
+  // An unfinished rebuild must not hold a process open; it resumes on the next start.
+  setTimeout(continueSearchIndexBuild, pause).unref();
+}
+
+let indexBuildScheduled = false;
+
+/**
+ * Start the background v2-to-v3 rebuild, if this database needs one. The
+ * server calls it once at startup; other processes that import this module
+ * leave the rebuild to the server and keep searching v2 meanwhile.
+ */
+export function startSearchIndexRebuild(): void {
+  if (!searchIndexBuild || indexBuildScheduled) return;
+  indexBuildScheduled = true;
+  setTimeout(continueSearchIndexBuild, 0).unref();
+}
+
+/** Insert into FTS index — call alongside addEvent for user/result/assistant events */
+export function indexEvent(sessionId: string, type: string, data: string) {
+  const text = searchableEventText(type, data);
+  // A new event's id is above the rebuild's high-water mark, so v3 takes it now.
+  if (text) insertIndexRow(sessionId, type, text, "");
 }
 
 /** Index or re-index a session's title/preview in FTS */
 export function indexSessionTitle(sessionId: string, title: string, preview?: string) {
   const titleText = [title, preview].filter(Boolean).join(" — ");
   // Remove old title row for this session, then insert fresh
-  db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $sid AND role = 'title'`)
-    .run({ $sid: sessionId });
+  deleteIndexRows(sessionId, "title");
   if (!titleText) return;
-  db.prepare(`INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, 'title', '', $title)`)
-    .run({ $sid: sessionId, $title: titleText });
+  insertIndexRow(sessionId, "title", "", titleText);
+}
+
+/**
+ * Re-index a session's rows under its current id. FTS5 cannot UPDATE an
+ * UNINDEXED column, so a renamed session's rows are dropped and rebuilt.
+ */
+function reindexSession(sessionId: string) {
+  deleteIndexRows(sessionId);
+  const events = db.prepare(
+    `SELECT id, type, data FROM events WHERE session_id = $sid AND type IN ('user', 'assistant', 'result') ORDER BY id`,
+  ).all({ $sid: sessionId }) as { id: number; type: string; data: string }[];
+  for (const ev of events) {
+    const text = searchableEventText(ev.type, ev.data);
+    if (text) insertIndexRow(sessionId, ev.type, text, "", v3HasEvent(ev.id));
+  }
+  const session = db.prepare(`SELECT preview, title FROM sessions WHERE id = $sid`).get({ $sid: sessionId }) as { preview: string | null; title: string | null } | null;
+  if (session) indexSessionTitle(sessionId, session.title ?? "", session.preview ?? undefined);
 }
 
 export type SearchHit = {

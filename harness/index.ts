@@ -104,6 +104,7 @@ import {
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
   getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionTurnIndex, getSessionArtifact, getFileObservations, getSessionsForFile, listAllCheckpoints,
+  startSearchIndexRebuild,
 } from "./db";
 import { planCheckpointMaintenance } from "./checkpoint-maintenance";
 import { resolveMcpServers } from "./mcp-config";
@@ -5521,6 +5522,7 @@ process.env.HARNESS_PORT = String(server.port);
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 const protocol = HARNESS_TLS_CERT && HARNESS_TLS_KEY ? "https" : "http";
 console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
+startSearchIndexRebuild();
 
 // Report a truncated resource tree before the subsystems that read it start, so
 // the cause is logged above the symptoms rather than after them.

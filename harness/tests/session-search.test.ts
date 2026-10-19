@@ -58,3 +58,32 @@ test("SQLite search matches across messages, sorts before paging and keeps scope
     await removeTreeAfterExit(root);
   }
 }, 30_000);
+
+test("a v2 search index is rebuilt into v3 in the background, reading v2 until it is done", async () => {
+  const root = mkdtempSync(join(tmpdir(), "modus-search-"));
+  const env = {
+    ...process.env,
+    MODUS_INSTANCE: "default", MODUS_VAULT_ROOT: "",
+    MODUS_HOME: join(root, "home"), MODUS_DATA_DIR: join(root, "data"),
+    MODUS_CONFIG_DIR: join(root, "config"), MODUS_RUNTIME_DIR: join(root, "runtime"),
+    MODUS_LOGS_DIR: join(root, "logs"), MODUS_CACHE_DIR: join(root, "cache"),
+    HARNESS_SECRETS_FILE: join(root, "secrets.env"),
+    XDG_CONFIG_HOME: join(root, "xdg-config"), XDG_DATA_HOME: join(root, "xdg-data"), XDG_CACHE_HOME: join(root, "xdg-cache"),
+  };
+  // Two processes on one database: the first leaves a v2-era index, the second upgrades it.
+  // NODE_ENV=test would give each process its own per-pid database; the data dir above isolates it instead.
+  env.NODE_ENV = "";
+  try {
+    for (const phase of ["seed", "upgrade"]) {
+      const proc = Bun.spawn([process.execPath, "run", join(import.meta.dir, "fixtures", "search-index-rebuild-driver.ts"), phase], {
+        cwd: join(import.meta.dir, ".."), env, stdout: "pipe", stderr: "pipe",
+      });
+      const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+      expect(code, `${phase}: ${stdout}${stderr}`).toBe(0);
+    }
+  } finally {
+    const child = relative(tmpdir(), root);
+    if (isAbsolute(child) || !child.startsWith("modus-search-") || child.includes("..")) throw new Error("Unexpected search test directory");
+    await removeTreeAfterExit(root);
+  }
+}, 60_000);

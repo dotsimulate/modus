@@ -1,7 +1,7 @@
 ---
 title: Session Search
 audience: user
-lastUpdated: 2026-09-11
+lastUpdated: 2026-10-19
 covers: harness/session-search.ts harness/db.ts harness/index.ts harness/sdk/client.ts harness/sdk/cli.ts harness/ui/src/widgets/session-history.widget.tsx harness/ui/src/components/sidebar/SearchResults.tsx harness/ui/src/session-search-request.ts
 ---
 
@@ -61,17 +61,20 @@ cannot overwrite the current search.
 ## Scope and indexed content
 
 Search includes session titles/previews and indexed user prompts, assistant text
-and result summaries. It is not a filesystem search and does not search arbitrary
-tool output or attachments. Archived sessions and sessions tagged `internal` are
+and result summaries. A prompt sent with an attachment is indexed by its text.
+It is not a filesystem search and does not search arbitrary tool output or the
+attachments themselves. Archived sessions and sessions tagged `internal` are
 excluded. Results respect the selected user profile's project paths and agent
 visibility. Legacy sessions with no user-profile assignment can still match
 within that scope. Different Vaults/backends have separate databases and indexes.
 
-The index is maintained as events and titles are written. Existing installed
-databases use the same index with the updated query and ranking logic; this change
-does not require a manual reindex or data migration. Install a release containing
-these changes to update an installed app. Editing a source checkout does not update
-an existing installation.
+The index is maintained as events and titles are written. A database indexed by an
+earlier release is reindexed once, automatically, after the backend starts: the
+rebuild runs in small batches in the background, search keeps answering from the
+previous index until it finishes, and an interrupted rebuild resumes on the next
+start. The backend log records its start and finish under `[search-index]`. No
+manual step is needed. Install a release containing these changes to update an
+installed app. Editing a source checkout does not update an existing installation.
 
 ## API and SDK
 
@@ -103,7 +106,10 @@ bun harness/sdk/cli.ts search auth refactor --sort latest --limit 20 --offset 0 
 ```
 
 Server-side callers retain `searchSessions(query, limit, scope)` and may pass
-`{ sort, offset }` as a fourth argument. A `scope.role` of `user` or `assistant`
+`{ sort, offset, minTerms, snippetLength }` as a fourth argument. `minTerms` also
+returns sessions matching at least that many of the terms, ranked first by how
+many they match, each hit carrying `matched_terms`; `snippetLength` widens the
+excerpt (default 160 characters). A `scope.role` of `user` or `assistant`
 requires every term to occur in that role's indexed rows.
 
 ## Source verification
