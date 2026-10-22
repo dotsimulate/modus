@@ -564,7 +564,7 @@ verbatim.
 - Source: https://github.com/mistralai/client-ts
 - License text: **JAV-0032** — Apache-2.0
 
-### @modelcontextprotocol/sdk 1.31.0
+### @modelcontextprotocol/sdk 1.32.1
 
 - License: `MIT`
 - Source: https://modelcontextprotocol.io
@@ -1953,7 +1953,7 @@ verbatim.
 - Source: https://highlightjs.org/
 - License text: **JAV-0148** — BSD-3-Clause
 
-### hono 4.13.7
+### hono 4.13.13
 
 - License: `MIT`
 - Source: https://hono.dev
@@ -6100,7 +6100,7 @@ Applies to 1 component: @mistralai/mistralai 2.2.1.
 
 ### JAV-0033 — MIT
 
-Applies to 1 component: @modelcontextprotocol/sdk 1.31.0.
+Applies to 1 component: @modelcontextprotocol/sdk 1.32.1.
 
 ```text
 MIT License
@@ -10962,7 +10962,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### JAV-0149 — MIT
 
-Applies to 1 component: hono 4.13.7.
+Applies to 1 component: hono 4.13.13.
 
 ```text
 MIT License
