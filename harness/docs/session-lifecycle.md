@@ -81,7 +81,7 @@ what the session actually holds. In order:
 
 1. **The provider CLI's own footprint** exceeds `cliRssLimitBytes`. A runaway
    agent runtime shows up here and nowhere else.
-2. **The system is under memory pressure** and the session's whole tree exceeds
+2. **System memory is critical** (see [Memory pressure](#memory-pressure)) and the session's whole tree exceeds
    `pressureRssFloorBytes`, once it has been idle for `pressureGraceMs`. Largest
    trees are reclaimed first.
 3. **The backstop**: idle longer than `idleBackstopMs`, whatever it costs.
@@ -117,8 +117,8 @@ changed while the backend is running, as described below.
 |---|---|---|
 | `MG_MAX_HEAP_MB` | `4096` | Memory ceiling for one agent runtime. Also the reaper's `cliRssLimitBytes`. |
 | `MG_MAX_CONCURRENT` | `10` | Initial concurrent-session limit; invalid, nonpositive, or noninteger values fall back to 10. |
-| `MG_PRESSURE_THRESHOLD` | `0.90` | System memory ratio above which pressure reclamation runs and new spawns may be refused. |
-| `MG_MIN_AVAILABLE_MB` | 2 × `MG_MAX_HEAP_MB` | Above the ratio, a new spawn is refused only while less than this is available. Negative or nonnumeric values fall back to the default. |
+| `MG_PRESSURE_THRESHOLD` | `0.90` | System memory ratio that counts as high pressure. See [Memory pressure](#memory-pressure). |
+| `MG_MIN_AVAILABLE_MB` | 2 × `MG_MAX_HEAP_MB` | Available memory below which high pressure becomes critical: spawns refused, idle sessions reclaimable. Negative or nonnumeric values fall back to the default. |
 | `MG_BLOCK_ON_PRESSURE` | `1` (`0` on macOS) | Whether pressure gates spawning and reclamation. |
 | `MG_REAP_PRESSURE_FLOOR_MB` | `512` | Smallest tree worth reclaiming under pressure. |
 | `MG_REAP_PRESSURE_GRACE_MS` | `120000` | Idle time before pressure may reclaim a session. |
@@ -155,17 +155,6 @@ limit below the current active count only blocks further starts until enough
 sessions finish. Memory-pressure checks remain in effect. Pilot/orchestrator
 limits are separate and may still cap the number of workers.
 
-### When a start is refused
-
-A start refused by either check fails with HTTP 503 and `{ "error": "[memory-guard] …" }`
-naming the limit, on `POST /api/sessions`, `POST /api/sessions/interact`, and
-`POST /api/sessions/:id/messages`. The memory check needs both conditions: usage at
-or above `MG_PRESSURE_THRESHOLD` *and* less than `MG_MIN_AVAILABLE_MB` available.
-A ratio alone would refuse sessions on a large machine with many gigabytes still
-free. `GET /api/system/memory` reports the floor as `minAvailableMB`. The browser
-client shows the reason in the conversation and puts the unsent prompt back in
-the composer.
-
 The authenticated API is `PUT /api/system/memory` with exactly
 `{ "maxConcurrentSessions": 10 }`. It returns the same memory status as
 `GET /api/system/memory`; invalid payloads return 400 without changing the limit.
@@ -174,6 +163,30 @@ Changes last until backend restart; startup then uses `MG_MAX_CONCURRENT` or 10.
 The response advertises `concurrencyLimitMutable: true`. Older running backends
 without that field cannot apply a live update; installing this code does not
 change their already-loaded startup constant.
+
+## Memory pressure
+
+Two levels, so that memory used by another program is reported long before
+Modus restricts anything:
+
+- **High**: usage at or above `MG_PRESSURE_THRESHOLD`. Nothing is restricted. The
+  watchdog samples the process table, and the browser shows a banner naming the
+  largest programs by resident memory.
+- **Critical**: high *and* less than `MG_MIN_AVAILABLE_MB` available, with
+  `MG_BLOCK_ON_PRESSURE` on. New sessions are refused and idle sessions become
+  reclaimable under rule 2 above. A ratio alone would do this on a large machine
+  with many gigabytes still free.
+
+`GET /api/system/memory` reports `highPressure`, `spawnBlocked`, `minAvailableMB`,
+and `largestProcesses` (empty until the watchdog's first sample while high).
+
+A refused start fails with HTTP 503 and `{ "error": "[memory-guard] …" }` on
+`POST /api/sessions`, `POST /api/sessions/interact`, and
+`POST /api/sessions/:id/messages`. The error names the limit and, once sampled, the
+largest programs. The prompt was not persisted. The browser client shows the
+reason in the conversation, removes the unsent message from the transcript, and
+puts the prompt back in the composer. The saved draft is cleared only once a send
+is accepted.
 
 ## How the memory ceiling is enforced
 

@@ -422,7 +422,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setInputValue("");
 
-    if (activeSessionId) modus.saveDraft(activeSessionId, "").catch(() => {});
+    // The saved draft is the only copy of the prompt outside this tab, so it is
+    // cleared only once the server has accepted the message. A refused send
+    // hands the prompt back instead of losing it. Neither touches text typed
+    // since the send.
+    const draftOwner = activeSessionId && !activeSessionId.startsWith("pending-") ? activeSessionId : null;
+    const clearSentDraft = () => {
+      if (draftOwner && !getInputValue()) modus.saveDraft(draftOwner, "").catch(() => {});
+    };
+    const restoreUnsent = () => {
+      if (!getInputValue()) setInputValue(prompt);
+    };
 
     const apiAtts = toApiAttachments(sendAttachments);
 
@@ -467,7 +477,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const needsNewSession = !activeSessionId || activeSessionId.startsWith("pending-") || isEmptySession;
     if (needsNewSession) {
       const prevSessionId = activeSessionId; // capture before archiving — move registry may reference this
-      if (isEmptySession && activeSessionId) modus.archiveSession(activeSessionId).catch(() => {});
 
       const seedState = getSendSeed(currentState);
       const queuedProfile = seedState.profile;
@@ -497,6 +506,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // Profile bindings the user removed after seeing what they would inject.
         if (sendOpts?.skipProfileMoves?.length) opts.skipProfileMoves = sendOpts.skipProfileMoves;
         const { sessionId: realId } = await modus.createSession(opts);
+        clearSentDraft();
+        // Retire the empty chat only now: had the start been refused, the user
+        // would have been left with neither it nor a session.
+        if (isEmptySession && prevSessionId) modus.archiveSession(prevSessionId).catch(() => {});
 
         rekeySession(tempId, realId);
         // Moves mounted before the session existed are rebound by their api
@@ -528,10 +541,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           }];
           setSessionState(tempId, updated, queuedProfile);
         }
-        // The composer and saved draft were cleared on send, and this
-        // placeholder is never persisted. Hand the prompt back so a refused
-        // start does not cost the user what they wrote.
-        if (!getInputValue()) setInputValue(prompt);
+        // This placeholder is never persisted, so the composer is where the
+        // prompt has to survive.
+        restoreUnsent();
       }
     } else {
       // Follow-up to existing session
@@ -546,6 +558,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           // needs the pending strip, and it says so.
           modus.steerSession(activeSessionId!, prompt, apiAtts, moves)
             .then((result) => {
+              clearSentDraft();
               if (result.mode === "queued") {
                 setQueuedMessage({
                   text: prompt,
@@ -562,6 +575,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // Commit to backend queue immediately — survives page navigation
         modus.sendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined)
           .then((result) => {
+            clearSentDraft();
             setQueuedMessage({
               text: prompt,
               attachments: sendAttachments,
@@ -574,6 +588,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
 
       let effectiveProfile = activeSession?.profile;
+      const sentMessageId = nextMsgId();
       try {
         const hasPendingProfile = hasPendingProfileChange(activeSession);
         const nextTurnConfig = getQueuedAgentConfig(activeSession, existingState.agentConfig);
@@ -599,7 +614,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           model: resolveAppliedModel(nextTurnConfig, activeSession, effectiveProfile, rs.model),
         };
         updated.messages = [...updated.messages, {
-          id: nextMsgId(), role: "user" as const, content: prompt, timestamp: Date.now(),
+          id: sentMessageId, role: "user" as const, content: prompt, timestamp: Date.now(),
           attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
         }];
         setSessionState(activeSessionId!, updated, effectiveProfile);
@@ -625,18 +640,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           loadProjectSettings: rs.loadProjectSettings,
           moves,
         });
+        clearSentDraft();
         void ensureSubscribed(activeSessionId!, {
           profile: effectiveProfile,
           activeStatus: "running",
           onDone: refreshSessions,
         });
       } catch (err) {
+        // The server never took the message, so it must not sit in the
+        // transcript looking sent, with the session shown as running.
         const latest = getSessionState(activeSessionId!);
         if (latest) {
-          const errState = { ...latest };
-          errState.messages = [...errState.messages, { id: nextMsgId(), role: "assistant" as const, content: `Error: ${err}` }];
+          const errState = { ...latest, status: existingState.status };
+          errState.messages = [
+            ...errState.messages.filter((message) => message.id !== sentMessageId),
+            { id: nextMsgId(), role: "assistant" as const, content: `Message not sent: ${describeSendFailure(err)}` },
+          ];
           setSessionState(activeSessionId!, errState, effectiveProfile);
         }
+        restoreUnsent();
       }
     }
   }, [

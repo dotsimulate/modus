@@ -20,6 +20,7 @@ import type { MoveBinding, Attachment } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { toApiAttachments } from "../api-attachments";
+import { describeSendFailure } from "../send-failure";
 import { ensureSubscribed, getSessionState, setSessionState, getSessionProfile } from "../sessionStore";
 
 type Props = {
@@ -134,6 +135,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
 
     // Optimistic UI update
     const current = getSessionState(sessionId);
+    const sentMessageId = nextMsgId();
     if (current) {
       setSessionState(sessionId, {
         ...current,
@@ -141,7 +143,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
         messages: [
           ...current.messages,
           {
-            id: nextMsgId(),
+            id: sentMessageId,
             role: "user" as const,
             content: prompt,
             timestamp: Date.now(),
@@ -169,17 +171,20 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
       onSent?.();
     } catch (err) {
       console.error("WebComposer: send failed:", err);
+      // Not accepted: drop the optimistic bubble and hand the prompt back to
+      // the composer, whose draft effect saves it again.
       const latest = getSessionState(sessionId);
       if (latest) {
         setSessionState(sessionId, {
           ...latest,
-          status: "error",
+          status: current?.status ?? "error",
           messages: [
-            ...latest.messages,
-            { id: nextMsgId(), role: "assistant", content: `Error: ${err}` },
+            ...latest.messages.filter((message) => message.id !== sentMessageId),
+            { id: nextMsgId(), role: "assistant", content: `Message not sent: ${describeSendFailure(err)}` },
           ],
         }, sessionProfile);
       }
+      setInput((typed) => typed || prompt);
     }
   }, [input, sessionId, sessionProfile, composer.activeProfileName, composer.projectCwd, onSent]);
 

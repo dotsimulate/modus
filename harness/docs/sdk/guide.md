@@ -655,6 +655,11 @@ try {
 }
 ```
 
+`createSession()` and `sendMessage()` throw when the message is not accepted. A
+start the memory guard refuses is a 503 whose `detail` is the JSON body
+`{ "error": "[memory-guard] …" }` naming the limit. The prompt was not persisted,
+so keep it for the user.
+
 Methods that return fallback values (not throwing):
 - `getProviderModels()` → `[]` on HTTP error; pass `{ throwOnError: true }` as
   the second argument to surface the backend's discovery error

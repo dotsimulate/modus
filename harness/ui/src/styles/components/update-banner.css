@@ -24,3 +24,5 @@
 .update-banner-actions { display: flex; gap: 8px; margin-left: auto; }
 .update-banner button { white-space: nowrap; }
 
+/* Sits below an update banner rather than on top of it. */
+.memory-banner { top: 64px; }

@@ -2508,6 +2508,12 @@ export type MemoryStatus = {
   pressureBlockingEnabled: boolean;
   /** Spawns are refused above the threshold only below this much available memory. Absent on older backends. */
   minAvailableMB?: number;
+  /** Usage is past the threshold. Absent on older backends. */
+  highPressure?: boolean;
+  /** New sessions are being refused for memory right now. Absent on older backends. */
+  spawnBlocked?: boolean;
+  /** Largest images by resident memory while pressure is high; empty before the first sample. */
+  largestProcesses?: Array<{ name: string; memoryGB: number; count: number }>;
   maxHeapPerProcessMB: number;
   maxConcurrentSessions: number;
   /** Absent on backends that only support startup configuration. */

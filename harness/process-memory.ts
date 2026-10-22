@@ -203,6 +203,41 @@ export function measureProcessTree(
   return { pids, totalBytes, matchedBytes };
 }
 
+// ── Largest consumers ──
+
+export type ProcessGroupUsage = {
+  /** Image name without a Windows `.exe` suffix, as first reported. */
+  name: string;
+  rssBytes: number;
+  /** How many processes share the image. */
+  count: number;
+};
+
+/**
+ * The images holding the most resident memory, largest first. Processes are
+ * grouped by image so a program split over many processes (a browser, a VPN
+ * client and its service) is weighed as the one thing the user sees.
+ */
+export function largestProcessGroups(table: ProcessTable, limit = 3): ProcessGroupUsage[] {
+  const groups = new Map<string, ProcessGroupUsage>();
+  for (const row of table.values()) {
+    if (NON_DESCENDABLE_PIDS.has(row.pid) || row.rssBytes <= 0) continue;
+    const key = normalizeImageName(row.name);
+    if (!key) continue;
+    const group = groups.get(key);
+    if (group) {
+      group.rssBytes += row.rssBytes;
+      group.count++;
+    } else {
+      const trimmed = row.name.trim();
+      const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+      const base = slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+      groups.set(key, { name: base.replace(/\.exe$/i, ""), rssBytes: row.rssBytes, count: 1 });
+    }
+  }
+  return [...groups.values()].sort((a, b) => b.rssBytes - a.rssBytes).slice(0, Math.max(0, limit));
+}
+
 // ── Sampling ──
 
 function runCommand(command: string, args: string[]): Promise<string | null> {

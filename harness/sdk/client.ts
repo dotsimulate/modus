@@ -315,10 +315,10 @@ export class ModusClient {
     const data = await (await this.fetchOrThrow("/api/sessions/empty", { method: "POST", body: JSON.stringify(opts ?? {}) })).json();
     return data.sessionId;
   }
-  /** Queues a message to a session. Accepts a string prompt or a SendMessageOpts object; string form uses the remaining args for attachments and config. */
+  /** Queues a message to a session. Accepts a string prompt or a SendMessageOpts object; string form uses the remaining args for attachments and config. Throws ModusError when the message is not accepted, including a refused resume (503). */
   async sendMessage(sessionId: string, opts: SendMessageOpts | string, attachments?: ApiAttachment[], config?: Record<string, unknown>): Promise<{ queued: boolean; status: string; dispatchId?: string }> {
     const body = typeof opts === "string" ? { prompt: opts, attachments, ...config } : opts;
-    return (await this.fetch(`/api/sessions/${sessionId}/messages`, { method: "POST", body: JSON.stringify(body) })).json();
+    return (await this.fetchOrThrow(`/api/sessions/${sessionId}/messages`, { method: "POST", body: JSON.stringify(body) })).json();
   }
   async cancelQueuedDispatch(sessionId: string, dispatchId: string): Promise<{ ok: boolean }> {
     return (await this.fetch(`/api/sessions/${sessionId}/dispatch/${dispatchId}`, { method: "DELETE" })).json();

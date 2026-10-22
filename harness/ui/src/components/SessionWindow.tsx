@@ -12,6 +12,7 @@ import type { Attachment, MoveBinding } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { toApiAttachments } from "../api-attachments";
+import { describeSendFailure } from "../send-failure";
 import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, getSessionState, setSessionState, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { useSessionActions } from "../providers/SessionContext";
@@ -143,13 +144,14 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     const current = getSessionState(sessionId);
     if (!current) return;
 
+    const sentMessageId = nextMsgId();
     const updated = {
       ...current,
       status: "running" as const,
       messages: [
         ...current.messages,
         {
-          id: nextMsgId(),
+          id: sentMessageId,
           role: "user" as const,
           content: prompt,
           timestamp: Date.now(),
@@ -176,17 +178,20 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
         activeStatus: "running",
       });
     } catch (err) {
+      // Not accepted: drop the optimistic bubble and hand the prompt back to
+      // the composer, whose draft effect saves it again.
       const latest = getSessionState(sessionId);
       if (latest) {
         setSessionState(sessionId, {
           ...latest,
-          status: "error",
+          status: current.status,
           messages: [
-            ...latest.messages,
-            { id: nextMsgId(), role: "assistant", content: `Error: ${err}` },
+            ...latest.messages.filter((message) => message.id !== sentMessageId),
+            { id: nextMsgId(), role: "assistant", content: `Message not sent: ${describeSendFailure(err)}` },
           ],
         }, session?.profile);
       }
+      setInput((typed) => typed || prompt);
     }
   }
 

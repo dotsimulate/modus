@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { Hono } from "hono";
 import { memoryGuardApi } from "../../memory-guard-api";
-import { canSpawnSession, getMemoryStatus, resolveReapLimits, setMaxConcurrentSessions } from "../../memory-guard";
+import { canSpawnSession, getMemoryStatus, isUnderMemoryPressure, resolveReapLimits, setMaxConcurrentSessions } from "../../memory-guard";
 
 const scenario = process.argv[2];
 const app = new Hono().route("/api/system/memory", memoryGuardApi);
@@ -48,11 +48,18 @@ if (scenario === "live") {
   setMaxConcurrentSessions(10);
   const result = canSpawnSession(6);
   assert.equal(result.ok, false);
-  assert.match(result.ok ? "" : result.reason, /system memory pressure/);
+  assert.match(result.ok ? "" : result.reason, /system memory nearly exhausted/);
+  const status = getMemoryStatus();
+  assert.equal(status.highPressure, true);
+  assert.equal(status.spawnBlocked, true);
 } else if (scenario === "headroom") {
   // Above the ratio but with more available than the floor: admitted.
   setMaxConcurrentSessions(10);
   assert.equal(canSpawnSession(6).ok, true);
+  const status = getMemoryStatus();
+  assert.equal(status.highPressure, true);
+  assert.equal(status.spawnBlocked, false);
+  assert.equal(isUnderMemoryPressure(), false);
 } else if (scenario.startsWith("floor=")) {
   assert.equal(getMemoryStatus().minAvailableMB, Number(scenario.slice("floor=".length)));
 } else {

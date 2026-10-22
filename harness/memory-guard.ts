@@ -21,6 +21,7 @@ import { execFileSync } from "child_process";
 import { freemem, totalmem, platform } from "os";
 import { readFileSync } from "fs";
 import { DEFAULT_REAP_LIMITS, type ReapLimits } from "./session-reap-policy";
+import { largestProcessGroups, sampleProcessTable, type ProcessGroupUsage } from "./process-memory";
 
 // ── Accurate available memory ──
 // Linux counts filesystem cache as "used", so os.availableMemory() (MemFree) severely
@@ -138,17 +139,64 @@ export function resolveReapLimits(): ReapLimits {
   };
 }
 
+type PressureReading = {
+  total: number;
+  free: number;
+  usage: number;
+  /** Usage has crossed the ratio. Worth telling the user; restricts nothing. */
+  high: boolean;
+  /** High *and* under the available floor, with blocking enabled. Spawns are refused and idle sessions reclaimed. */
+  critical: boolean;
+};
+
+function readPressure(): PressureReading {
+  const total = totalmem();
+  const free = availableMemory();
+  const usage = (total - free) / total;
+  const high = usage >= PRESSURE_THRESHOLD;
+  return { total, free, usage, high, critical: BLOCK_ON_PRESSURE && high && free < MIN_AVAILABLE_MB * 1024 * 1024 };
+}
+
 /**
- * Whether system memory usage has crossed the pressure threshold.
- *
- * Follows the same platform rule as spawn blocking: where the OS reports
- * memory through a model too noisy to gate on, this stays false rather than
- * letting jitter reclaim live sessions.
+ * Whether memory is low enough to reclaim idle sessions: the same rule that
+ * refuses spawns. Where the OS reports memory through a model too noisy to gate
+ * on, this stays false rather than letting jitter reclaim live sessions.
  */
 export function isUnderMemoryPressure(): boolean {
-  if (!BLOCK_ON_PRESSURE) return false;
-  const total = totalmem();
-  return (total - availableMemory()) / total >= PRESSURE_THRESHOLD;
+  return readPressure().critical;
+}
+
+// ── Largest consumers ──
+// Pressure is usually caused by something other than Modus, and a percentage
+// alone sends the user looking in the wrong place. While memory is high the
+// watchdog samples the process table so refusals and status can name it.
+
+/** How long a sample stays good enough to name in a refusal or status. */
+const LARGEST_TTL_MS = 2 * WATCHDOG_INTERVAL_MS + 15_000;
+
+let largest: { at: number; groups: ProcessGroupUsage[] } | null = null;
+let largestRefresh: Promise<void> | null = null;
+
+function refreshLargestProcesses(): void {
+  if (largestRefresh) return;
+  largestRefresh = sampleProcessTable()
+    .then((table) => {
+      if (table.size > 0) largest = { at: Date.now(), groups: largestProcessGroups(table) };
+    })
+    .catch(() => {})
+    .finally(() => { largestRefresh = null; });
+}
+
+function freshLargestProcesses(): ProcessGroupUsage[] {
+  return largest && Date.now() - largest.at < LARGEST_TTL_MS ? largest.groups : [];
+}
+
+/** `Surfshark 185.0 GB, chrome 6.2 GB (41 processes)`, or "" before any sample. */
+export function describeProcessGroups(groups: ProcessGroupUsage[]): string {
+  return groups.map((group) => {
+    const gb = (group.rssBytes / 1024 / 1024 / 1024).toFixed(1);
+    return `${group.name} ${gb} GB${group.count > 1 ? ` (${group.count} processes)` : ""}`;
+  }).join(", ");
 }
 
 // ── Env injection ──
@@ -205,19 +253,18 @@ export function canSpawnSession(activeCount: number): SpawnGuardResult {
     };
   }
 
-  const total = totalmem();
-  const free = availableMemory();
-  const usage = (total - free) / total;
+  const { total, free, usage, critical } = readPressure();
 
-  if (BLOCK_ON_PRESSURE && usage >= PRESSURE_THRESHOLD && free < MIN_AVAILABLE_MB * 1024 * 1024) {
+  if (critical) {
     const usedGB = ((total - free) / 1024 / 1024 / 1024).toFixed(1);
     const totalGB = (total / 1024 / 1024 / 1024).toFixed(1);
+    const culprits = describeProcessGroups(freshLargestProcesses());
     return {
       ok: false,
-      reason: `system memory pressure too high: ${usedGB}/${totalGB} GB ` +
-        `(${(usage * 100).toFixed(0)}% used, threshold ${(PRESSURE_THRESHOLD * 100).toFixed(0)}%; ` +
-        `under ${(MIN_AVAILABLE_MB / 1024).toFixed(1)} GB available). ` +
-        `Free memory or stop sessions before starting new ones.`,
+      reason: `system memory nearly exhausted: ${usedGB}/${totalGB} GB used ` +
+        `(${(usage * 100).toFixed(0)}%, under ${(MIN_AVAILABLE_MB / 1024).toFixed(1)} GB available). ` +
+        (culprits ? `Largest: ${culprits}. ` : "") +
+        `Close what is using it before starting new sessions.`,
     };
   }
 
@@ -236,6 +283,12 @@ export interface MemoryStatus {
   pressureThreshold: number;
   pressureBlockingEnabled: boolean;
   minAvailableMB: number;
+  /** Usage is past the threshold. */
+  highPressure: boolean;
+  /** New sessions are being refused for memory right now. */
+  spawnBlocked: boolean;
+  /** Largest images by resident memory, sampled by the watchdog while pressure is high. */
+  largestProcesses: Array<{ name: string; memoryGB: number; count: number }>;
   maxHeapPerProcessMB: number;
   maxConcurrentSessions: number;
   concurrencyLimitMutable: boolean;
@@ -243,8 +296,7 @@ export interface MemoryStatus {
 }
 
 export function getMemoryStatus(): MemoryStatus {
-  const total = totalmem();
-  const free = availableMemory();
+  const { total, free, high, critical } = readPressure();
   return {
     totalGB: +(total / 1024 / 1024 / 1024).toFixed(2),
     freeGB: +(free / 1024 / 1024 / 1024).toFixed(2),
@@ -253,6 +305,15 @@ export function getMemoryStatus(): MemoryStatus {
     pressureThreshold: PRESSURE_THRESHOLD * 100,
     pressureBlockingEnabled: BLOCK_ON_PRESSURE,
     minAvailableMB: MIN_AVAILABLE_MB,
+    highPressure: high,
+    spawnBlocked: critical,
+    largestProcesses: high
+      ? freshLargestProcesses().map((group) => ({
+        name: group.name,
+        memoryGB: +(group.rssBytes / 1024 / 1024 / 1024).toFixed(1),
+        count: group.count,
+      }))
+      : [],
     maxHeapPerProcessMB: MAX_HEAP_MB,
     maxConcurrentSessions,
     concurrencyLimitMutable: true,
@@ -269,19 +330,18 @@ export function startMemoryWatchdog(): void {
     `pressure blocking: ${BLOCK_ON_PRESSURE ? "on" : "off"}`
   );
   watchdogTimer = setInterval(() => {
-    const total = totalmem();
-    const free = availableMemory();
-    const usage = (total - free) / total;
+    const { total, free, usage, high, critical } = readPressure();
     const usedGB = ((total - free) / 1024 / 1024 / 1024).toFixed(1);
     const totalGB = (total / 1024 / 1024 / 1024).toFixed(1);
-    const pressureAction = BLOCK_ON_PRESSURE && free < MIN_AVAILABLE_MB * 1024 * 1024
-      ? "new sessions will be blocked"
-      : "new sessions allowed";
+    const pressureAction = critical ? "new sessions will be blocked" : "new sessions allowed";
 
-    if (usage >= PRESSURE_THRESHOLD) {
+    if (high) {
+      refreshLargestProcesses();
+      const culprits = describeProcessGroups(freshLargestProcesses());
       console.warn(
         `[memory-guard] HIGH PRESSURE: ${usedGB}/${totalGB} GB ` +
-        `(${(usage * 100).toFixed(0)}%) - ${pressureAction}`
+        `(${(usage * 100).toFixed(0)}%) - ${pressureAction}` +
+        (culprits ? ` - largest: ${culprits}` : "")
       );
     } else if (usage >= 0.75) {
       console.warn(

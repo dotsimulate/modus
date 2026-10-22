@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createProcessTableSampler,
+  largestProcessGroups,
   measureProcessTree,
   normalizeImageName,
   parsePsOutput,
@@ -231,5 +232,35 @@ describe("measureProcessTree", () => {
   test("matching is case-insensitive and suffix-insensitive", () => {
     const mixed = table([[1, 0, "Claude.EXE", 32 * MB]]);
     expect(measureProcessTree(mixed, [1], ["claude"]).matchedBytes).toBe(32 * MB);
+  });
+});
+
+describe("largestProcessGroups", () => {
+  const GB = 1024 * MB;
+  const row = (pid: number, name: string, rssBytes: number) => [pid, { pid, ppid: 1, name, rssBytes }] as const;
+
+  test("groups processes by image and orders the largest first", () => {
+    const table: ProcessTable = new Map([
+      row(10, "Surfshark.exe", 185 * GB),
+      row(11, "chrome.exe", 2 * GB),
+      row(12, "CHROME.EXE", 3 * GB),
+      row(13, "C:\\Tools\\claude.exe", 1 * GB),
+      row(14, "notepad.exe", 10 * MB),
+    ]);
+    expect(largestProcessGroups(table)).toEqual([
+      { name: "Surfshark", rssBytes: 185 * GB, count: 1 },
+      { name: "chrome", rssBytes: 5 * GB, count: 2 },
+      { name: "claude", rssBytes: 1 * GB, count: 1 },
+    ]);
+  });
+
+  test("skips the System pids and empty rows", () => {
+    const table: ProcessTable = new Map([
+      row(4, "System", 50 * GB),
+      row(20, "", 9 * GB),
+      row(21, "idle.exe", 0),
+      row(22, "app", 1 * GB),
+    ]);
+    expect(largestProcessGroups(table, 5)).toEqual([{ name: "app", rssBytes: 1 * GB, count: 1 }]);
   });
 });

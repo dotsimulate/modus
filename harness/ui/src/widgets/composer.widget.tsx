@@ -9,7 +9,7 @@
 
 import { memo, useCallback, useEffect, useMemo, type ComponentProps } from "react";
 import { useSessionState, ensureSubscribed, getSessionState, setSessionState, setSessionNextProfile, setSessionNextAgentConfig } from "../sessionStore";
-import { useInputValue, setInputValue, setActiveInputSession } from "../inputStore";
+import { useInputValue, getInputValue, setInputValue, setActiveInputSession } from "../inputStore";
 import {
   useActiveSessionId,
   useSessionActions,
@@ -162,6 +162,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       if (deliver === "steer") {
         modus.steerSession(sessionId, prompt, apiAtts, moves).catch((err) => {
           console.error("[composer-widget] steerSession failed:", err);
+          if (!getInputValue()) setInputValue(prompt);
         });
         return;
       }
@@ -196,6 +197,9 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         void ensureSubscribed(sessionId, { activeStatus: "running" });
       }).catch((err) => {
         console.error("[composer-widget] sendMessage failed:", err);
+        // Not accepted: hand the prompt back rather than leaving it only in a
+        // bubble that looks sent.
+        if (!getInputValue()) setInputValue(prompt);
       });
     },
     [sessionId, activeSessionId, sessionSend],

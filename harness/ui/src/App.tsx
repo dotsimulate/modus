@@ -38,6 +38,7 @@ import { LayoutProvider } from "./providers/LayoutProvider";
 import { useLayout } from "./providers/LayoutContext";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { MemoryPressureBanner } from "./components/MemoryPressureBanner";
 import { AgentPortal } from "./components/AgentPortal";
 import { WIDGET_DEFS, widgetHandlesIntent, type DashboardPage } from "./widgets";
 import { PagePicker } from "./components/PagePicker";
@@ -145,6 +146,7 @@ function App() {
             <PinboardProvider>
               <ClientExtensionsBoot />
               {!IS_MINI_VIEWER && <UpdateBanner />}
+              {!IS_MINI_VIEWER && <MemoryPressureBanner />}
               <AppShell />
             </PinboardProvider>
           </FileViewerProvider>
