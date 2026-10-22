@@ -33,5 +33,19 @@ test("invalid HTTP payloads and setter values preserve the current limit", async
 });
 
 test("raising concurrency leaves memory-pressure blocking in force", async () => {
-  await run("pressure", { MG_BLOCK_ON_PRESSURE: "1", MG_PRESSURE_THRESHOLD: "0" });
+  // A floor no machine can meet, so the ratio alone decides.
+  await run("pressure", { MG_BLOCK_ON_PRESSURE: "1", MG_PRESSURE_THRESHOLD: "0", MG_MIN_AVAILABLE_MB: "1000000000" });
+});
+
+test("pressure admits spawns while available memory stays above the floor", async () => {
+  await run("headroom", { MG_BLOCK_ON_PRESSURE: "1", MG_PRESSURE_THRESHOLD: "0", MG_MIN_AVAILABLE_MB: "0" });
+});
+
+test("the available-memory floor defaults to two heap caps and rejects invalid values", async () => {
+  await run("floor=8192");
+  await run("floor=2048", { MG_MAX_HEAP_MB: "1024" });
+  await run("floor=512", { MG_MIN_AVAILABLE_MB: "512" });
+  for (const value of ["-1", "NaN", "Infinity", "abc"]) {
+    await run("floor=8192", { MG_MIN_AVAILABLE_MB: value });
+  }
 });

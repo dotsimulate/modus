@@ -2506,6 +2506,8 @@ export type MemoryStatus = {
   usagePercent: number;
   pressureThreshold: number;
   pressureBlockingEnabled: boolean;
+  /** Spawns are refused above the threshold only below this much available memory. Absent on older backends. */
+  minAvailableMB?: number;
   maxHeapPerProcessMB: number;
   maxConcurrentSessions: number;
   /** Absent on backends that only support startup configuration. */

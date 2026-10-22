@@ -121,7 +121,7 @@ import {
   type SSEWriter,
 } from "./session-manager";
 import { parseControlIntent, publishControlIntent, subscribeControlIntents } from "./control-intents";
-import { startMemoryWatchdog, stopMemoryWatchdog, getMemoryStatus } from "./memory-guard";
+import { startMemoryWatchdog, stopMemoryWatchdog, getMemoryStatus, isSpawnRefusal } from "./memory-guard";
 import { memoryGuardApi } from "./memory-guard-api";
 import {
   createTerminal, killTerminal, resizeTerminal as resizeTerminalPty,
@@ -1686,7 +1686,15 @@ app.post("/api/sessions", async (c) => {
 
   // Use startSessionWithMoves — handles profile move bindings automatically.
   // For profiles without moves, this is equivalent to startSession + ID wait.
-  const session = await startSessionWithMoves(sessionOpts);
+  let session: Awaited<ReturnType<typeof startSessionWithMoves>>;
+  try {
+    session = await startSessionWithMoves(sessionOpts);
+  } catch (err) {
+    // A refused spawn is the client's to explain, not an internal error: without
+    // this the caller got a bare 500 and the user never learned why.
+    if (!isSpawnRefusal(err)) throw err;
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 503);
+  }
 
   return c.json({
     sessionId: session.sessionId,
@@ -1751,7 +1759,7 @@ app.post("/api/sessions/interact", async (c) => {
     if (!sessionId && !createIfMissing && message === "sessionId required when createIfMissing is false") {
       return c.json({ error: message }, 400);
     }
-    const status = message.includes("[memory-guard]") ? 503 : 500;
+    const status = isSpawnRefusal(err) ? 503 : 500;
     return c.json({ error: message }, status);
   }
 
@@ -2534,7 +2542,7 @@ app.post("/api/sessions/:id/messages", async (c) => {
     return c.json(delivered);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const status = message.includes("[memory-guard]") ? 503 : 500;
+    const status = isSpawnRefusal(err) ? 503 : 500;
     return c.json({ error: message }, status);
   }
 });

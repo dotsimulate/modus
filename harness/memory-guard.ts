@@ -94,6 +94,20 @@ export function setMaxConcurrentSessions(value: unknown): void {
 const PRESSURE_THRESHOLD = Number(process.env.MG_PRESSURE_THRESHOLD ?? 0.90);
 
 /**
+ * Available memory (MB) that still admits a new session above the pressure ratio.
+ *
+ * A ratio alone scales badly: 10% of a 190 GB machine is 19 GB, several times
+ * what one capped runtime can take. Spawning is refused only when the ratio is
+ * crossed *and* less than this much is left, so small machines block exactly as
+ * before and large ones keep admitting while real headroom remains.
+ */
+const DEFAULT_MIN_AVAILABLE_MB = 2 * MAX_HEAP_MB;
+const configuredMinAvailable = Number(process.env.MG_MIN_AVAILABLE_MB ?? DEFAULT_MIN_AVAILABLE_MB);
+const MIN_AVAILABLE_MB = Number.isFinite(configuredMinAvailable) && configuredMinAvailable >= 0
+  ? configuredMinAvailable
+  : DEFAULT_MIN_AVAILABLE_MB;
+
+/**
  * Whether memory pressure should block new sessions.
  * macOS reports memory through a VM/cache model that is too noisy for hard gating,
  * so it warns by default. Windows/Linux keep blocking by default.
@@ -167,10 +181,20 @@ export type SpawnGuardResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+/** Prefix on errors thrown when the guard refuses a spawn. */
+export const SPAWN_REFUSED_PREFIX = "[memory-guard]";
+
+/** Whether an error is a guard refusal, which routes report as 503 with its reason. */
+export function isSpawnRefusal(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes(SPAWN_REFUSED_PREFIX);
+}
+
 /**
  * Check whether a new session can be spawned. Returns `{ ok: false, reason }` if:
  * - `activeCount` >= the current concurrency limit
- * - System memory pressure exceeds threshold and pressure blocking is enabled
+ * - System memory pressure exceeds threshold, less than `MG_MIN_AVAILABLE_MB`
+ *   is available, and pressure blocking is enabled
  */
 export function canSpawnSession(activeCount: number): SpawnGuardResult {
   if (activeCount >= maxConcurrentSessions) {
@@ -185,13 +209,14 @@ export function canSpawnSession(activeCount: number): SpawnGuardResult {
   const free = availableMemory();
   const usage = (total - free) / total;
 
-  if (BLOCK_ON_PRESSURE && usage >= PRESSURE_THRESHOLD) {
+  if (BLOCK_ON_PRESSURE && usage >= PRESSURE_THRESHOLD && free < MIN_AVAILABLE_MB * 1024 * 1024) {
     const usedGB = ((total - free) / 1024 / 1024 / 1024).toFixed(1);
     const totalGB = (total / 1024 / 1024 / 1024).toFixed(1);
     return {
       ok: false,
       reason: `system memory pressure too high: ${usedGB}/${totalGB} GB ` +
-        `(${(usage * 100).toFixed(0)}% used, threshold ${(PRESSURE_THRESHOLD * 100).toFixed(0)}%). ` +
+        `(${(usage * 100).toFixed(0)}% used, threshold ${(PRESSURE_THRESHOLD * 100).toFixed(0)}%; ` +
+        `under ${(MIN_AVAILABLE_MB / 1024).toFixed(1)} GB available). ` +
         `Free memory or stop sessions before starting new ones.`,
     };
   }
@@ -210,6 +235,7 @@ export interface MemoryStatus {
   usagePercent: number;
   pressureThreshold: number;
   pressureBlockingEnabled: boolean;
+  minAvailableMB: number;
   maxHeapPerProcessMB: number;
   maxConcurrentSessions: number;
   concurrencyLimitMutable: boolean;
@@ -226,6 +252,7 @@ export function getMemoryStatus(): MemoryStatus {
     usagePercent: +(((total - free) / total) * 100).toFixed(1),
     pressureThreshold: PRESSURE_THRESHOLD * 100,
     pressureBlockingEnabled: BLOCK_ON_PRESSURE,
+    minAvailableMB: MIN_AVAILABLE_MB,
     maxHeapPerProcessMB: MAX_HEAP_MB,
     maxConcurrentSessions,
     concurrencyLimitMutable: true,
@@ -237,7 +264,8 @@ export function startMemoryWatchdog(): void {
   if (watchdogTimer) return;
   console.log(
     `[memory-guard] watchdog started — heap cap: ${MAX_HEAP_MB}MB/process, ` +
-    `max concurrent: ${maxConcurrentSessions}, pressure threshold: ${(PRESSURE_THRESHOLD * 100).toFixed(0)}%, ` +
+    `max concurrent: ${maxConcurrentSessions}, pressure threshold: ${(PRESSURE_THRESHOLD * 100).toFixed(0)}% ` +
+    `below ${MIN_AVAILABLE_MB}MB available, ` +
     `pressure blocking: ${BLOCK_ON_PRESSURE ? "on" : "off"}`
   );
   watchdogTimer = setInterval(() => {
@@ -246,7 +274,9 @@ export function startMemoryWatchdog(): void {
     const usage = (total - free) / total;
     const usedGB = ((total - free) / 1024 / 1024 / 1024).toFixed(1);
     const totalGB = (total / 1024 / 1024 / 1024).toFixed(1);
-    const pressureAction = BLOCK_ON_PRESSURE ? "new sessions will be blocked" : "new sessions allowed";
+    const pressureAction = BLOCK_ON_PRESSURE && free < MIN_AVAILABLE_MB * 1024 * 1024
+      ? "new sessions will be blocked"
+      : "new sessions allowed";
 
     if (usage >= PRESSURE_THRESHOLD) {
       console.warn(

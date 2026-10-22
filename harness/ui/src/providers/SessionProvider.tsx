@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } fr
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { setInputValue, getInputValue, shouldApplyFetchedDraft } from "../inputStore";
+import { describeSendFailure } from "../send-failure";
 import type {
   Session, SessionInfo, SessionProjectSummary, Attachment, MoveBinding, RewindPreview,
 } from "../../../sdk/index";
@@ -45,13 +46,6 @@ import {
   type SendOpts,
   type SessionActionsContextValue,
 } from "./SessionContext";
-
-/** One line for the queued strip when a mid-turn send is rejected. */
-function describeSendFailure(err: unknown): string {
-  const detail = (err as { detail?: unknown })?.detail;
-  if (typeof detail === "string" && detail) return detail;
-  return err instanceof Error ? err.message : String(err);
-}
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -528,9 +522,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const errState = getSessionState(tempId);
         if (errState) {
           const updated = { ...errState, status: "error" as const };
-          updated.messages = [...updated.messages, { id: nextMsgId(), role: "assistant" as const, content: `Error: ${err}` }];
+          updated.messages = [...updated.messages, {
+            id: nextMsgId(), role: "assistant" as const,
+            content: `Session did not start: ${describeSendFailure(err)}`,
+          }];
           setSessionState(tempId, updated, queuedProfile);
         }
+        // The composer and saved draft were cleared on send, and this
+        // placeholder is never persisted. Hand the prompt back so a refused
+        // start does not cost the user what they wrote.
+        if (!getInputValue()) setInputValue(prompt);
       }
     } else {
       // Follow-up to existing session

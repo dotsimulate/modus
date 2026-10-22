@@ -49,6 +49,12 @@ if (scenario === "live") {
   const result = canSpawnSession(6);
   assert.equal(result.ok, false);
   assert.match(result.ok ? "" : result.reason, /system memory pressure/);
+} else if (scenario === "headroom") {
+  // Above the ratio but with more available than the floor: admitted.
+  setMaxConcurrentSessions(10);
+  assert.equal(canSpawnSession(6).ok, true);
+} else if (scenario.startsWith("floor=")) {
+  assert.equal(getMemoryStatus().minAvailableMB, Number(scenario.slice("floor=".length)));
 } else {
   assert.equal(getMemoryStatus().maxConcurrentSessions, Number(scenario));
 }

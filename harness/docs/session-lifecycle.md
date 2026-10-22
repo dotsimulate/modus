@@ -117,7 +117,8 @@ changed while the backend is running, as described below.
 |---|---|---|
 | `MG_MAX_HEAP_MB` | `4096` | Memory ceiling for one agent runtime. Also the reaper's `cliRssLimitBytes`. |
 | `MG_MAX_CONCURRENT` | `10` | Initial concurrent-session limit; invalid, nonpositive, or noninteger values fall back to 10. |
-| `MG_PRESSURE_THRESHOLD` | `0.90` | System memory ratio that blocks new spawns and enables pressure reclamation. |
+| `MG_PRESSURE_THRESHOLD` | `0.90` | System memory ratio above which pressure reclamation runs and new spawns may be refused. |
+| `MG_MIN_AVAILABLE_MB` | 2 × `MG_MAX_HEAP_MB` | Above the ratio, a new spawn is refused only while less than this is available. Negative or nonnumeric values fall back to the default. |
 | `MG_BLOCK_ON_PRESSURE` | `1` (`0` on macOS) | Whether pressure gates spawning and reclamation. |
 | `MG_REAP_PRESSURE_FLOOR_MB` | `512` | Smallest tree worth reclaiming under pressure. |
 | `MG_REAP_PRESSURE_GRACE_MS` | `120000` | Idle time before pressure may reclaim a session. |
@@ -153,6 +154,17 @@ backend. It never stops, restarts, or reclaims existing sessions. Lowering the
 limit below the current active count only blocks further starts until enough
 sessions finish. Memory-pressure checks remain in effect. Pilot/orchestrator
 limits are separate and may still cap the number of workers.
+
+### When a start is refused
+
+A start refused by either check fails with HTTP 503 and `{ "error": "[memory-guard] …" }`
+naming the limit, on `POST /api/sessions`, `POST /api/sessions/interact`, and
+`POST /api/sessions/:id/messages`. The memory check needs both conditions: usage at
+or above `MG_PRESSURE_THRESHOLD` *and* less than `MG_MIN_AVAILABLE_MB` available.
+A ratio alone would refuse sessions on a large machine with many gigabytes still
+free. `GET /api/system/memory` reports the floor as `minAvailableMB`. The browser
+client shows the reason in the conversation and puts the unsent prompt back in
+the composer.
 
 The authenticated API is `PUT /api/system/memory` with exactly
 `{ "maxConcurrentSessions": 10 }`. It returns the same memory status as

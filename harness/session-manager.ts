@@ -26,7 +26,7 @@ import {
 import type { SessionOutcome } from "./action-types";
 import { userMessagePreviewText } from "./message-context";
 import { logActivity } from "./activity";
-import { canSpawnSession, getMemoryStatus, isUnderMemoryPressure, resolveReapLimits } from "./memory-guard";
+import { canSpawnSession, getMemoryStatus, isUnderMemoryPressure, resolveReapLimits, SPAWN_REFUSED_PREFIX } from "./memory-guard";
 import { measureProcessTree, sampleProcessTable, type ProcessTable } from "./process-memory";
 import {
   formatIdleSurvey,
@@ -1175,7 +1175,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     .filter(s => s.status === "running" || s.status === "starting" || s.status === "interrupting").length;
   const guard = canSpawnSession(liveCount);
   if (!guard.ok) {
-    throw new Error(`[memory-guard] ${guard.reason}`);
+    throw new Error(`${SPAWN_REFUSED_PREFIX} ${guard.reason}`);
   }
 
   const baseCwd = resolveSessionCwd(opts.cwd);
