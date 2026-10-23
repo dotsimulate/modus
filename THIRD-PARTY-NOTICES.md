@@ -1603,7 +1603,7 @@ verbatim.
 - Source: https://github.com/kpdecker/jsdiff
 - License text: **JAV-0111** — BSD-3-Clause
 
-### dompurify 3.4.16
+### dompurify 3.4.17
 
 - License: `(MPL-2.0 OR Apache-2.0)`
 - Redistributed under: `Apache-2.0`
@@ -2043,7 +2043,7 @@ verbatim.
 - Source: https://github.com/mbostock/internmap/
 - License text: **JAV-0158** — ISC
 
-### ip-address 10.7.1
+### ip-address 10.7.4
 
 - License: `MIT`
 - Source: https://github.com/beaugunderson/ip-address
@@ -3288,7 +3288,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### JAV-0004 — Apache-2.0
 
-Applies to 11 components: @aws-crypto/sha256-browser 5.2.0, @aws-crypto/supports-web-crypto 5.2.0, @chevrotain/types 11.1.2, @google/genai 1.52.0, dompurify 3.4.16, gaxios 7.1.3, gaxios 7.3.1, gcp-metadata 8.1.2, google-auth-library 10.9.0, google-logging-utils 1.1.3, long 5.3.2.
+Applies to 11 components: @aws-crypto/sha256-browser 5.2.0, @aws-crypto/supports-web-crypto 5.2.0, @chevrotain/types 11.1.2, @google/genai 1.52.0, dompurify 3.4.17, gaxios 7.1.3, gaxios 7.3.1, gcp-metadata 8.1.2, google-auth-library 10.9.0, google-logging-utils 1.1.3, long 5.3.2.
 
 ```text
 
@@ -9351,7 +9351,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### JAV-0112 — Apache-2.0 (LICENSE-MPL)
 
-Applies to 1 component: dompurify 3.4.16.
+Applies to 1 component: dompurify 3.4.17.
 
 ```text
 Mozilla Public License Version 2.0
@@ -11262,7 +11262,7 @@ THIS SOFTWARE.
 
 ### JAV-0159 — MIT
 
-Applies to 1 component: ip-address 10.7.1.
+Applies to 1 component: ip-address 10.7.4.
 
 ```text
 Copyright (C) 2011 by Beau Gunderson

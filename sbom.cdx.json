@@ -4437,10 +4437,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/dompurify@3.4.16",
+      "bom-ref": "pkg:npm/dompurify@3.4.17",
       "name": "dompurify",
-      "version": "3.4.16",
-      "purl": "pkg:npm/dompurify@3.4.16",
+      "version": "3.4.17",
+      "purl": "pkg:npm/dompurify@3.4.17",
       "licenses": [
         {
           "expression": "(MPL-2.0 OR Apache-2.0)"
@@ -5751,10 +5751,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/ip-address@10.7.1",
+      "bom-ref": "pkg:npm/ip-address@10.7.4",
       "name": "ip-address",
-      "version": "10.7.1",
-      "purl": "pkg:npm/ip-address@10.7.1",
+      "version": "10.7.4",
+      "purl": "pkg:npm/ip-address@10.7.4",
       "licenses": [
         {
           "expression": "MIT"
