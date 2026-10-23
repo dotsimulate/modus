@@ -207,7 +207,7 @@ export default function ResumeWidget({ widgetId, onSelectSession, pageContext }:
         )}
         {sessions.map((session) => {
           const busy = busyId === session.id;
-          const action = session.modusSessionId ? "open" : session.recentlyActive ? "resume anyway" : "resume";
+          const action = session.modusSessionId ? "open" : "resume";
           return (
             <div key={session.id} className="rsw-row">
               <div className="rsw-row-main">
@@ -219,7 +219,12 @@ export default function ResumeWidget({ widgetId, onSelectSession, pageContext }:
                   {session.modusSessionId && <span className="rsw-badge">in modus</span>}
                 </div>
                 {session.recentlyActive && !session.modusSessionId && (
-                  <div className="rsw-warn">written in the last two minutes; close it elsewhere first so two apps don't append to it at once</div>
+                  <div
+                    className="rsw-warn"
+                    title="Written in the last two minutes. If another app still has it open, close it there first so two apps don't append to it at once."
+                  >
+                    active elsewhere? close it there first
+                  </div>
                 )}
               </div>
               <button

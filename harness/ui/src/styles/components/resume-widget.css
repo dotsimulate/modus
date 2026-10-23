@@ -9,6 +9,9 @@
   height: 100%;
   min-height: 0;
   padding: 4px 0 8px;
+  /* Take the panel's width, not the content's: unwrapped titles would
+     otherwise widen the panel's grid track past the visible edge. */
+  contain: inline-size;
 }
 
 .rsw-tabs {
