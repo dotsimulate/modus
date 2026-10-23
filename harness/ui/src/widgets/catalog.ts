@@ -249,6 +249,14 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
     minHeight: 180,
     preferredHeight: 360,
   },
+  "resume": {
+    type: "resume",
+    description:
+      "Lists Claude Code and Codex conversations started outside Modus (the CLI, another app, an IDE), one tab per installed provider, with search and a folder filter. Resume creates a Modus session that continues the same native conversation in its original folder; ones Modus already has open instead.",
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 200,
+    preferredHeight: 420,
+  },
   "session-chat": {
     type: "session-chat",
     description:

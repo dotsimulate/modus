@@ -69,6 +69,7 @@ const ProcessesWidget = lazyView(() => import("./processes.widget"));
 const ProfilesManagerWidget = lazyView(() => import("./profiles-manager.widget"));
 const ProjectThemeWidget = lazyView(() => import("./project-theme.widget"));
 const ProviderUsageWidget = lazyView(() => import("./provider-usage.widget"));
+const ResumeWidget = lazyView(() => import("./resume.widget"));
 const SessionWebWidget = lazyView(() => import("./session-web.widget"));
 const TraceViewerWidget = lazyView(() => import("./trace-viewer.widget"));
 const TtsSettingsWidget = lazyView(() => import("./tts-settings.widget"));
@@ -108,6 +109,7 @@ export const WIDGET_COMPONENTS: Record<string, ComponentType<WidgetProps<any>>> 
   "provider-status": ProviderStatusWidget,
   "provider-usage": ProviderUsageWidget,
   "hints-launcher": HintsLauncherWidget,
+  "resume": ResumeWidget,
   "session-chat": SessionChatWidget,
   "session-control": SessionControlWidget,
   "session-edits": SessionEditsWidget,

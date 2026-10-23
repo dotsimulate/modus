@@ -6,6 +6,8 @@ import { BrowserSessionStore } from "./browser-auth";
 import { normalizeSearchSort, parseSessionSearch } from "./session-search";
 import { escapeEverythingQuery } from "./file-search";
 import { registerSessionReadRoute } from "./session-read";
+import { EXTERNAL_SESSION_PROVIDERS, isExternalSessionProvider, listExternalSessionProviders, listExternalSessions } from "./external-sessions";
+import { importExternalSession, knownProviderSessions } from "./external-session-import";
 import { startEventLoopMonitor } from "./event-loop-monitor";
 import { probeClaudeAccount } from "./claude-account";
 import { rehydrateHome } from "./modus-home-rehydrate";
@@ -1794,6 +1796,55 @@ app.post("/api/sessions/empty", async (c) => {
     userProfile: body.userProfile ?? undefined,
   });
   return c.json({ sessionId: id });
+});
+
+// External sessions — provider conversations started outside Modus (the CLI,
+// another desktop app, an IDE). Listing reads the providers' own stores, which
+// is as sensitive as a file read, so it takes the same configured-auth guard.
+app.get("/api/external-sessions/providers", (c) => {
+  const denied = requireConfiguredFileApiAuth(c);
+  if (denied) return denied;
+  return c.json({ providers: listExternalSessionProviders() });
+});
+
+app.get("/api/external-sessions", async (c) => {
+  const denied = requireConfiguredFileApiAuth(c);
+  if (denied) return denied;
+  const provider = c.req.query("provider");
+  if (!isExternalSessionProvider(provider)) return c.json({ error: `provider must be one of ${EXTERNAL_SESSION_PROVIDERS.join(", ")}` }, 400);
+  const limit = Number(c.req.query("limit"));
+  const sessions = await listExternalSessions({
+    provider,
+    cwd: c.req.query("cwd") || undefined,
+    query: c.req.query("q") || undefined,
+    limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+    knownSessions: knownProviderSessions(),
+    hideKnown: c.req.query("hideKnown") === "1",
+  });
+  return c.json({ sessions });
+});
+
+app.post("/api/external-sessions/import", async (c) => {
+  const denied = requireConfiguredFileApiAuth(c);
+  if (denied) return denied;
+  const body = await c.req.json().catch(() => ({}));
+  if (!isExternalSessionProvider(body.provider)) return c.json({ error: `provider must be one of ${EXTERNAL_SESSION_PROVIDERS.join(", ")}` }, 400);
+  if (typeof body.id !== "string" || !body.id) return c.json({ error: "id required" }, 400);
+  const result = importExternalSession({
+    provider: body.provider,
+    id: body.id,
+    userProfile: typeof body.userProfile === "string" ? body.userProfile : undefined,
+  });
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  if (!result.existing) {
+    emitGlobalSessionEvent({
+      type: "session:created",
+      sessionId: result.sessionId,
+      status: "idle",
+      userProfile: typeof body.userProfile === "string" ? body.userProfile : undefined,
+    });
+  }
+  return c.json({ sessionId: result.sessionId, existing: result.existing });
 });
 
 // Get session status

@@ -262,6 +262,17 @@ const branchId = await client.branchSession(sessionId, 42);
 // branchId is a new session with events 1-42 copied from the original
 ```
 
+### Taking over sessions started elsewhere
+
+List Claude Code or Codex conversations started outside Modus, then continue one
+as a Modus session (see `providers.md` → External sessions):
+
+```typescript
+const found = await client.listExternalSessions({ provider: "claude-code", cwd: "D:/work/app", hideKnown: true });
+const { sessionId } = await client.importExternalSession("claude-code", found[0].id);
+await client.sendMessage(sessionId, "carry on");   // resumes the native conversation
+```
+
 ### Lifecycle management
 
 ```typescript

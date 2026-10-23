@@ -97,6 +97,9 @@ import type {
   NoteDetail,
   BranchPreview,
   BranchResult,
+  ExternalSessionProvider,
+  ExternalSessionSummary,
+  ExternalSessionListOptions,
   RewindPreview,
   RewindResult,
 } from "./types";
@@ -462,6 +465,28 @@ export class ModusClient {
     const d = await (await this.fetch(`/api/sessions/${id}/branch`, { method: "POST", body: JSON.stringify({ seq, ...opts }) })).json();
     if (d.error) throw new Error(d.error);
     return d;
+  }
+  /** Which providers have a local conversation store Modus can read. */
+  async listExternalSessionProviders(): Promise<{ provider: ExternalSessionProvider; available: boolean }[]> {
+    const data = await (await this.fetchOrThrow("/api/external-sessions/providers")).json();
+    return data.providers;
+  }
+  /** Lists a provider's own conversations, newest first — including ones started outside Modus. */
+  async listExternalSessions(opts: ExternalSessionListOptions): Promise<ExternalSessionSummary[]> {
+    const params = new URLSearchParams({ provider: opts.provider });
+    if (opts.cwd) params.set("cwd", opts.cwd);
+    if (opts.q) params.set("q", opts.q);
+    if (opts.limit) params.set("limit", String(opts.limit));
+    if (opts.hideKnown) params.set("hideKnown", "1");
+    const data = await (await this.fetchOrThrow(`/api/external-sessions?${params}`)).json();
+    return data.sessions;
+  }
+  /** Creates a Modus session that resumes a provider conversation, or returns the one that already does. Throws on a refused import. */
+  async importExternalSession(provider: ExternalSessionProvider, id: string, userProfile?: string): Promise<{ sessionId: string; existing: boolean }> {
+    return (await this.fetchOrThrow("/api/external-sessions/import", {
+      method: "POST",
+      body: JSON.stringify({ provider, id, ...(userProfile ? { userProfile } : {}) }),
+    })).json();
   }
   /** Previews an exact checkpoint restore, including an undo checkpoint. */
   async previewCheckpointRestore(id: string, checkpointId: number): Promise<RewindPreview> {

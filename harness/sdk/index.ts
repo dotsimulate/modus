@@ -39,6 +39,9 @@ export type {
   SessionTurnIndexEntry,
   BranchPreview,
   BranchResult,
+  ExternalSessionProvider,
+  ExternalSessionSummary,
+  ExternalSessionListOptions,
   RewindPreview,
   RewindResult,
   // Events

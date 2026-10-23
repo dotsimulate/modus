@@ -1397,6 +1397,39 @@ export type BranchResult = {
   workspace: RewindResult | null;
 };
 
+// ── External sessions ──
+
+/** Providers whose own conversations Modus can list and take over. */
+export type ExternalSessionProvider = "claude-code" | "codex";
+
+/** A conversation a provider CLI holds that Modus did not start. */
+export type ExternalSessionSummary = {
+  provider: ExternalSessionProvider;
+  /** The provider's conversation ID — what its CLI resumes by. */
+  id: string;
+  title: string;
+  /** Project folder it ran in; the resumed session runs there too. */
+  cwd: string | null;
+  updatedAt: number;
+  /** Where it was started, when the provider records it (cli, vscode, exec, …). */
+  source?: string;
+  /** Written in the last two minutes — another front end may still have it open. */
+  recentlyActive: boolean;
+  /** Set when Modus already has a session for this conversation. */
+  modusSessionId?: string;
+};
+
+export type ExternalSessionListOptions = {
+  provider: ExternalSessionProvider;
+  /** Only conversations in this folder or below it. */
+  cwd?: string;
+  /** Case-insensitive match on title and folder. */
+  q?: string;
+  limit?: number;
+  /** Leave out conversations Modus already has. */
+  hideKnown?: boolean;
+};
+
 // ── Actions ──
 
 /**

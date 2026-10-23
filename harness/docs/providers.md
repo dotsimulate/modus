@@ -421,6 +421,52 @@ control.
 
 When the agent calls the `ExitPlanMode` tool, the provider automatically resets `permissionMode` to `"default"` and notifies session-manager via `notifyConfigChange`, so the config_updated event reflects the cleared state.
 
+## External sessions
+
+Claude Code and Codex keep every conversation on disk under an ID their CLI
+resumes by, and Modus resumes its own sessions by that ID
+(`provider_session_id`). So Modus can also take over a conversation started
+in the CLI, another app, or an IDE (`external-sessions.ts`,
+`external-session-import.ts`).
+
+| Provider | Listed from | Excluded |
+|----------|-------------|----------|
+| `claude-code` | `~/.claude/projects/<folder>/<id>.jsonl` | files with no typed prompt |
+| `codex` | `threads` in `$CODEX_HOME/state_5.sqlite` (default `~/.codex`) | archived threads, sub-agent threads, and threads whose originator is Modus |
+
+These are the same roots the resume paths check, so anything listed can be
+resumed. Both stores are internal provider formats. Unknown records are
+skipped, so a format change can only degrade the imported preview. It cannot
+break the resume, which the provider runs from its own file.
+
+Importing creates a Modus session with `provider_session_id` set to the
+conversation ID, `cwd` set to the conversation's recorded project folder, and a
+`config_updated` event naming the provider. A revived session reads its provider
+from that event, not from a profile. Without it, the first turn would fall back
+to the profile's provider. The visible history is a digest: each typed prompt
+and the last text the agent wrote after its final tool call. For Claude Code it
+follows the active branch (the `parentUuid` chain from the latest message, across
+compaction boundaries), so turns abandoned by a rewind are not shown. The digest
+is written as ordinary `user/prompt`, `assistant`, and `result` events, so it
+keeps reconstructing after new turns add events of their own. Tool calls and
+injected context stay in the native file, where the provider reloads them.
+
+The next turn resumes natively in the recorded folder, and Claude Code only finds
+a conversation from that folder. The native file stays the source of truth, so
+the CLI or any other front end resuming the same ID sees the continued thread. Two
+front ends appending at once is not coordinated. The listing marks a conversation
+written in the last two minutes, and the `resume` widget asks the user to close
+it elsewhere first.
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/external-sessions/providers` | Which providers have a store on this machine |
+| `GET /api/external-sessions?provider=&cwd=&q=&limit=&hideKnown=1` | Newest first. `cwd` keeps a folder and its subfolders. `modusSessionId` marks conversations Modus already holds |
+| `POST /api/external-sessions/import` `{ provider, id, userProfile? }` | Creates the session, or returns the existing one with `existing: true`. 404 when the conversation is gone, 409 when its folder is gone |
+
+The routes read other tools' transcripts, so like the file APIs they require
+`HARNESS_TOKEN` or `HARNESS_PIN` to be configured.
+
 ## Provider Health
 
 `checkAllProviderHealth()` reports readiness from registry-declared prerequisites:
