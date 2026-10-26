@@ -3,6 +3,7 @@ import { modus } from "../modusClient";
 import { clearAuthToken, getAuthToken, markBrowserSessionToken, setAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
 import { BackendConnectionScreen } from "../components/BackendTargetManager";
+import { StartupSplash } from "../components/StartupScreen";
 import { ModusError } from "../../../sdk/index";
 import { AuthContext } from "./AuthContext";
 
@@ -111,7 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, [canManagePin]);
 
-  if (authState === "checking") return null;
+  // The startup screen's last step, rather than a blank window, while sign-in is checked.
+  if (authState === "checking") return <StartupSplash title="opening modus" />;
   if (authState === "unavailable") return <BackendConnectionScreen message="backend authentication status unavailable" />;
   if (authState === "setup") return <LoginScreen isSetup pinOptional={!pinEnabled} canManagePin={canManagePin} onAuth={handleAuth} />;
   if (authState === "login") return <LoginScreen savedName={userName ?? undefined} onAuth={handleAuth} />;

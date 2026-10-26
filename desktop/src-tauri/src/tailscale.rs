@@ -492,7 +492,7 @@ impl TailscaleManager {
         self.remove_ownership(&owner)
     }
 
-    fn enabled(&self) -> bool {
+    pub fn enabled(&self) -> bool {
         fs::read_to_string(&self.remote_file)
             .map(|value| value.trim() == "tailscale")
             .unwrap_or(false)

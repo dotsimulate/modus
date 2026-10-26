@@ -30,6 +30,33 @@ export type DesktopVaultStatus = {
   databasePath: string;
 };
 
+/** Must match `StartupPhase` in `desktop/src-tauri/src/backend.rs`. */
+export type DesktopStartupPhase =
+  | "idle"
+  | "preparing"
+  | "launching"
+  | "loading"
+  | "verifying"
+  | "tailnet"
+  | "retrying"
+  | "ready"
+  | "failed";
+
+/** Where a managed backend start has got to, read while `desktop_bootstrap` waits. */
+export type DesktopStartupStatus = {
+  phase: DesktopStartupPhase;
+  elapsedMs: number;
+  /** The Vault had no database before this start, so it is being created. */
+  firstStart: boolean;
+  attempt: number;
+  attempts: number;
+  /** The backend's latest output during this start, oldest first. */
+  lines: string[];
+  error?: string | null;
+  logPath?: string | null;
+  version: string;
+};
+
 export type DesktopUpdateCheck = {
   configured: boolean;
   available: boolean;
@@ -98,6 +125,23 @@ export async function bootstrapDesktop(
 ): Promise<DesktopBootstrapResponse> {
   return invokeDesktop<DesktopBootstrapResponse>("desktop_bootstrap", {
     request: { mode, ...(url ? { url } : {}), ...(vault ? { vault } : {}) },
+  });
+}
+
+/**
+ * Read what a managed backend start is doing. Answers immediately even while
+ * `bootstrapDesktop` for the same Vault is still waiting, so poll it alongside.
+ */
+export async function getDesktopStartupStatus(vault?: string): Promise<DesktopStartupStatus> {
+  return invokeDesktop<DesktopStartupStatus>("desktop_startup_status", {
+    request: vault ? { vault } : {},
+  });
+}
+
+/** Give up on a start in progress; the waiting `bootstrapDesktop` then rejects. */
+export async function stopDesktopStartup(vault?: string): Promise<boolean> {
+  return invokeDesktop<boolean>("desktop_stop_startup", {
+    request: vault ? { vault } : {},
   });
 }
 

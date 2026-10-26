@@ -50,6 +50,33 @@ in the launch URL or ordinary backend logs. HTTP, SSE, terminal WebSocket,
 widget, file, media, and preview traffic continue to share one immutable runtime
 target per page load.
 
+## Starting up
+
+The window paints a startup screen before any script loads (`harness/ui/index.html`)
+and keeps it until the app can render, so a start never shows a blank window.
+While `desktop_bootstrap` waits on the managed backend, the screen polls
+`desktop_startup_status`, which answers without waiting behind the start, and
+shows four steps: start the engine, load (on a first start, set up) the Modus
+home, connect this window, open Modus. The current step shows its elapsed time and
+the backend's latest output line. A first start, meaning the Vault had no
+database yet, says that it takes longer than later starts.
+
+- A backend that is alive but not yet ready is waited on for up to five minutes.
+  The first start on a new computer is far slower than later ones, so the
+  ceiling is not an estimate. After a minute the screen offers **stop waiting**
+  (`desktop_stop_startup`), which ends the start with that reason.
+- A backend that exits before readiness is started again in the foreground, up
+  to three attempts, and the screen says which attempt it is on. A start that
+  timed out or was stopped is not repeated.
+- When every attempt fails, the managed mode is given up rather than retried in
+  the background, and the screen shows what happened in plain words with
+  **try again**, **copy details** (a plain-text report with the version, step,
+  reason, engine output, and log path), **show log**, and the other backend
+  targets. Crash recovery for a backend that was already running is unchanged.
+- Each start records `managed backend ready after …` (with the time to the
+  backend's first output) or the failed attempt in `logs/desktop-backend.log`,
+  so a slow start can be diagnosed from the log.
+
 ## Window and process lifetime
 
 - Closing the main window hides Modus to the system tray. The managed backend

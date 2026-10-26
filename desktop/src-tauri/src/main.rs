@@ -22,7 +22,10 @@ use std::{
     time::Duration,
 };
 
-use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse, DesktopVaultStatus};
+use backend::{
+    BackendSupervisor, BootstrapRequest, BootstrapResponse, DesktopStartupStatus,
+    DesktopVaultStatus,
+};
 use deep_link::{DeepLinkTarget, PendingDeepLink};
 use file_open::PendingFiles;
 use media_permission::MicrophoneArm;
@@ -56,6 +59,14 @@ struct VaultRequest {
     slug: Option<String>,
 }
 
+/// Names a Vault the way [`BootstrapRequest`] does: absent means the one this
+/// desktop was launched for.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartupRequest {
+    vault: Option<String>,
+}
+
 #[tauri::command]
 async fn desktop_bootstrap(
     app: AppHandle,
@@ -76,6 +87,26 @@ async fn desktop_bootstrap(
         .map_err(|error| format!("desktop bootstrap task failed: {error}"))??;
     schedule_smoke_quit(&app);
     Ok(response)
+}
+
+/// What a managed backend start is doing, for the window waiting on
+/// `desktop_bootstrap`. Never waits behind the start it describes.
+#[tauri::command]
+fn desktop_startup_status(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: StartupRequest,
+) -> Result<DesktopStartupStatus, String> {
+    supervisor.startup_status(request.vault.as_deref())
+}
+
+/// Give up on a start in progress; the waiting `desktop_bootstrap` then fails
+/// with that reason. Returns whether a start was running.
+#[tauri::command]
+fn desktop_stop_startup(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: StartupRequest,
+) -> Result<bool, String> {
+    supervisor.stop_startup(request.vault.as_deref())
 }
 
 #[tauri::command]
@@ -438,6 +469,8 @@ fn main() {
     let app = builder
         .invoke_handler(tauri::generate_handler![
             desktop_bootstrap,
+            desktop_startup_status,
+            desktop_stop_startup,
             desktop_ui_connected,
             desktop_open_vault,
             desktop_vault_status,

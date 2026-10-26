@@ -5,9 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <title>modus</title>
+    <style>
+      /*
+       * The startup screen (components/StartupScreen.tsx). It paints before any
+       * script or stylesheet bundle has loaded, so its styles live here instead
+       * of styles/; theme tokens fall back to the default dark theme until
+       * colors.css arrives.
+       */
+      html { background: var(--bg, #000); }
+      .startup-screen {
+        position: fixed;
+        inset: 0;
+        overflow: auto;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 28vh 24px 40px;
+        box-sizing: border-box;
+        background: var(--bg, #000);
+        color: var(--text, #e0e0e0);
+        font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+        font-size: calc(11px * var(--font-scale, 1));
+      }
+      .startup-box { width: min(300px, 100%); display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+      .startup-box--failed { width: min(420px, 100%); gap: 12px; }
+      .startup-mark { align-self: center; color: var(--text, #e0e0e0); }
+      .startup-mark .mo-gap-o { stroke-dasharray: 0 120; }
+      .startup-mark--working .mo-gap-o { animation: startup-sweep 1.6s linear infinite; }
+      @keyframes startup-sweep {
+        from { stroke-dasharray: 16 104; stroke-dashoffset: 0; }
+        to { stroke-dasharray: 16 104; stroke-dashoffset: -120; }
+      }
+      .startup-title { text-align: center; color: var(--text-tertiary, #999); }
+      .startup-bar { position: relative; height: 2px; border-radius: 1px; background: var(--border, #1e1e1e); overflow: hidden; }
+      .startup-bar-done { position: absolute; left: 0; top: 0; bottom: 0; background: var(--text-secondary, #bbb); transition: width 0.4s ease; }
+      .startup-bar-step { position: absolute; top: 0; bottom: 0; overflow: hidden; transition: left 0.4s ease; }
+      .startup-bar-travel { position: absolute; top: 0; bottom: 0; width: 40%; background: var(--text-secondary, #bbb); opacity: 0.7; animation: startup-travel 1.4s ease-in-out infinite; }
+      @keyframes startup-travel { from { left: -40%; } to { left: 100%; } }
+      .startup-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+      .startup-step { display: flex; align-items: center; gap: 9px; }
+      .startup-step--waiting { color: var(--text-dim, #666); }
+      .startup-step--done { color: var(--text-tertiary, #999); }
+      .startup-step--current { color: var(--text, #e0e0e0); }
+      .startup-step-mark { width: 7px; height: 7px; flex: none; box-sizing: border-box; border: 1px solid currentColor; border-radius: 50%; }
+      .startup-step--done .startup-step-mark { background: currentColor; }
+      .startup-step--current .startup-step-mark { background: currentColor; animation: startup-pulse 1.4s ease-in-out infinite; }
+      @keyframes startup-pulse { 50% { opacity: 0.35; } }
+      .startup-step-label { flex: 1; }
+      .startup-step-time { color: var(--text-tertiary, #999); font-variant-numeric: tabular-nums; }
+      .startup-detail { min-height: 1.5em; font-size: calc(10px * var(--font-scale, 1)); line-height: 1.5; color: var(--text-dim, #666); overflow-wrap: anywhere; }
+      .startup-note { margin: 0; font-size: calc(10.5px * var(--font-scale, 1)); line-height: 1.6; color: var(--text-tertiary, #999); }
+      .startup-headline { text-align: center; font-size: calc(13px * var(--font-scale, 1)); color: var(--text, #e0e0e0); }
+      .startup-reason { margin: 0; text-align: center; line-height: 1.6; color: var(--warning, #e89b50); }
+      .startup-when { text-align: center; font-size: calc(10px * var(--font-scale, 1)); color: var(--text-dim, #666); }
+      .startup-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; margin-top: 4px; }
+      .startup-primary {
+        padding: 8px 18px;
+        background: transparent;
+        border: 1px solid var(--border-mid, #444);
+        border-radius: 3px;
+        color: var(--text, #e0e0e0);
+        font: inherit;
+        cursor: pointer;
+      }
+      .startup-primary:hover, .startup-primary:focus-visible { border-color: var(--border-focus, #888); }
+      .startup-quiet { align-self: center; padding: 4px 6px; background: none; border: 0; font: inherit; color: var(--text-dim, #666); cursor: pointer; }
+      .startup-quiet:hover, .startup-quiet:focus-visible { color: var(--text, #e0e0e0); text-decoration: underline; }
+      .startup-details { font-size: calc(10px * var(--font-scale, 1)); color: var(--text-dim, #666); }
+      .startup-details summary { text-align: center; cursor: pointer; }
+      .startup-details summary:hover { color: var(--text, #e0e0e0); }
+      .startup-details pre {
+        margin: 8px 0 0;
+        max-height: 220px;
+        overflow: auto;
+        padding: 10px;
+        background: var(--bg-raised, #0a0a0a);
+        border: 1px solid var(--border, #1e1e1e);
+        border-radius: 3px;
+        font: inherit;
+        line-height: 1.5;
+        color: var(--text-tertiary, #999);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        user-select: text;
+      }
+      .startup-other { margin-top: 6px; }
+      @media (prefers-reduced-motion: reduce) {
+        .startup-screen *, .startup-screen *::before, .startup-screen *::after { animation: none !important; transition: none !important; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="startup-screen">
+        <div class="startup-box">
+          <svg width="90" height="36" viewBox="0 0 120 48" fill="none" class="mo-logo startup-mark startup-mark--working" aria-hidden="true">
+            <defs>
+              <mask id="mo-mask-o">
+                <circle cx="88" cy="24" r="19" stroke="white" stroke-width="6" />
+                <circle class="mo-gap-o" cx="88" cy="24" r="19" stroke="black" stroke-width="6" />
+              </mask>
+            </defs>
+            <path d="M8 42 L8 6 L30 30 L52 6 L52 42" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="88" cy="24" r="19" stroke="currentColor" stroke-width="4" stroke-linecap="round" mask="url(#mo-mask-o)" />
+          </svg>
+          <div class="startup-title">starting modus</div>
+          <div class="startup-bar" role="progressbar" aria-label="starting modus">
+            <span class="startup-bar-step" style="left: 0; width: 100%"><span class="startup-bar-travel"></span></span>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

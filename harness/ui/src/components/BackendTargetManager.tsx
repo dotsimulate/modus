@@ -30,7 +30,7 @@ function targetSubtitle(target: SavedBackendTarget): string {
   return `${target.url} · used ${new Date(target.lastConnectedAt).toLocaleDateString()}`;
 }
 
-function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
+export function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
   const [targets, setTargets] = useState(() => loadBackendTargets());
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");

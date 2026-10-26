@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex, TryLockError,
     },
     thread,
@@ -25,7 +25,21 @@ use crate::vaults::{
     VaultRegistryEntry, VaultUpdateRequest,
 };
 
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
+/// How long a backend that is alive but not yet ready is waited on. A ceiling,
+/// not an expectation: the first start on a new computer is far slower than
+/// every later one, and a budget sized for later starts killed first starts that
+/// were still making progress. The window shows the wait as it happens and can
+/// stop it sooner.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(300);
+/// Readiness is published after the server listens, so verifying it is quick.
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
+/// A start that ends because the backend exited may have hit something
+/// transient, such as a database an earlier instance was still releasing, so it
+/// is tried again in the foreground where the window can say so. A start that
+/// timed out or was stopped is not repeated.
+const STARTUP_ATTEMPTS: u32 = 3;
+const STARTUP_LINES: usize = 12;
+const STARTUP_LINE_CHARS: usize = 300;
 const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
 /// The packaged backend ships no node_modules, so Bun would otherwise fetch any
 /// unresolved import from npm at runtime — unsigned code outside the release.
@@ -140,6 +154,227 @@ pub struct DesktopVaultStatus {
     pub database_path: String,
 }
 
+/// Where a managed backend start has got to. Must match `DesktopStartupPhase`
+/// in `harness/ui/src/desktopBridge.ts`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StartupPhase {
+    #[default]
+    Idle,
+    /// Checking the packaged files and creating the process container.
+    Preparing,
+    /// The process exists and has not written anything yet.
+    Launching,
+    /// The backend is writing output and has not published readiness.
+    Loading,
+    /// Readiness is published; the health route and credential are checked.
+    Verifying,
+    /// Republishing the backend on the configured Tailnet address.
+    Tailnet,
+    /// The backend exited while starting; another attempt follows shortly.
+    Retrying,
+    Ready,
+    Failed,
+}
+
+impl StartupPhase {
+    fn starting(self) -> bool {
+        !matches!(self, Self::Idle | Self::Ready | Self::Failed)
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopStartupStatus {
+    pub phase: StartupPhase,
+    pub elapsed_ms: u64,
+    /// The Vault had no database before this start, so it is being created.
+    pub first_start: bool,
+    pub attempt: u32,
+    pub attempts: u32,
+    /// The backend's latest output during this start, oldest first.
+    pub lines: Vec<String>,
+    pub error: Option<String>,
+    pub log_path: Option<String>,
+    /// The desktop's own version, for a report written from a failed start.
+    pub version: &'static str,
+}
+
+impl DesktopStartupStatus {
+    fn idle() -> Self {
+        Self {
+            phase: StartupPhase::Idle,
+            elapsed_ms: 0,
+            first_start: false,
+            attempt: 0,
+            attempts: STARTUP_ATTEMPTS,
+            lines: Vec::new(),
+            error: None,
+            log_path: None,
+            version: env!("CARGO_PKG_VERSION"),
+        }
+    }
+}
+
+#[derive(Default)]
+struct StartupState {
+    phase: StartupPhase,
+    started: Option<Instant>,
+    finished: Option<Instant>,
+    first_output: Option<Duration>,
+    first_start: bool,
+    attempt: u32,
+    lines: VecDeque<String>,
+    error: Option<String>,
+}
+
+/// What a starting backend is doing, for the window to show while it waits.
+///
+/// Kept apart from `owned`, which a start holds for its whole duration, so the
+/// window can read it at any moment without queueing behind the start itself.
+#[derive(Default)]
+struct StartupProgress {
+    state: Mutex<StartupState>,
+    stop: AtomicBool,
+}
+
+impl StartupProgress {
+    fn with_state<T>(&self, update: impl FnOnce(&mut StartupState) -> T) -> Option<T> {
+        self.state.lock().ok().map(|mut state| update(&mut state))
+    }
+
+    fn begin(&self, first_start: bool) {
+        self.stop.store(false, Ordering::SeqCst);
+        self.with_state(|state| {
+            *state = StartupState {
+                phase: StartupPhase::Preparing,
+                started: Some(Instant::now()),
+                first_start,
+                attempt: 1,
+                ..StartupState::default()
+            };
+        });
+    }
+
+    fn attempt(&self, attempt: u32) {
+        self.with_state(|state| {
+            state.attempt = attempt;
+            state.error = None;
+        });
+    }
+
+    fn set(&self, phase: StartupPhase) {
+        self.with_state(|state| state.phase = phase);
+    }
+
+    /// Record a line of backend output while the backend is still starting; the
+    /// first one also moves the start from launching to loading.
+    fn output(&self, line: &str) {
+        self.with_state(|state| {
+            if !matches!(state.phase, StartupPhase::Launching | StartupPhase::Loading) {
+                return;
+            }
+            if state.phase == StartupPhase::Launching {
+                state.phase = StartupPhase::Loading;
+                state.first_output = state.started.map(|started| started.elapsed());
+            }
+            let line = line.trim_end();
+            if line.is_empty() {
+                return;
+            }
+            state
+                .lines
+                .push_back(line.chars().take(STARTUP_LINE_CHARS).collect());
+            while state.lines.len() > STARTUP_LINES {
+                state.lines.pop_front();
+            }
+        });
+    }
+
+    fn retrying(&self, error: &str) {
+        self.with_state(|state| {
+            state.phase = StartupPhase::Retrying;
+            state.error = Some(error.to_string());
+        });
+    }
+
+    fn finish(&self, error: Option<&str>) {
+        self.with_state(|state| {
+            state.phase = if error.is_some() {
+                StartupPhase::Failed
+            } else {
+                StartupPhase::Ready
+            };
+            state.finished = Some(Instant::now());
+            state.error = error.map(str::to_string);
+        });
+    }
+
+    fn elapsed(&self) -> Duration {
+        self.with_state(|state| match (state.started, state.finished) {
+            (Some(started), Some(finished)) => finished.saturating_duration_since(started),
+            (Some(started), None) => started.elapsed(),
+            _ => Duration::ZERO,
+        })
+        .unwrap_or_default()
+    }
+
+    fn first_output(&self) -> Option<Duration> {
+        self.with_state(|state| state.first_output).flatten()
+    }
+
+    /// Ask a start in progress to give up. Returns whether one was running.
+    fn request_stop(&self) -> bool {
+        let starting = self
+            .with_state(|state| state.phase.starting())
+            .unwrap_or(false);
+        if starting {
+            self.stop.store(true, Ordering::SeqCst);
+        }
+        starting
+    }
+
+    fn stop_requested(&self) -> bool {
+        self.stop.load(Ordering::SeqCst)
+    }
+
+    fn snapshot(&self, log_path: &Path) -> DesktopStartupStatus {
+        let elapsed = self.elapsed();
+        self.with_state(|state| DesktopStartupStatus {
+            phase: state.phase,
+            elapsed_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+            first_start: state.first_start,
+            attempt: state.attempt,
+            attempts: STARTUP_ATTEMPTS,
+            lines: state.lines.iter().cloned().collect(),
+            error: state.error.clone(),
+            log_path: Some(log_path.display().to_string()),
+            version: env!("CARGO_PKG_VERSION"),
+        })
+        .unwrap_or_else(DesktopStartupStatus::idle)
+    }
+}
+
+/// Why a start failed, and whether starting again could help.
+struct StartupError {
+    message: String,
+    retry: bool,
+}
+
+impl From<String> for StartupError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            retry: false,
+        }
+    }
+}
+
+/// Seconds for a log line, e.g. `12.4 s`.
+fn seconds(duration: Duration) -> String {
+    format!("{:.1} s", duration.as_secs_f64())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadyRecord {
@@ -252,6 +487,27 @@ struct VaultBackendSupervisor {
     /// One writer per Vault, shared by every backend it spawns, so a restarted
     /// backend's drains and the supervisor's own notices rotate one file.
     log: Arc<Mutex<BackendLog>>,
+    progress: Arc<StartupProgress>,
+    /// Starts a window is waiting on. While any runs, the monitor does not start
+    /// a backend of its own between their attempts.
+    foreground_starts: AtomicUsize,
+}
+
+/// Counts one foreground start for as long as it is held.
+struct ForegroundStart<'a>(&'a AtomicUsize);
+
+impl<'a> ForegroundStart<'a> {
+    /// Returns the guard and whether another foreground start was already running.
+    fn enter(count: &'a AtomicUsize) -> (Self, bool) {
+        let joined = count.fetch_add(1, Ordering::SeqCst) > 0;
+        (Self(count), joined)
+    }
+}
+
+impl Drop for ForegroundStart<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl BackendSupervisor {
@@ -310,7 +566,24 @@ impl BackendSupervisor {
         let vault = self.vault(slug)?;
         vault.desired_managed.store(true, Ordering::SeqCst);
         vault.restart_budget_reset.store(true, Ordering::SeqCst);
-        vault.ensure_managed()
+        vault.start_managed()
+    }
+
+    /// Read without creating anything: a Vault nobody has asked for yet is idle.
+    pub fn startup_status(&self, vault: Option<&str>) -> Result<DesktopStartupStatus, String> {
+        let slug = self.requested_vault(vault)?;
+        Ok(match self.vaults.get(&vault_key(slug.as_deref()))? {
+            Some(vault) => vault.startup_status(),
+            None => DesktopStartupStatus::idle(),
+        })
+    }
+
+    pub fn stop_startup(&self, vault: Option<&str>) -> Result<bool, String> {
+        let slug = self.requested_vault(vault)?;
+        Ok(match self.vaults.get(&vault_key(slug.as_deref()))? {
+            Some(vault) => vault.progress.request_stop(),
+            None => false,
+        })
     }
 
     pub fn vault_status(&self, slug: Option<&str>) -> Result<DesktopVaultStatus, String> {
@@ -414,7 +687,7 @@ impl BackendSupervisor {
                     vault.desired_managed.store(true, Ordering::SeqCst);
                     vault.restart_budget_reset.store(true, Ordering::SeqCst);
                     thread::spawn(move || {
-                        if let Err(error) = vault.ensure_managed() {
+                        if let Err(error) = vault.start_managed() {
                             eprintln!("[desktop] autostart Vault {slug} failed: {error}");
                         }
                     });
@@ -453,7 +726,64 @@ impl VaultBackendSupervisor {
             desired_managed: AtomicBool::new(false),
             restart_budget_reset: AtomicBool::new(false),
             log,
+            progress: Arc::new(StartupProgress::default()),
+            foreground_starts: AtomicUsize::new(0),
         })
+    }
+
+    fn startup_status(&self) -> DesktopStartupStatus {
+        self.progress
+            .snapshot(&self.paths.logs.join(BACKEND_LOG_FILE))
+    }
+
+    /// Start the backend for a caller that is waiting on it — the window, the
+    /// Vault switcher, or autostart — and report each step as it goes.
+    ///
+    /// An attempt that ends because the backend exited is retried here, in the
+    /// foreground, rather than left for the monitor: a background retry is
+    /// invisible, races the window's own Try again for the same lock, and later
+    /// reloads the window out from under whatever it is showing. When every
+    /// attempt fails, the managed mode is given up so nothing retries behind the
+    /// failure the window reports.
+    fn start_managed(&self) -> Result<BootstrapResponse, String> {
+        let (_foreground, joined) = ForegroundStart::enter(&self.foreground_starts);
+        if !joined {
+            let first_start = !self.paths.root.join("data").join("harness.db").exists();
+            self.progress.begin(first_start);
+        }
+        let mut attempt = 1;
+        loop {
+            self.progress.attempt(attempt);
+            let error = match self.ensure_managed() {
+                Ok(response) => {
+                    self.progress.finish(None);
+                    return Ok(response);
+                }
+                Err(error) => error,
+            };
+            self.note(&format!(
+                "managed backend start {attempt}/{STARTUP_ATTEMPTS} failed after {}: {}",
+                seconds(self.progress.elapsed()),
+                error.message
+            ));
+            let again = error.retry
+                && attempt < STARTUP_ATTEMPTS
+                && !self.progress.stop_requested()
+                && self.desired_managed.load(Ordering::SeqCst);
+            if !again {
+                self.desired_managed.store(false, Ordering::SeqCst);
+                self.progress.finish(Some(&error.message));
+                return Err(error.message);
+            }
+            self.progress.retrying(&error.message);
+            thread::sleep(BACKEND_RESTART_BACKOFF[(attempt - 1) as usize]);
+            // Selecting another backend during the pause stops this start.
+            if !self.desired_managed.load(Ordering::SeqCst) {
+                self.progress.finish(Some(&error.message));
+                return Err(error.message);
+            }
+            attempt += 1;
+        }
     }
 
     /// Supervisor lifecycle notices go to the backend log as well as stderr: a
@@ -507,7 +837,7 @@ impl VaultBackendSupervisor {
             "managed-local" => {
                 self.desired_managed.store(true, Ordering::SeqCst);
                 self.restart_budget_reset.store(true, Ordering::SeqCst);
-                self.ensure_managed()
+                self.start_managed()
             }
             other => Err(format!("unsupported desktop backend mode: {other}")),
         }
@@ -773,7 +1103,10 @@ impl VaultBackendSupervisor {
                     let _ = fs::remove_file(&supervisor.runtime_state);
                 }
 
+                // A foreground start reports and retries its own failures; one
+                // between its attempts must not be raced by a second backend.
                 let needs_restart = supervisor.desired_managed.load(Ordering::SeqCst)
+                    && supervisor.foreground_starts.load(Ordering::SeqCst) == 0
                     && supervisor
                         .owned
                         .lock()
@@ -796,7 +1129,17 @@ impl VaultBackendSupervisor {
                     if !supervisor.desired_managed.load(Ordering::SeqCst) {
                         break;
                     }
-                    match supervisor.ensure_managed() {
+                    // A window started its own start meanwhile; it owns recovery now.
+                    if supervisor.foreground_starts.load(Ordering::SeqCst) > 0 {
+                        restart_attempts = 0;
+                        break;
+                    }
+                    supervisor.progress.begin(false);
+                    let restarted = supervisor.ensure_managed();
+                    supervisor
+                        .progress
+                        .finish(restarted.as_ref().err().map(|error| error.message.as_str()));
+                    match restarted {
                         Ok(_) => {
                             stable_since = Some(Instant::now());
                             supervisor.note(&format!(
@@ -809,8 +1152,9 @@ impl VaultBackendSupervisor {
                             break;
                         }
                         Err(error) => supervisor.note(&format!(
-                            "managed backend restart {restart_attempts}/{} failed: {error}",
-                            BACKEND_RESTART_BACKOFF.len()
+                            "managed backend restart {restart_attempts}/{} failed: {}",
+                            BACKEND_RESTART_BACKOFF.len(),
+                            error.message
                         )),
                     }
                 }
@@ -833,12 +1177,14 @@ impl VaultBackendSupervisor {
         });
     }
 
-    fn ensure_managed(&self) -> Result<BootstrapResponse, String> {
-        let startup_deadline = Instant::now() + STARTUP_TIMEOUT;
+    fn ensure_managed(&self) -> Result<BootstrapResponse, StartupError> {
         let mut owned = self
             .owned
             .lock()
             .map_err(|_| "backend supervisor lock poisoned".to_string())?;
+        // Taken after the lock: waiting behind another start is not this start's time.
+        let launched_at = Instant::now();
+        let startup_deadline = launched_at + STARTUP_TIMEOUT;
         if let Some(existing) = owned.as_mut() {
             if matches!(existing.child.try_wait(), Ok(None)) {
                 let port = existing
@@ -866,6 +1212,7 @@ impl VaultBackendSupervisor {
             }
         }
 
+        self.progress.set(StartupPhase::Preparing);
         self.paths.validate()?;
         let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
         let nonce = Uuid::new_v4().simple().to_string();
@@ -932,7 +1279,7 @@ impl VaultBackendSupervisor {
         if let Err(error) = job.assign(child.id()) {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(format!("assign backend to Job Object: {error}"));
+            return Err(format!("assign backend to Job Object: {error}").into());
         }
         #[cfg(windows)]
         if let Err(error) = OpenOptions::new()
@@ -943,12 +1290,19 @@ impl VaultBackendSupervisor {
         {
             let _ = job.terminate(1);
             let _ = child.wait();
-            return Err(format!("release assigned backend launcher: {error}"));
+            return Err(format!("release assigned backend launcher: {error}").into());
         }
+        self.progress.set(StartupPhase::Launching);
 
         let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
         if let Some(stdout) = child.stdout.take() {
-            spawn_log_drain(stdout, Arc::clone(&self.log), "stdout", None);
+            spawn_log_drain(
+                stdout,
+                Arc::clone(&self.log),
+                "stdout",
+                None,
+                Arc::clone(&self.progress),
+            );
         }
         if let Some(stderr) = child.stderr.take() {
             spawn_log_drain(
@@ -956,19 +1310,26 @@ impl VaultBackendSupervisor {
                 Arc::clone(&self.log),
                 "stderr",
                 Some(Arc::clone(&stderr_tail)),
+                Arc::clone(&self.progress),
             );
         }
 
-        let ready = match wait_for_ready(&mut child, &ready_path, startup_deadline) {
+        let ready = match wait_for_ready(&mut child, &ready_path, startup_deadline, || {
+            self.progress.stop_requested()
+        }) {
             Ok(ready) => ready,
             Err(error) => {
                 let _ = job.terminate(1);
                 let _ = child.wait();
                 let _ = fs::remove_file(&ready_path);
                 let _ = fs::remove_file(&gate_path);
-                return Err(startup_error_with_stderr(error, &stderr_tail));
+                return Err(StartupError {
+                    message: startup_error_with_stderr(error.message, &stderr_tail),
+                    retry: error.retry,
+                });
             }
         };
+        self.progress.set(StartupPhase::Verifying);
         let _ = fs::remove_file(&ready_path);
         let _ = fs::remove_file(&gate_path);
 
@@ -980,7 +1341,8 @@ impl VaultBackendSupervisor {
                 "backend readiness PID {} did not match spawned PID {}",
                 ready.pid,
                 child.id()
-            ));
+            )
+            .into());
         }
         #[cfg(windows)]
         match job.contains(ready.pid) {
@@ -991,15 +1353,17 @@ impl VaultBackendSupervisor {
                 return Err(format!(
                     "backend readiness PID {} was not contained by the supervisor Job Object",
                     ready.pid
-                ));
+                )
+                .into());
             }
             Err(error) => {
                 let _ = job.terminate(1);
                 let _ = child.wait();
-                return Err(format!("verify backend Job Object membership: {error}"));
+                return Err(format!("verify backend Job Object membership: {error}").into());
             }
         }
-        let health_status = request_local_with_transport_retry(startup_deadline, || {
+        let health_deadline = (Instant::now() + HEALTH_TIMEOUT).min(startup_deadline);
+        let health_status = request_local_with_transport_retry(health_deadline, || {
             request_local(ready.port, "GET", "/health", None)
         });
         if !matches!(health_status, Ok(200)) {
@@ -1008,7 +1372,8 @@ impl VaultBackendSupervisor {
             return Err(startup_error_with_stderr(
                 format!("managed backend failed its health verification: {health_status:?}"),
                 &stderr_tail,
-            ));
+            )
+            .into());
         }
         let auth_status = request_local(ready.port, "GET", "/api/auth/check", Some(&token));
         if !matches!(auth_status, Ok(200)) {
@@ -1017,13 +1382,17 @@ impl VaultBackendSupervisor {
             return Err(startup_error_with_stderr(
                 format!("managed backend rejected the supervisor token: {auth_status:?}"),
                 &stderr_tail,
-            ));
+            )
+            .into());
         }
+        let ready_after = launched_at.elapsed();
 
-        let tailscale = self
-            .tailscale
-            .as_ref()
-            .map(|tailscale| tailscale.reconcile(ready.port, &ready.instance_id));
+        let tailscale = self.tailscale.as_ref().map(|tailscale| {
+            if tailscale.enabled() {
+                self.progress.set(StartupPhase::Tailnet);
+            }
+            tailscale.reconcile(ready.port, &ready.instance_id)
+        });
         let response = BootstrapResponse {
             mode: "managed-local".into(),
             api_base: format!("http://127.0.0.1:{}", ready.port),
@@ -1050,6 +1419,16 @@ impl VaultBackendSupervisor {
             job,
             response: response.clone(),
         });
+        // A slow start says where its time went, so the next one can be diagnosed
+        // from the log rather than guessed at.
+        self.note(&format!(
+            "managed backend ready after {}{}",
+            seconds(ready_after),
+            self.progress
+                .first_output()
+                .map(|after| format!(" (first output after {})", seconds(after)))
+                .unwrap_or_default()
+        ));
         Ok(response)
     }
 
@@ -1213,16 +1592,25 @@ fn wait_for_ready(
     child: &mut Child,
     ready_path: &Path,
     deadline: Instant,
-) -> Result<ReadyRecord, String> {
+    stopped: impl Fn() -> bool,
+) -> Result<ReadyRecord, StartupError> {
     let mut last_parse_error = None;
     while Instant::now() < deadline {
         if let Some(status) = child
             .try_wait()
             .map_err(display_error("poll managed backend"))?
         {
-            return Err(format!(
-                "packaged backend exited before readiness ({status})"
-            ));
+            return Err(StartupError {
+                message: format!("packaged backend exited before readiness ({status})"),
+                retry: true,
+            });
+        }
+        if stopped() {
+            return Err(
+                "the start was stopped from the window before the backend was ready"
+                    .to_string()
+                    .into(),
+            );
         }
         if ready_path.is_file() {
             match fs::read(ready_path)
@@ -1244,11 +1632,13 @@ fn wait_for_ready(
         thread::sleep(Duration::from_millis(50));
     }
     Err(format!(
-        "timed out waiting for packaged backend readiness{}",
+        "timed out after {} s waiting for packaged backend readiness{}",
+        STARTUP_TIMEOUT.as_secs(),
         last_parse_error
             .map(|error| format!(": {error}"))
             .unwrap_or_default()
-    ))
+    )
+    .into())
 }
 
 fn request_local(port: u16, method: &str, path: &str, token: Option<&str>) -> Result<u16, String> {
@@ -1315,10 +1705,12 @@ fn spawn_log_drain(
     log: Arc<Mutex<BackendLog>>,
     stream_name: &'static str,
     captured: Option<Arc<Mutex<VecDeque<String>>>>,
+    progress: Arc<StartupProgress>,
 ) {
     thread::spawn(move || {
         let reader = BufReader::new(reader);
         for line in reader.lines().map_while(Result::ok) {
+            progress.output(&line);
             if let Some(captured) = captured.as_ref() {
                 if let Ok(mut lines) = captured.lock() {
                     lines.push_back(line.clone());
@@ -1495,15 +1887,23 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 mod tests {
     use std::{
         collections::VecDeque,
+        path::Path,
         process::Command,
-        sync::{Arc, Mutex},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
         time::{Duration, Instant},
     };
 
     use super::{
         configure_vault_environment, request_local_with_transport_retry, startup_error_with_stderr,
-        validated_remote_url, BackendPaths, SupervisorMap,
+        validated_remote_url, BackendPaths, DesktopStartupStatus, ForegroundStart, StartupPhase,
+        StartupProgress, SupervisorMap, STARTUP_ATTEMPTS, STARTUP_LINES, STARTUP_LINE_CHARS,
     };
+
+    #[cfg(windows)]
+    use super::wait_for_ready;
     use crate::vaults::normalize_vault_slug;
 
     #[cfg(windows)]
@@ -1655,6 +2055,141 @@ mod tests {
             });
         assert_eq!(rejected.unwrap(), 401);
         assert_eq!(http_calls, 1, "a real HTTP rejection must not be retried");
+    }
+
+    #[test]
+    fn startup_progress_records_output_only_while_the_backend_is_starting() {
+        let progress = StartupProgress::default();
+        progress.output("before any start");
+        assert!(progress.snapshot(Path::new("log")).lines.is_empty());
+
+        progress.begin(true);
+        progress.set(StartupPhase::Launching);
+        progress.output("[secrets] Created secrets file");
+        let status = progress.snapshot(Path::new("log"));
+        assert_eq!(
+            status.phase,
+            StartupPhase::Loading,
+            "the first line moves launching to loading"
+        );
+        assert!(status.first_start);
+        assert!(progress.first_output().is_some());
+
+        for i in 0..STARTUP_LINES + 3 {
+            progress.output(&format!("line {i}"));
+        }
+        progress.output(&"x".repeat(STARTUP_LINE_CHARS * 2));
+        progress.output("   ");
+        let lines = progress.snapshot(Path::new("log")).lines;
+        assert_eq!(lines.len(), STARTUP_LINES);
+        assert_eq!(lines.last().unwrap().chars().count(), STARTUP_LINE_CHARS);
+
+        progress.set(StartupPhase::Verifying);
+        progress.output("after readiness");
+        assert!(!progress
+            .snapshot(Path::new("log"))
+            .lines
+            .contains(&"after readiness".to_string()));
+    }
+
+    #[test]
+    fn startup_progress_stops_only_a_start_in_progress_and_freezes_its_time() {
+        let progress = StartupProgress::default();
+        assert!(!progress.request_stop(), "nothing is starting yet");
+        assert!(!progress.stop_requested());
+
+        progress.begin(false);
+        assert!(progress.request_stop());
+        assert!(progress.stop_requested());
+        progress.finish(Some("stopped"));
+        let finished = progress.snapshot(Path::new("log"));
+        assert_eq!(finished.phase, StartupPhase::Failed);
+        assert_eq!(finished.error.as_deref(), Some("stopped"));
+        std::thread::sleep(Duration::from_millis(30));
+        assert_eq!(
+            progress.snapshot(Path::new("log")).elapsed_ms,
+            finished.elapsed_ms,
+            "a finished start's time no longer runs"
+        );
+        assert!(
+            !progress.request_stop(),
+            "a finished start cannot be stopped"
+        );
+
+        progress.begin(false);
+        assert!(!progress.stop_requested(), "a new start clears an old stop");
+        progress.retrying("packaged backend exited before readiness");
+        progress.attempt(2);
+        let retried = progress.snapshot(Path::new("log"));
+        assert_eq!(retried.attempt, 2);
+        assert_eq!(retried.error, None);
+    }
+
+    #[test]
+    fn startup_status_serializes_the_phase_names_the_window_reads() {
+        let mut status = DesktopStartupStatus::idle();
+        status.phase = StartupPhase::Tailnet;
+        status.first_start = true;
+        let value = serde_json::to_value(&status).unwrap();
+        assert_eq!(value["phase"], "tailnet");
+        assert_eq!(value["firstStart"], true);
+        assert_eq!(value["elapsedMs"], 0);
+        assert_eq!(value["attempts"], STARTUP_ATTEMPTS);
+        for (phase, name) in [
+            (StartupPhase::Idle, "idle"),
+            (StartupPhase::Preparing, "preparing"),
+            (StartupPhase::Launching, "launching"),
+            (StartupPhase::Loading, "loading"),
+            (StartupPhase::Verifying, "verifying"),
+            (StartupPhase::Retrying, "retrying"),
+            (StartupPhase::Ready, "ready"),
+            (StartupPhase::Failed, "failed"),
+        ] {
+            assert_eq!(serde_json::to_value(phase).unwrap(), name);
+        }
+    }
+
+    #[test]
+    fn foreground_starts_count_while_held_and_report_joining() {
+        let count = AtomicUsize::new(0);
+        let (first, joined) = ForegroundStart::enter(&count);
+        assert!(!joined);
+        let (second, joined) = ForegroundStart::enter(&count);
+        assert!(joined, "a second window joins the start already running");
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+        drop(second);
+        drop(first);
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn readiness_wait_retries_an_exit_but_not_a_stop() {
+        let missing = std::env::temp_dir().join(format!(
+            "modus-ready-{}.json",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let deadline = Instant::now() + Duration::from_secs(20);
+
+        let mut exited = Command::new("cmd").args(["/C", "exit 3"]).spawn().unwrap();
+        let _ = exited.wait();
+        let error = wait_for_ready(&mut exited, &missing, deadline, || false)
+            .expect_err("an exited backend is not ready");
+        assert!(error.retry, "an exit may be transient: {}", error.message);
+        assert!(error.message.contains("exited before readiness"));
+
+        let mut running = Command::new("cmd")
+            .args(["/C", "ping -n 30 127.0.0.1 >NUL"])
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        let error = wait_for_ready(&mut running, &missing, deadline, || true)
+            .expect_err("a stopped start is not ready");
+        let _ = running.kill();
+        let _ = running.wait();
+        assert!(!error.retry, "a stop must not be retried");
+        assert!(error.message.contains("stopped"));
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]

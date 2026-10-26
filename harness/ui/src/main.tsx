@@ -117,6 +117,7 @@ import {
   acknowledgeManagedDesktopTarget,
   bindManagedDesktopTarget,
   bootstrapDesktop,
+  getDesktopStartupStatus,
   isTauriRuntime,
   type DesktopBootstrapResponse,
   type DesktopBootstrapMode,
@@ -124,6 +125,7 @@ import {
 import { installDesktopContextMenuGuard } from './desktop-context-menu'
 import { BACKEND_TARGET, configureBackendTarget } from './backendTarget'
 import { configureModusClient, modus } from './modusClient'
+import { createStartupStore, StartupScreen, type StartupStore } from './components/StartupScreen'
 
 initFavicon()
 // Before bootstrap, so the connection-error screen is covered as well.
@@ -147,12 +149,25 @@ async function renderConnectionError(root: ReturnType<typeof createRoot>, messag
   root.render(<BackendConnectionScreen message={message} />)
 }
 
+/** A managed start that failed keeps its screen and says why, with what was known. */
+async function failStartup(
+  startup: StartupStore,
+  during: 'backend' | 'connecting',
+  cause: unknown,
+) {
+  const error = cause instanceof Error ? cause.message : String(cause)
+  const status = await getDesktopStartupStatus(startup.vault).catch(() => null)
+  if (status) startup.setStatus(status)
+  startup.setStage({ kind: 'failed', during, error })
+}
+
 async function bootstrap() {
   const root = createRoot(document.getElementById('root')!)
   let params = new URLSearchParams(location.search)
   const desktopClient = isDesktopClient(location.search, location.origin)
   const nativeDesktop = isTauriRuntime() || params.get('modusDesktop') === '1'
   let managedDesktop: DesktopBootstrapResponse | null = null
+  let startup: StartupStore | null = null
 
   if (nativeDesktop) {
     const preferred = getActiveBackendTarget()
@@ -169,9 +184,27 @@ async function bootstrap() {
     const requestedVault = requestedMode === 'managed-local'
       ? params.get('modusVault') ?? preferred.vaultSlug ?? undefined
       : undefined
+    // The bootstrap call blocks until the backend is ready, which on a first
+    // start can take minutes; the screen polls the shell for each step meanwhile.
+    if (requestedMode === 'managed-local') {
+      startup = createStartupStore(requestedVault)
+      root.render(<StrictMode><StartupScreen store={startup} /></StrictMode>)
+    }
+    let response: DesktopBootstrapResponse
     try {
-      const response = await bootstrapDesktop(requestedMode, requestedUrl, requestedVault)
+      response = await bootstrapDesktop(requestedMode, requestedUrl, requestedVault)
+    } catch (cause) {
+      if (startup) {
+        await failStartup(startup, 'backend', cause)
+        return
+      }
+      const message = cause instanceof Error ? cause.message : String(cause)
+      await renderConnectionError(root, `Modus could not prepare the selected desktop backend: ${message}`)
+      return
+    }
+    try {
       if (response.mode === 'managed-local') {
+        startup?.setStage({ kind: 'connecting' })
         await bindManagedDesktopTarget(response)
         managedDesktop = response
         params.delete('modusDiscover')
@@ -196,6 +229,10 @@ async function bootstrap() {
       }
       history.replaceState(null, '', `${location.pathname}?${params.toString()}${location.hash}`)
     } catch (cause) {
+      if (startup) {
+        await failStartup(startup, 'connecting', cause)
+        return
+      }
       const message = cause instanceof Error ? cause.message : String(cause)
       await renderConnectionError(root, `Modus could not prepare the selected desktop backend: ${message}`)
       return
@@ -226,6 +263,10 @@ async function bootstrap() {
     const probe = apiBase ? await inspectBackendTarget(apiBase) : null
     if (!apiBase || !probe) {
       const label = params.get('modusTargetLabel') || (apiBase ? new URL(apiBase).host : 'selected backend')
+      if (startup && managedDesktop) {
+        await failStartup(startup, 'connecting', `Could not connect to ${label} after it started.`)
+        return
+      }
       await renderConnectionError(root, `Could not connect to ${label}. Nothing was changed on that daemon.`)
       return
     }
@@ -281,12 +322,17 @@ async function bootstrap() {
       }
       await acknowledgeManagedDesktopTarget(managedDesktop)
     } catch (cause) {
+      if (startup) {
+        await failStartup(startup, 'connecting', cause)
+        return
+      }
       const message = cause instanceof Error ? cause.message : String(cause)
       await renderConnectionError(root, `Modus could not bind the desktop UI to its managed backend: ${message}`)
       return
     }
   }
 
+  startup?.setStage({ kind: 'opening' })
   const { default: App } = await import('./App')
   root.render(
     <StrictMode>
