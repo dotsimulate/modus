@@ -981,10 +981,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40hono/node-server@1.19.15",
+      "bom-ref": "pkg:npm/%40hono/node-server@2.1.5",
       "name": "@hono/node-server",
-      "version": "1.19.15",
-      "purl": "pkg:npm/%40hono/node-server@1.19.15",
+      "version": "2.1.5",
+      "purl": "pkg:npm/%40hono/node-server@2.1.5",
       "licenses": [
         {
           "expression": "MIT"
@@ -1035,19 +1035,13 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40isaacs/cliui@8.0.2",
-      "name": "@isaacs/cliui",
-      "version": "8.0.2",
-      "purl": "pkg:npm/%40isaacs/cliui@8.0.2",
+      "bom-ref": "pkg:npm/%40isaacs/nonrecursive-glob-match@1.0.3",
+      "name": "@isaacs/nonrecursive-glob-match",
+      "version": "1.0.3",
+      "purl": "pkg:npm/%40isaacs/nonrecursive-glob-match@1.0.3",
       "licenses": [
         {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "yargs/cliui"
+          "expression": "BlueOak-1.0.0"
         }
       ]
     },
@@ -1336,24 +1330,6 @@
         {
           "type": "website",
           "url": "https://modelcontextprotocol.io"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/%40pkgjs/parseargs@0.11.0",
-      "name": "@pkgjs/parseargs",
-      "version": "0.11.0",
-      "purl": "pkg:npm/%40pkgjs/parseargs@0.11.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/pkgjs/parseargs#readme"
         }
       ]
     },
@@ -2853,78 +2829,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/ansi-regex@5.0.1",
-      "name": "ansi-regex",
-      "version": "5.0.1",
-      "purl": "pkg:npm/ansi-regex@5.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/ansi-regex"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/ansi-regex@6.2.2",
-      "name": "ansi-regex",
-      "version": "6.2.2",
-      "purl": "pkg:npm/ansi-regex@6.2.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/ansi-regex"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/ansi-styles@4.3.0",
-      "name": "ansi-styles",
-      "version": "4.3.0",
-      "purl": "pkg:npm/ansi-styles@4.3.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/ansi-styles"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/ansi-styles@6.2.3",
-      "name": "ansi-styles",
-      "version": "6.2.3",
-      "purl": "pkg:npm/ansi-styles@6.2.3",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/ansi-styles"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/bail@2.0.2",
       "name": "bail",
       "version": "2.0.2",
@@ -2938,24 +2842,6 @@
         {
           "type": "website",
           "url": "wooorm/bail"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/balanced-match@1.0.2",
-      "name": "balanced-match",
-      "version": "1.0.2",
-      "purl": "pkg:npm/balanced-match@1.0.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/juliangruber/balanced-match"
         }
       ]
     },
@@ -3015,10 +2901,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/body-parser@2.3.0",
+      "bom-ref": "pkg:npm/body-parser@2.4.0",
       "name": "body-parser",
-      "version": "2.3.0",
-      "purl": "pkg:npm/body-parser@2.3.0",
+      "version": "2.4.0",
+      "purl": "pkg:npm/body-parser@2.4.0",
       "licenses": [
         {
           "expression": "MIT"
@@ -3046,24 +2932,6 @@
         {
           "type": "website",
           "url": "https://github.com/bowser-js/bowser"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/brace-expansion@2.1.7",
-      "name": "brace-expansion",
-      "version": "2.1.7",
-      "purl": "pkg:npm/brace-expansion@2.1.7",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/juliangruber/brace-expansion"
         }
       ]
     },
@@ -3280,42 +3148,6 @@
         {
           "type": "website",
           "url": "wooorm/character-reference-invalid"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/color-convert@2.0.1",
-      "name": "color-convert",
-      "version": "2.0.1",
-      "purl": "pkg:npm/color-convert@2.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "Qix-/color-convert"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/color-name@1.1.4",
-      "name": "color-name",
-      "version": "1.1.4",
-      "purl": "pkg:npm/color-name@1.1.4",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/colorjs/color-name"
         }
       ]
     },
@@ -4473,24 +4305,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/eastasianwidth@0.2.0",
-      "name": "eastasianwidth",
-      "version": "0.2.0",
-      "purl": "pkg:npm/eastasianwidth@0.2.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/komagata/eastasianwidth"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/ecdsa-sig-formatter@1.0.11",
       "name": "ecdsa-sig-formatter",
       "version": "1.0.11",
@@ -4522,42 +4336,6 @@
         {
           "type": "website",
           "url": "jonathanong/ee-first"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/emoji-regex@8.0.0",
-      "name": "emoji-regex",
-      "version": "8.0.0",
-      "purl": "pkg:npm/emoji-regex@8.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://mths.be/emoji-regex"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/emoji-regex@9.2.2",
-      "name": "emoji-regex",
-      "version": "9.2.2",
-      "purl": "pkg:npm/emoji-regex@9.2.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://mths.be/emoji-regex"
         }
       ]
     },
@@ -4869,10 +4647,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/fast-uri@3.1.8",
+      "bom-ref": "pkg:npm/fast-uri@3.1.9",
       "name": "fast-uri",
-      "version": "3.1.8",
-      "purl": "pkg:npm/fast-uri@3.1.8",
+      "version": "3.1.9",
+      "purl": "pkg:npm/fast-uri@3.1.9",
       "licenses": [
         {
           "expression": "BSD-3-Clause"
@@ -4936,24 +4714,6 @@
         {
           "type": "website",
           "url": "pillarjs/finalhandler"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/foreground-child@3.3.1",
-      "name": "foreground-child",
-      "version": "3.3.1",
-      "purl": "pkg:npm/foreground-child@3.3.1",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/tapjs/foreground-child"
         }
       ]
     },
@@ -5139,28 +4899,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/glob@10.5.0",
+      "bom-ref": "pkg:npm/glob@14.0.3",
       "name": "glob",
-      "version": "10.5.0",
-      "purl": "pkg:npm/glob@10.5.0",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/node-glob"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/glob@13.0.6",
-      "name": "glob",
-      "version": "13.0.6",
-      "purl": "pkg:npm/glob@13.0.6",
+      "version": "14.0.3",
+      "purl": "pkg:npm/glob@14.0.3",
       "licenses": [
         {
           "expression": "BlueOak-1.0.0"
@@ -5643,6 +5385,24 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:npm/iconv-lite@0.7.3",
+      "name": "iconv-lite",
+      "version": "0.7.3",
+      "purl": "pkg:npm/iconv-lite@0.7.3",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://github.com/pillarjs/iconv-lite"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:npm/ignore@7.0.5",
       "name": "ignore",
       "version": "7.0.5",
@@ -5841,24 +5601,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/is-fullwidth-code-point@3.0.0",
-      "name": "is-fullwidth-code-point",
-      "version": "3.0.0",
-      "purl": "pkg:npm/is-fullwidth-code-point@3.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/is-fullwidth-code-point"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/is-hexadecimal@2.0.1",
       "name": "is-hexadecimal",
       "version": "2.0.1",
@@ -5926,24 +5668,6 @@
         {
           "type": "website",
           "url": "https://github.com/isaacs/isexe#readme"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/jackspeak@3.4.3",
-      "name": "jackspeak",
-      "version": "3.4.3",
-      "purl": "pkg:npm/jackspeak@3.4.3",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/jackspeak"
         }
       ]
     },
@@ -6232,24 +5956,6 @@
         {
           "type": "website",
           "url": "wooorm/longest-streak"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/lru-cache@10.4.3",
-      "name": "lru-cache",
-      "version": "10.4.3",
-      "purl": "pkg:npm/lru-cache@10.4.3",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/node-lru-cache"
         }
       ]
     },
@@ -7227,10 +6933,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/minimatch@10.2.4",
+      "bom-ref": "pkg:npm/minimatch@11.0.3",
       "name": "minimatch",
-      "version": "10.2.4",
-      "purl": "pkg:npm/minimatch@10.2.4",
+      "version": "11.0.3",
+      "purl": "pkg:npm/minimatch@11.0.3",
       "licenses": [
         {
           "expression": "BlueOak-1.0.0"
@@ -7240,42 +6946,6 @@
         {
           "type": "website",
           "url": "git@github.com:isaacs/minimatch"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/minimatch@10.2.5",
-      "name": "minimatch",
-      "version": "10.2.5",
-      "purl": "pkg:npm/minimatch@10.2.5",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "git@github.com:isaacs/minimatch"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/minimatch@9.0.9",
-      "name": "minimatch",
-      "version": "9.0.9",
-      "purl": "pkg:npm/minimatch@9.0.9",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/minimatch"
         }
       ]
     },
@@ -7479,24 +7149,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/package-json-from-dist@1.0.1",
-      "name": "package-json-from-dist",
-      "version": "1.0.1",
-      "purl": "pkg:npm/package-json-from-dist@1.0.1",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/package-json-from-dist"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/package-manager-detector@1.8.0",
       "name": "package-manager-detector",
       "version": "1.8.0",
@@ -7623,28 +7275,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/path-scurry@1.11.1",
+      "bom-ref": "pkg:npm/path-scurry@3.0.0",
       "name": "path-scurry",
-      "version": "1.11.1",
-      "purl": "pkg:npm/path-scurry@1.11.1",
-      "licenses": [
-        {
-          "expression": "BlueOak-1.0.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/isaacs/path-scurry"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/path-scurry@2.0.2",
-      "name": "path-scurry",
-      "version": "2.0.2",
-      "purl": "pkg:npm/path-scurry@2.0.2",
+      "version": "3.0.0",
+      "purl": "pkg:npm/path-scurry@3.0.0",
       "licenses": [
         {
           "expression": "BlueOak-1.0.0"
@@ -7803,10 +7437,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/qs@6.16.0",
+      "bom-ref": "pkg:npm/qs@6.17.1",
       "name": "qs",
-      "version": "6.16.0",
-      "purl": "pkg:npm/qs@6.16.0",
+      "version": "6.17.1",
+      "purl": "pkg:npm/qs@6.17.1",
       "licenses": [
         {
           "expression": "BSD-3-Clause"
@@ -8397,24 +8031,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/signal-exit@4.1.0",
-      "name": "signal-exit",
-      "version": "4.1.0",
-      "purl": "pkg:npm/signal-exit@4.1.0",
-      "licenses": [
-        {
-          "expression": "ISC"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/tapjs/signal-exit"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/simple-git@4.0.1",
       "name": "simple-git",
       "version": "4.0.1",
@@ -8505,42 +8121,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/string-width@4.2.3",
-      "name": "string-width",
-      "version": "4.2.3",
-      "purl": "pkg:npm/string-width@4.2.3",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/string-width"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/string-width@5.1.2",
-      "name": "string-width",
-      "version": "5.1.2",
-      "purl": "pkg:npm/string-width@5.1.2",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "sindresorhus/string-width"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/stringify-entities@4.0.4",
       "name": "stringify-entities",
       "version": "4.0.4",
@@ -8554,42 +8134,6 @@
         {
           "type": "website",
           "url": "wooorm/stringify-entities"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/strip-ansi@6.0.1",
-      "name": "strip-ansi",
-      "version": "6.0.1",
-      "purl": "pkg:npm/strip-ansi@6.0.1",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/strip-ansi"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/strip-ansi@7.2.0",
-      "name": "strip-ansi",
-      "version": "7.2.0",
-      "purl": "pkg:npm/strip-ansi@7.2.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/strip-ansi"
         }
       ]
     },
@@ -8847,10 +8391,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/undici@7.29.1",
+      "bom-ref": "pkg:npm/undici@7.30.1",
       "name": "undici",
-      "version": "7.29.1",
-      "purl": "pkg:npm/undici@7.29.1",
+      "version": "7.30.1",
+      "purl": "pkg:npm/undici@7.30.1",
       "licenses": [
         {
           "expression": "MIT"
@@ -9171,42 +8715,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/wrap-ansi@7.0.0",
-      "name": "wrap-ansi",
-      "version": "7.0.0",
-      "purl": "pkg:npm/wrap-ansi@7.0.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/wrap-ansi"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:npm/wrap-ansi@8.1.0",
-      "name": "wrap-ansi",
-      "version": "8.1.0",
-      "purl": "pkg:npm/wrap-ansi@8.1.0",
-      "licenses": [
-        {
-          "expression": "MIT"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "chalk/wrap-ansi"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:npm/wrappy@1.0.2",
       "name": "wrappy",
       "version": "1.0.2",
@@ -9261,10 +8769,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/zod@4.4.3",
+      "bom-ref": "pkg:npm/zod@4.6.7",
       "name": "zod",
-      "version": "4.4.3",
-      "purl": "pkg:npm/zod@4.4.3",
+      "version": "4.6.7",
+      "purl": "pkg:npm/zod@4.6.7",
       "licenses": [
         {
           "expression": "MIT"
