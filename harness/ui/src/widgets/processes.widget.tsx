@@ -9,6 +9,7 @@ import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetUiState } from "./ui-state";
 import { sortProcesses, type ProcessSort } from "./process-order";
+import { canOpenProcess, killNeedsConfirm, openProcessSession } from "./process-actions";
 
 type ProcessesConfig = WidgetBase & {
   type: "processes";
@@ -55,6 +56,7 @@ export default function ProcessesWidget({ config, widgetId, onSelectSession, pag
   );
   const { setHeaderSuffix } = useWidgetChrome();
   const [killingId, setKillingId] = useState<string | null>(null);
+  const [confirmingKillId, setConfirmingKillId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const snapshot = await modus.listProcesses();
@@ -157,19 +159,36 @@ export default function ProcessesWidget({ config, widgetId, onSelectSession, pag
               )}
             </div>
             <div className="proc-actions">
-              {!isMe && (
+              {!isMe && canOpenProcess(proc) && (
                 <button
                   className="proc-jump"
-                  onClick={() => { if (pageContext) { pageContext.set("selectedSession", proc.id); } else { onSelectSession(proc.id); } }}
+                  onClick={() => openProcessSession(proc.id, pageContext, onSelectSession)}
                   title="Open session"
                 >
                   open
                 </button>
               )}
-              {proc.canKill && !isMe && (
+              {proc.canKill && confirmingKillId === proc.id && (
+                <>
+                  <button
+                    className="proc-kill proc-kill--confirm"
+                    onClick={() => { setConfirmingKillId(null); void handleKill(proc.id); }}
+                    title={`This process is ${proc.status}. Killing it ends the work in progress and everything it started.`}
+                  >
+                    confirm kill
+                  </button>
+                  <button className="proc-jump" onClick={() => setConfirmingKillId(null)}>
+                    cancel
+                  </button>
+                </>
+              )}
+              {proc.canKill && confirmingKillId !== proc.id && (
                 <button
                   className="proc-kill"
-                  onClick={() => { void handleKill(proc.id); }}
+                  onClick={() => {
+                    if (killNeedsConfirm(proc)) setConfirmingKillId(proc.id);
+                    else void handleKill(proc.id);
+                  }}
                   disabled={killingId === proc.id}
                   title="Kill this process (aborts provider, tears down subprocess)"
                 >

@@ -234,6 +234,11 @@
   border-color: var(--error);
 }
 
+.proc-kill--confirm {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 .proc-kill:disabled {
   opacity: 0.5;
   cursor: default;

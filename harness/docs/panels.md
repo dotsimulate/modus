@@ -169,6 +169,12 @@ event or start time across process kinds. **Newest started** orders by start
 time instead. The selection persists per widget, user profile, and project.
 This is the current process snapshot, not a history of completed processes.
 
+Every row can be killed, including the selected session. A process that is
+`starting`, `running`, or `paused` asks for confirmation first, since the kill
+ends work in progress. **Open** selects the session in the enclosing scope, or
+opens it in the chat view on a page without one. Stranded OS processes have no
+transcript, so they offer only **kill**.
+
 ---
 
 ## 4. `LayoutNode` Tree
