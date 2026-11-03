@@ -2550,6 +2550,7 @@ export function forceClearActiveSession(
   sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
   if (!session) return false;
+  const previousStatus = session.status;
 
   try {
     if (session.pauseResolver) {
@@ -2580,6 +2581,11 @@ export function forceClearActiveSession(
     session.watchers.clear();
 
     flushPendingAssistantTurn(session, { type: "system", subtype: "interrupted", reason });
+    // Provider events stop once this session leaves the active map, so without
+    // this notice an open transcript stays on "running" until it is reloaded.
+    if (shouldAnnounceReclaim(previousStatus)) {
+      announceProcessEnded(session, "Session process ended", reason, previousStatus);
+    }
     session.status = status;
     updateSessionStatus(session.sessionId, status);
     emitGlobalSessionEvent({
@@ -2595,6 +2601,7 @@ export function forceClearActiveSession(
   } finally {
     revokeSessionMcpCredentials(sessionId);
     activeSessions.delete(sessionId);
+    closeSessionSubscribers(session);
     notifySessionReleased(sessionId);
     sseLog("SESSION-FORCE-CLEARED", sessionId, `${reason} status=${status}`);
   }
@@ -2630,6 +2637,51 @@ function sampleIdleSessions(sessions: ActiveSession[], now: number, table: Proce
 }
 
 /**
+ * Record that a session's process is gone and tell any open transcript. The
+ * client settles on this event, so it must reach subscribers before they close.
+ */
+function announceProcessEnded(
+  session: ActiveSession,
+  headline: string,
+  reason: string,
+  previousStatus: SessionStatus,
+): void {
+  session.seq++;
+  const event = {
+    type: "system",
+    subtype: "reclaimed",
+    reason,
+    previousStatus,
+    message: `${headline}: ${reason}. Sending a message starts a new process; ` +
+      `anything running in the background did not survive.`,
+  };
+  addEvent(session.sessionId, session.seq, event.type, event.subtype, JSON.stringify(event));
+  insertMessage({
+    sessionId: session.sessionId,
+    seq: session.seq,
+    role: "system",
+    content: event.message,
+    createdAt: Date.now(),
+  });
+  // The notice is written by the harness, not by the conversation, so it must
+  // not re-order the session list. A user who left a chat idle for two days
+  // finds it back at the top otherwise, looking like something replied.
+  syncSessionMessageCount(session.sessionId, { touchActivity: false });
+  broadcastEventToSession(session, event, session.seq);
+}
+
+/**
+ * Release a transcript stream. Without this the HTTP response stays open on its
+ * keepalive and the UI keeps presenting a session that has already ended.
+ */
+function closeSessionSubscribers(session: ActiveSession): void {
+  for (const sub of session.subscribers) {
+    try { sub.close(); } catch { /* the stream may already be gone */ }
+  }
+  session.subscribers.clear();
+}
+
+/**
  * End a session's provider process and drop it from the active map.
  *
  * The reason reaches the user three ways because each survives a different
@@ -2649,28 +2701,7 @@ function reclaimSession(sessionId: string, reason: string, now: number): void {
   flushPendingAssistantTurn(session, { type: "done", reason });
   const announce = shouldAnnounceReclaim(previousStatus);
   if (announce) {
-    session.seq++;
-    const event = {
-      type: "system",
-      subtype: "reclaimed",
-      reason,
-      previousStatus,
-      message: `Session process reclaimed: ${reason}. Sending a message starts a new process; ` +
-        `anything running in the background did not survive.`,
-    };
-    addEvent(sessionId, session.seq, event.type, event.subtype, JSON.stringify(event));
-    insertMessage({
-      sessionId,
-      seq: session.seq,
-      role: "system",
-      content: event.message,
-      createdAt: Date.now(),
-    });
-    // The notice is written by the harness, not by the conversation, so it must
-    // not re-order the session list. A user who left a chat idle for two days
-    // finds it back at the top otherwise, looking like something replied.
-    syncSessionMessageCount(sessionId, { touchActivity: false });
-    broadcastEventToSession(session, event, session.seq);
+    announceProcessEnded(session, "Session process reclaimed", reason, previousStatus);
   }
 
   if (previousStatus !== "done" && previousStatus !== "error") {
@@ -2687,12 +2718,7 @@ function reclaimSession(sessionId: string, reason: string, now: number): void {
 
   try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
 
-  // Release the transcript stream. Without this the HTTP response stays open on
-  // its keepalive and the UI keeps presenting a session that has already ended.
-  for (const sub of session.subscribers) {
-    try { sub.close(); } catch { /* the stream may already be gone */ }
-  }
-  session.subscribers.clear();
+  closeSessionSubscribers(session);
 
   // Last, so the final assistant turn flushed above still reaches move hooks.
   notifySessionReleased(sessionId);

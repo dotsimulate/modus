@@ -27,6 +27,40 @@ describe("eventReducer init session identity", () => {
   });
 });
 
+describe("eventReducer reclaimed notice", () => {
+  test("settles a session killed mid-turn instead of leaving the turn on screen", () => {
+    let state = createInitialState("ses-killed");
+    state = reduceEvent(state, { type: "system", subtype: "init", session_id: "ses-killed", model: "m" }, 1);
+    state = {
+      ...state,
+      _streamingText: "partial",
+      _streamingThinking: "thinking",
+      _pendingToolCalls: new Map([["tool-1", { id: "tool-1", name: "Bash", input: {} } as any]]),
+      activeToolName: "Bash",
+      activeToolElapsed: 4,
+      pendingPermissions: [{ requestId: "perm-1", toolName: "Bash", toolInput: {} } as any],
+      streamFeed: "feed",
+    };
+    expect(state.status).toBe("running");
+
+    state = reduceEvent(state, {
+      type: "system",
+      subtype: "reclaimed",
+      message: "Session process ended: process killed.",
+    }, 2);
+
+    expect(state.status).toBe("done");
+    expect(state.messages.at(-1)).toMatchObject({ role: "system", content: "Session process ended: process killed." });
+    expect(state._streamingText).toBe("");
+    expect(state._streamingThinking).toBe("");
+    expect(state._pendingToolCalls.size).toBe(0);
+    expect(state.activeToolName).toBeUndefined();
+    expect(state.activeToolElapsed).toBeUndefined();
+    expect(state.pendingPermissions).toEqual([]);
+    expect(state.streamFeed).toBe("");
+  });
+});
+
 describe("eventReducer user prompt dedup", () => {
   /** What move-runner injects: the gathered block, then a blank line, then the prompt. */
   const withMoveContext = (move: string, context: string, prompt: string) =>

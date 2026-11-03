@@ -102,7 +102,8 @@ backstop.
 A reclaimed session persists a `system` / `reclaimed` event and a system message
 naming the reason, broadcasts a status change, and closes its SSE subscribers.
 An open transcript therefore shows why the session ended rather than silently
-never emitting again.
+never emitting again. A session force-cleared by a kill or a timed-out stop does
+the same, so a transcript watching it settles instead of staying on `running`.
 
 Reclaiming also releases the session's move API registrations from memory. Their
 tokens stay recoverable from the project's move registry, as after a restart; see

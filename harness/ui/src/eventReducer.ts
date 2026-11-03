@@ -339,6 +339,7 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       : "Session process reclaimed.";
     return {
       ...s,
+      ...clearedTurnState(),
       status: "done",
       messages: [...s.messages, { id: nextMsgId(), role: "system", content, timestamp: ts }],
     };
@@ -1107,6 +1108,26 @@ function resultTargetIndex(msgs: Message[]): number {
   return -1;
 }
 
+/** What a live turn leaves behind, cleared once nothing is left to finish it. */
+function clearedTurnState(): Pick<ReducerState,
+  | "_streamingText" | "_streamingThinking" | "_pendingToolCalls" | "_subTasks"
+  | "_activeAgentToolId" | "_activeSubTaskId" | "activeToolName" | "activeToolElapsed"
+  | "pendingPermissions" | "streamFeed"
+> {
+  return {
+    _streamingText: "",
+    _streamingThinking: "",
+    _pendingToolCalls: new Map(),
+    _subTasks: new Map(),
+    _activeAgentToolId: undefined,
+    _activeSubTaskId: undefined,
+    activeToolName: undefined,
+    activeToolElapsed: undefined,
+    pendingPermissions: [],
+    streamFeed: "",
+  };
+}
+
 function reduceResult(s: ReducerState, m: any, ts: number): ReducerState {
   const msgs = [...s.messages];
   const target = resultTargetIndex(msgs);
@@ -1161,15 +1182,6 @@ function reduceResult(s: ReducerState, m: any, ts: number): ReducerState {
     totalCost: s.totalCost + (m.total_cost_usd ?? 0),
     totalInputTokens: s.totalInputTokens + (m.input_tokens ?? 0),
     totalOutputTokens: s.totalOutputTokens + (m.output_tokens ?? 0),
-    _streamingText: "",
-    _streamingThinking: "",
-    _pendingToolCalls: new Map(),
-    _subTasks: new Map(),
-    _activeAgentToolId: undefined,
-    _activeSubTaskId: undefined,
-    activeToolName: undefined,
-    activeToolElapsed: undefined,
-    pendingPermissions: [],
-    streamFeed: "",
+    ...clearedTurnState(),
   };
 }
