@@ -212,7 +212,7 @@ describe("startup screen rendering", () => {
 
 describe("first paint", () => {
   const indexHtml = readFileSync(join(import.meta.dir, "..", "..", "ui", "index.html"), "utf8");
-  const style = indexHtml.slice(indexHtml.indexOf("<style>"), indexHtml.indexOf("</style>"));
+  const style = readFileSync(join(import.meta.dir, "..", "..", "ui", "public", "startup.css"), "utf8");
   const root = indexHtml.slice(indexHtml.indexOf('<div id="root">'), indexHtml.indexOf("<script"));
 
   test("the page paints the startup splash before any script runs", () => {
@@ -220,9 +220,17 @@ describe("first paint", () => {
     expect(root).toContain("startup-mark--working");
     expect(root).toContain("startup-bar-travel");
     expect(root).toContain("starting modus");
+    expect(indexHtml).toContain('<link rel="stylesheet" href="/startup.css">');
   });
 
-  test("every startup class the React screens use is styled in index.html", () => {
+  // The desktop shell nonces every <style> in index.html; a nonce in style-src
+  // makes the WebView ignore 'unsafe-inline' and block the runtime <style>
+  // elements that apply project themes and fonts.
+  test("index.html has no <style> element", () => {
+    expect(indexHtml).not.toMatch(/<style[\s>]/i);
+  });
+
+  test("every startup class the React screens use is styled in startup.css", () => {
     const failure = describeFailure(failed("x"), status("failed"), 0);
     const markup = [
       renderToStaticMarkup(createElement(StartupSplash, { title: "opening modus" })),
