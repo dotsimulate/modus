@@ -450,7 +450,7 @@ verbatim.
 - Source: https://github.com/googleapis/js-genai#readme
 - License text: **JAV-0004** — Apache-2.0
 
-### @hono/node-server 2.1.5
+### @hono/node-server 2.1.6
 
 - License: `MIT`
 - Source: https://github.com/honojs/node-server
@@ -1868,7 +1868,7 @@ verbatim.
 - Source: https://highlightjs.org/
 - License text: **JAV-0138** — BSD-3-Clause
 
-### hono 4.13.13
+### hono 4.13.16
 
 - License: `MIT`
 - Source: https://hono.dev
@@ -5402,7 +5402,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### JAV-0020 — MIT
 
-Applies to 1 component: @hono/node-server 2.1.5.
+Applies to 1 component: @hono/node-server 2.1.6.
 
 ```text
 MIT License
@@ -10420,7 +10420,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### JAV-0139 — MIT
 
-Applies to 1 component: hono 4.13.13.
+Applies to 1 component: hono 4.13.16.
 
 ```text
 MIT License

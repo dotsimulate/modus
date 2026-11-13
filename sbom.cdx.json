@@ -981,10 +981,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40hono/node-server@2.1.5",
+      "bom-ref": "pkg:npm/%40hono/node-server@2.1.6",
       "name": "@hono/node-server",
-      "version": "2.1.5",
-      "purl": "pkg:npm/%40hono/node-server@2.1.5",
+      "version": "2.1.6",
+      "purl": "pkg:npm/%40hono/node-server@2.1.6",
       "licenses": [
         {
           "expression": "MIT"
@@ -5223,10 +5223,10 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/hono@4.13.13",
+      "bom-ref": "pkg:npm/hono@4.13.16",
       "name": "hono",
-      "version": "4.13.13",
-      "purl": "pkg:npm/hono@4.13.13",
+      "version": "4.13.16",
+      "purl": "pkg:npm/hono@4.13.16",
       "licenses": [
         {
           "expression": "MIT"
