@@ -5,9 +5,9 @@
   "metadata": {
     "component": {
       "type": "application",
-      "bom-ref": "pkg:generic/modus@0.3.6",
+      "bom-ref": "pkg:generic/modus@0.3.7",
       "name": "Modus",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "licenses": [
         {
           "license": {
@@ -15,7 +15,7 @@
           }
         }
       ],
-      "purl": "pkg:generic/modus@0.3.6"
+      "purl": "pkg:generic/modus@0.3.7"
     },
     "properties": [
       {
