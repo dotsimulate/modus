@@ -19,10 +19,15 @@ import {
 } from "../../providers/antigravity-runtime";
 import {
   ANTIGRAVITY_CLI_MISSING,
+  ANTIGRAVITY_SANDBOX_FAILURE_NOTICE,
   antigravityLaunchArgs,
   antigravityToolOutput,
   createAntigravityProvider,
+  isSandboxStartFailure,
   normalizeAntigravityToolCall,
+  requestsSandboxBypass,
+  sandboxRequested,
+  toolDecision,
 } from "../../providers/antigravity";
 
 const testRoot = mkdtempSync(join(tmpdir(), "modus-antigravity-provider-"));
@@ -249,7 +254,7 @@ describe("Antigravity provider", () => {
       name: "antigravity",
       family: "antigravity",
       supportsMcp: true,
-      messageDelivery: "next-turn",
+      messageDelivery: "steer",
     });
     expect(ProfileSchema.safeParse({
       provider: "antigravity",
@@ -263,6 +268,161 @@ describe("Antigravity provider", () => {
   test("launches agy acp, adding --sandbox only when requested", () => {
     expect(antigravityLaunchArgs({})).toEqual(["acp"]);
     expect(antigravityLaunchArgs({ sandbox: true })).toEqual(["acp", "--sandbox"]);
+  });
+
+  test("serves HTTP MCP servers from a per-session worker, as the ACP guide requires", () => {
+    expect(antigravityLaunchArgs({}, [{ type: "stdio" }])).toEqual(["acp"]);
+    expect(antigravityLaunchArgs({}, [{ type: "stdio" }, { type: "http" }])).toEqual(["acp", "--process-per-session"]);
+    expect(antigravityLaunchArgs({ sandbox: true }, [{ type: "sse" }])).toEqual(["acp", "--sandbox", "--process-per-session"]);
+  });
+
+  test("reads a Claude-named tools list through Antigravity's tool names", () => {
+    const { ctx } = makeHarness({ permissionPolicy: "bypass", profile: { tools: ["Read", "Bash", "WebSearch"] } });
+    expect(toolDecision(ctx, "run_command")).toBe("allow");
+    expect(toolDecision(ctx, "manage_task")).toBe("allow");
+    expect(toolDecision(ctx, "read_file")).toBe("allow");
+    expect(toolDecision(ctx, "search_web")).toBe("allow");
+    expect(toolDecision(ctx, "write_file")).toBe("deny");
+    expect(toolDecision(ctx, "edit_file")).toBe("deny");
+    // MCP tools are outside the built-in allowlist, as on Claude Code.
+    expect(toolDecision(ctx, "mcp_echo_echo")).toBe("allow");
+    expect(toolDecision(ctx, "modus_submit")).toBe("allow");
+    // Native names work too, and a tool switched on overrides the list.
+    ctx.session._configOverrides.toolStates = { write_file: "on", Bash: "off" };
+    expect(toolDecision(ctx, "write_file")).toBe("allow");
+    expect(toolDecision(ctx, "run_command")).toBe("deny");
+  });
+
+  test("applies disallowedTools and a mid-session permission policy by shared names", () => {
+    const { ctx } = makeHarness({ permissionPolicy: "bypass", profile: { disallowedTools: ["Write", "mcp__echo"] } });
+    expect(toolDecision(ctx, "write_file")).toBe("deny");
+    expect(toolDecision(ctx, "mcp_echo_echo")).toBe("deny");
+    expect(toolDecision(ctx, "mcp_other_tool")).toBe("allow");
+    expect(toolDecision(ctx, "run_command")).toBe("allow");
+    ctx.session._configOverrides.permissionPolicy = { default: "approve", requireApproval: ["Bash"] };
+    expect(toolDecision(ctx, "run_command")).toBe("ask");
+    expect(toolDecision(ctx, "read_file")).toBe("allow");
+  });
+
+  test("tells the user and the transcript why Modus blocked a tool", async () => {
+    const capture = join(testRoot, `blocked-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture, profile: { tools: ["Read", "Write", "Edit"] } });
+    session.initialContent = "run a command";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    expect(events.some((event) => event.subtype === "permission_request")).toBe(false);
+    expect(capturedRequests(capture).find((entry) => entry.id === "permission-command")?.result?.outcome?.optionId).toBe("deny");
+    const notices = events.filter((event) => event.subtype === "provider_message");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].content).toContain("Modus blocked `run_command`");
+    expect(notices[0].content).toContain("Read, Write, Edit");
+    expect(notices[0].content).toContain("Bash or PowerShell");
+    await provider.dispose?.(session);
+  });
+
+  test("reports a restricted tool Antigravity ran without asking Modus", async () => {
+    const { provider, session, ctx, events } = makeHarness({
+      permissionPolicy: "bypass",
+      profile: { tools: ["Bash"], providerControls: { antigravity: { mode: "default" } } },
+    });
+    session.initialContent = "read-unasked";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const notice = events.find((event) => event.subtype === "provider_message");
+    expect(notice?.content).toContain("Antigravity ran `read_file` without asking Modus");
+    expect(notice?.content).toContain("In default mode Antigravity only asks before commands and file edits.");
+    await provider.dispose?.(session);
+  });
+
+  test("names a sandbox that cannot start, once per session", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "sandbox-fail";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    provider.sendMessage(ctx, "sandbox-fail again");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    const notices = events.filter((event) => event.subtype === "provider_message");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].content).toContain(ANTIGRAVITY_SANDBOX_FAILURE_NOTICE);
+    expect(isSandboxStartFailure({ output: "Command failed to run: exebox: creating sandbox: x" })).toBe(true);
+    expect(isSandboxStartFailure("exit code 1")).toBe(false);
+    await provider.dispose?.(session);
+  });
+
+  test("asks before a sandbox escape even under a bypass policy", async () => {
+    const capture = join(testRoot, `escape-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({
+      permissionPolicy: "bypass",
+      capture,
+      profile: { providerControls: { antigravity: { sandbox: true } } },
+    });
+    session.initialContent = "bypass the sandbox";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.subtype === "permission_request"));
+    const request = events.find((event) => event.subtype === "permission_request");
+    expect(request).toMatchObject({ toolName: "run_command", input: { BypassSandbox: true }, interactive: true });
+    session.pendingPermissions.get(request.requestId).resolve({ behavior: "deny" });
+    await waitFor(() => events.some((event) => event.type === "result"));
+    expect(capturedRequests(capture).find((entry) => entry.id === "permission-command")?.result?.outcome?.optionId).toBe("deny");
+    expect(requestsSandboxBypass({ BypassSandbox: true })).toBe(true);
+    expect(sandboxRequested({ mode: "auto" })).toBe(true);
+    expect(sandboxRequested({ mode: "default" })).toBe(false);
+    await provider.dispose?.(session);
+  });
+
+  test("ends a turn at maxTurns with error_max_turns", async () => {
+    const capture = join(testRoot, `max-turns-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture });
+    ctx.opts.maxTurns = 2;
+    session.initialContent = "loop forever";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    expect(events.find((event) => event.type === "result")).toMatchObject({ subtype: "error_max_turns", stop_reason: "max_turns", num_turns: 2 });
+    expect(capturedRequests(capture).some((entry) => entry.method === "session/cancel")).toBe(true);
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("steers a running turn with a mid-turn message", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "a steerable task";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "stream_event"));
+    expect(await provider.steerMessage!(ctx, "also check the tests")).toBe(true);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    expect(events.find((event) => event.type === "result")).toMatchObject({
+      subtype: "success",
+      result: "working (steered: also check the tests)",
+      input_tokens: 130,
+      output_tokens: 35,
+    });
+    expect(session.status).toBe("idle");
+    expect(await provider.steerMessage!(ctx, "after the turn")).toBe(false);
+    await provider.dispose?.(session);
+  });
+
+  test("falls back to the queue when Antigravity refuses a steer", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "a nosteer task";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "stream_event"));
+    expect(await provider.steerMessage!(ctx, "too late")).toBe(false);
+    expect(events.some((event) => event.subtype === "provider_message")).toBe(false);
+    provider.abort(session);
+    await waitFor(() => events.some((event) => event.type === "done"));
+    await provider.dispose?.(session);
+  });
+
+  test("applies tool and turn-limit changes without relaunching agy", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "read-unasked";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    provider.updateConfig!(session, { tools: ["Read"], toolStates: { Bash: "off" }, maxTurns: 3 });
+    expect(session._providerState.restartBeforeNextTurn).toBe(false);
+    provider.updateConfig!(session, { providerControls: { antigravity: { sandbox: true } } });
+    expect(session._providerState.restartBeforeNextTurn).toBe(true);
+    await provider.dispose?.(session);
   });
 
   test("normalizes MCP tool names and drops Antigravity's toolSummary", () => {

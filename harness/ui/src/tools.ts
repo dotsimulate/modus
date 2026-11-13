@@ -227,18 +227,62 @@ export type ToolState = "inherit" | "on" | "off";
 
 export type ToolStates = Record<string, ToolState>;
 
-/** Is this tool enabled given its state and the profile baseline? */
+/**
+ * Whether a profile or toggle entry names this tool, directly or as a shared
+ * name. Without a map (Claude Code, Codex, ...) names match exactly, as those
+ * backends match them; mapped providers match case-insensitively, as theirs do.
+ */
+function entryCoversTool(entry: string, tool: string, toolAliases?: Record<string, string[]>): boolean {
+  if (!toolAliases) return entry === tool;
+  const lowerEntry = entry.toLowerCase();
+  const lowerTool = tool.toLowerCase();
+  if (lowerEntry === lowerTool) return true;
+  return Object.entries(toolAliases ?? {}).some(([shared, natives]) =>
+    shared.toLowerCase() === lowerEntry && natives.some((native) => native.toLowerCase() === lowerTool));
+}
+
+/**
+ * The toggle that applies to a tool, matching the backend's precedence
+ * (providers/tool-restrictions.ts): a toggle on the tool's own name wins;
+ * otherwise one on a shared name that covers it, with "off" beating "on".
+ */
+export function effectiveToolState(
+  tool: string,
+  states: ToolStates,
+  toolAliases?: Record<string, string[]>,
+): ToolState {
+  const direct = states[tool];
+  if (direct === "on" || direct === "off") return direct;
+  let found: ToolState = "inherit";
+  for (const [entry, state] of Object.entries(states)) {
+    if (state !== "on" && state !== "off") continue;
+    if (!entryCoversTool(entry, tool, toolAliases)) continue;
+    if (state === "off") return "off";
+    found = "on";
+  }
+  return found;
+}
+
+/**
+ * Is this tool enabled given its state and the profile baseline?
+ *
+ * Profiles list tools by the shared Modus/Claude names (`Read`, `Bash`, ...).
+ * For a provider with its own names, `toolAliases` (from its capabilities) maps
+ * a shared name onto native tools, so the grid shows what the backend enforces.
+ */
 export function isToolEnabled(
   tool: string,
   state: ToolState,
   profileTools: string[] | "all",
+  toolAliases?: Record<string, string[]>,
 ): boolean {
   if (state === "on") return true;
   if (state === "off") return false;
   // inherit — MCP tools default to enabled (backend uses disallowedTools blocklist)
   if (tool.startsWith("mcp__")) return true;
   // inherit — check profile for built-in tools
-  return profileTools === "all" || profileTools.includes(tool);
+  if (profileTools === "all" || profileTools.includes(tool)) return true;
+  return profileTools.some((entry) => entryCoversTool(entry, tool, toolAliases));
 }
 
 /** Parse MCP tool names into ToolGroups by server name.

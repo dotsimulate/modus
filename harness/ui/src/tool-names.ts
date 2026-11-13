@@ -9,11 +9,14 @@ export function canonicalToolName(name: string): string {
   return name.toLowerCase().replace(/[_-]/g, "");
 }
 
+// Antigravity spells its arguments in PascalCase (`Path`, `TargetFile`,
+// `CommandLine`, `Content`).
 const PATH_KEYS = [
   "file_path", "filePath", "target_file", "target_directory", "directory", "path", "notebook_path",
+  "Path", "TargetFile", "AbsolutePath",
 ] as const;
-const COMMAND_KEYS = ["command", "cmd", "script"] as const;
-const WRITE_CONTENT_KEYS = ["content", "contents"] as const;
+const COMMAND_KEYS = ["command", "cmd", "script", "CommandLine"] as const;
+const WRITE_CONTENT_KEYS = ["content", "contents", "Content"] as const;
 
 export function toolInputPath(input: Record<string, unknown> | undefined): string | undefined {
   if (!input) return undefined;
@@ -45,7 +48,35 @@ export function toolWriteContent(input: Record<string, unknown> | undefined): st
   return undefined;
 }
 
-export type ToolFamily = "read" | "write" | "edit" | "shell" | "todo" | "grep" | "list" | "web";
+export type ToolEditHunk = { oldString: string; newString: string };
+
+/**
+ * Every replacement an edit call carries: Claude `old_string`/`new_string`, a
+ * MultiEdit-style `edits` array, or Antigravity `ReplacementChunks` of
+ * `TargetContent`/`ReplacementContent`. Empty when the input carries none.
+ */
+export function toolEditHunks(input: Record<string, unknown> | undefined): ToolEditHunk[] {
+  if (!input) return [];
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  if (Array.isArray(input.edits)) {
+    return (input.edits as Array<Record<string, unknown>>).map((edit) => ({
+      oldString: text(edit?.old_string),
+      newString: text(edit?.new_string),
+    }));
+  }
+  if (Array.isArray(input.ReplacementChunks)) {
+    return (input.ReplacementChunks as Array<Record<string, unknown>>).map((chunk) => ({
+      oldString: text(chunk?.TargetContent),
+      newString: text(chunk?.ReplacementContent),
+    }));
+  }
+  if (typeof input.old_string === "string" || typeof input.new_string === "string") {
+    return [{ oldString: text(input.old_string), newString: text(input.new_string) }];
+  }
+  return [];
+}
+
+export type ToolFamily ="read" | "write" | "edit" | "shell" | "todo" | "grep" | "list" | "web";
 
 /**
  * Semantic family for the tools that have a dedicated transcript/activity card.
@@ -57,6 +88,7 @@ export function toolFamily(name: string): ToolFamily | undefined {
   if (key === "write" || key === "writefile") return "write";
   if (
     key === "edit"
+    || key === "editfile"
     || key === "searchreplace"
     || key === "multiedit"
     || key === "notebookedit"
@@ -71,12 +103,14 @@ export function toolFamily(name: string): ToolFamily | undefined {
     || key === "commandexecution"
     || key === "runterminalcmd"
     || key === "runterminalcommand"
+    || key === "runcommand"
   ) return "shell";
   if (key === "todowrite") return "todo";
   if (key === "grep" || key === "grepsearch") return "grep";
   if (key === "ls" || key === "listdir" || key === "listdirectory") return "list";
   if (
     key === "websearch"
+    || key === "searchweb"
     || key === "webfetch"
     || key === "openpage"
     || key === "openpagewithfind"

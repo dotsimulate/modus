@@ -27,6 +27,15 @@ import {
 import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
 import { resolveCli } from "./resolve-cli";
 import { claudeToolResultContent, peelToolResultImages } from "../tool-result-images";
+import {
+  decideTool,
+  describeToolRestriction,
+  emitProviderNotice,
+  noticeToolDenied,
+  toolRestriction,
+  toolRestrictionConfig,
+  type ToolDecision,
+} from "./tool-restrictions";
 
 /** ACP session modes `agy acp` offers. `default` asks Modus before edits and commands. */
 export type AntigravityMode = "default" | "accept-edits" | "auto" | "plan";
@@ -64,6 +73,20 @@ type AntigravityState = {
   effort?: string;
   restartBeforeNextTurn: boolean;
   command: AntigravityCommand;
+  /** Denials already explained in this turn's transcript. */
+  noticedDenials: Set<string>;
+  /** Tool calls in this turn that went through Modus approval. */
+  askedToolIds: Set<string>;
+  /** Restricted tools Antigravity ran without asking, already reported this session. */
+  unaskedNoticed: Set<string>;
+  sandboxFailureNoticed: boolean;
+  /** Model rounds that ended in tool calls this turn, for `maxTurns`. */
+  rounds: number;
+  lastWasTool: boolean;
+  maxTurnsReached: boolean;
+  /** Mid-turn prompts in flight; the turn is not finished until they settle. */
+  steering: Set<Promise<unknown>>;
+  steerUsage: { input: number; output: number; total: number };
 };
 
 export function ownsAntigravityClientGeneration(
@@ -112,32 +135,57 @@ function controlsFrom(ctx: TurnContext): AntigravityControls {
   return asObject(asObject(controls).antigravity) as AntigravityControls;
 }
 
-function normalizedSet(values: Iterable<string>): Set<string> {
-  return new Set(Array.from(values, (value) => value.toLowerCase()));
-}
-
 const ANTIGRAVITY_SHELL_TOOLS = new Set(["run_command"]);
 
 export function needsApproval(policy: PermissionPolicy, toolName: string): boolean {
   return permissionPolicyNeedsApproval(policy, toolName, ANTIGRAVITY_SHELL_TOOLS);
 }
 
-export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
-  const lower = toolName.toLowerCase();
-  const configuredTools = ctx.session._configOverrides.tools ?? ctx.opts.tools ?? ctx.profile?.tools;
-  if (configuredTools?.length && !normalizedSet(configuredTools).has(lower)) return "deny";
-  const disallowed = normalizedSet([
-    ...(ctx.profile?.disallowedTools ?? []),
-    ...(ctx.opts.disallowedTools ?? []),
-    ...(ctx.session._configOverrides.disallowedTools ?? []),
-  ]);
-  const toolStates = ctx.session._configOverrides.toolStates ?? ctx.opts.toolStates;
-  const disabled = Object.entries(toolStates ?? {}).some(([name, state]) => name.toLowerCase() === lower && state === "off");
-  if (disallowed.has(lower) || disabled) return "deny";
-  if (ctx.session.sessionApprovals.has(toolName)) return "allow";
+/** The full decision, with the restriction that denied the tool when one did. */
+export function antigravityToolDecision(ctx: TurnContext, toolName: string): ToolDecision {
+  return decideTool(ctx.session, toolName, toolRestrictionConfig(ctx), {
+    aliases: ANTIGRAVITY_CAPABILITIES.toolAliases,
+    shellTools: ANTIGRAVITY_SHELL_TOOLS,
+  });
+}
 
-  const policy: PermissionPolicy = ctx.opts.permissionPolicy ?? ctx.profile?.permissionPolicy ?? "bypass";
-  return needsApproval(policy, toolName) ? "ask" : "allow";
+export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
+  return antigravityToolDecision(ctx, toolName).decision;
+}
+
+/**
+ * The user asked for the terminal sandbox, explicitly or through auto mode,
+ * which turns it on. A command that asks to leave it is never answered from
+ * the policy alone: Antigravity's own default is to pause for approval, and
+ * Google's safety monitors flag sandbox escapes.
+ */
+export function sandboxRequested(controls: AntigravityControls): boolean {
+  return controls.sandbox === true || controls.mode === "auto";
+}
+
+export function requestsSandboxBypass(input: Record<string, unknown>): boolean {
+  return input.BypassSandbox === true || input.BypassSandbox === "true";
+}
+
+/** `agy` reports a sandbox that cannot start as the command's own output. */
+export function isSandboxStartFailure(output: unknown): boolean {
+  const text = typeof output === "string" ? output : stringify(output);
+  return /exebox:\s*creating sandbox/i.test(text);
+}
+
+export const ANTIGRAVITY_SANDBOX_FAILURE_NOTICE =
+  "Antigravity's terminal sandbox failed to start on this machine, so every sandboxed command fails. "
+  + "Auto mode and the sandbox control both turn it on; switch to default or accept-edits mode with the sandbox off to run commands. "
+  + "Commands that ask to bypass the sandbox wait for your approval.";
+
+/** HTTP MCP servers need `--process-per-session` (Antigravity ACP guide). */
+export function antigravityLaunchArgs(controls: AntigravityControls, servers: Array<{ type?: string }> = []): string[] {
+  const remoteMcp = servers.some((server) => server.type === "http" || server.type === "sse");
+  return [
+    "acp",
+    ...(controls.sandbox ? ["--sandbox"] : []),
+    ...(remoteMcp ? ["--process-per-session"] : []),
+  ];
 }
 
 function pickPermissionOption(options: any[], decision: "allow" | "deny", persistent: boolean): any | undefined {
@@ -206,10 +254,6 @@ function mcpServers(ctx: TurnContext): any[] {
   });
 }
 
-export function antigravityLaunchArgs(controls: AntigravityControls): string[] {
-  return ["acp", ...(controls.sandbox ? ["--sandbox"] : [])];
-}
-
 /** ACP `session/new` / `session/load` metadata carrying the appended profile prompt. */
 export function antigravitySessionMeta(promptText: string | undefined): Record<string, unknown> | undefined {
   return promptText ? { antigravity: { systemPrompt: { append: promptText } } } : undefined;
@@ -266,7 +310,31 @@ function emitToolStart(ctx: TurnContext, state: AntigravityState, toolCall: any)
     type: "assistant",
     message: { role: "assistant", content: [{ type: "tool_use", id, name: tool.name, input: tool.input }] },
   });
+  countModelRound(ctx, state);
   return tool;
+}
+
+export function antigravityMaxTurns(ctx: TurnContext): number | undefined {
+  const value = ctx.session._configOverrides.maxTurns ?? ctx.opts.maxTurns ?? ctx.profile?.maxTurns;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * ACP has no turn limit, so Modus counts model rounds the way the Gemini CLI
+ * provider did: consecutive tool calls are one round, and a round that would
+ * need another model call past `maxTurns` ends the turn with `error_max_turns`.
+ */
+function countModelRound(ctx: TurnContext, state: AntigravityState): void {
+  // Calls already in flight when the cancel lands are not new rounds.
+  if (state.maxTurnsReached) return;
+  if (!state.lastWasTool) state.rounds += 1;
+  state.lastWasTool = true;
+  const limit = antigravityMaxTurns(ctx);
+  if (!limit || state.maxTurnsReached || state.rounds < limit) return;
+  state.maxTurnsReached = true;
+  if (state.providerSessionId) {
+    try { state.client?.notify("session/cancel", { sessionId: state.providerSessionId }); } catch {}
+  }
 }
 
 /**
@@ -309,6 +377,7 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
   if (type === "agent_message_chunk") {
     const text = update?.content?.text;
     if (typeof text !== "string") return;
+    state.lastWasTool = false;
     state.text += text;
     state.turnText += text;
     ctx.session.lastAssistantText = state.turnText.slice(-200);
@@ -323,6 +392,7 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
   if (type === "agent_thought_chunk") {
     const thinking = update?.content?.text;
     if (typeof thinking !== "string") return;
+    state.lastWasTool = false;
     state.thinking += thinking;
     ctx.emitEvent({
       type: "stream_event",
@@ -337,6 +407,7 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     const status = update.status;
     if (!tool.resultEmitted && (status === "completed" || status === "failed")) {
       tool.resultEmitted = true;
+      const output = antigravityToolOutput(update);
       ctx.emitEvent({
         type: "user",
         subtype: "tool_result",
@@ -346,11 +417,16 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
           content: [{
             type: "tool_result",
             tool_use_id: tool.id,
-            content: antigravityToolOutput(update),
+            content: output,
             is_error: status === "failed",
           }],
         },
       });
+      reportUnaskedRestrictedTool(ctx, state, tool);
+      if (!state.sandboxFailureNoticed && tool.name === "run_command" && isSandboxStartFailure(output)) {
+        state.sandboxFailureNoticed = true;
+        emitProviderNotice(ctx, ANTIGRAVITY_SANDBOX_FAILURE_NOTICE);
+      }
     }
     return;
   }
@@ -358,6 +434,36 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     ctx.emitEvent({ type: "system", subtype: "plan", plan: update.entries ?? update.plan ?? [] });
   }
 }
+
+/**
+ * Antigravity runs some tools without asking (reads, web search, MCP, and in
+ * auto mode everything it judges safe), so a restriction Modus cannot enforce
+ * on them must at least be visible. Reported once per tool per session.
+ */
+function reportUnaskedRestrictedTool(ctx: TurnContext, state: AntigravityState, tool: ToolState): void {
+  if (state.askedToolIds.has(tool.id)) return;
+  const restriction = toolRestriction(tool.name, toolRestrictionConfig(ctx), ANTIGRAVITY_CAPABILITIES.toolAliases);
+  if (!restriction) return;
+  const key = tool.name.toLowerCase();
+  if (state.unaskedNoticed.has(key)) return;
+  state.unaskedNoticed.add(key);
+  const mode = controlsFrom(ctx).mode ?? "default";
+  const blocked = describeToolRestriction(tool.name, restriction, ANTIGRAVITY_CAPABILITIES.toolAliases)
+    .replace(/^Modus blocked `[^`]+`: /, "");
+  const asks = ANTIGRAVITY_MODE_ASKS[mode];
+  emitProviderNotice(
+    ctx,
+    `Antigravity ran \`${tool.name}\` without asking Modus, so this restriction could not stop it: ${blocked}`
+      + (asks ? ` In ${mode} mode Antigravity only asks before ${asks}.` : ""),
+  );
+}
+
+/** What each mode routes to Modus for approval, as measured against agy 1.5.7. */
+const ANTIGRAVITY_MODE_ASKS: Partial<Record<string, string>> = {
+  default: "commands and file edits",
+  "accept-edits": "commands",
+  auto: "commands it judges risky",
+};
 
 function handlePermission(
   ctx: TurnContext,
@@ -372,8 +478,17 @@ function handlePermission(
   }
   const call = params?.toolCall ?? {};
   const { name: toolName, input } = normalizeAntigravityToolCall(call);
+  const toolCallId = call.toolCallId ?? call.tool_call_id;
+  if (toolCallId != null) state.askedToolIds.add(String(toolCallId));
   const options = Array.isArray(params?.options) ? params.options : [];
-  const decision = toolDecision(ctx, toolName);
+  const resolved = antigravityToolDecision(ctx, toolName);
+  const sandboxEscape = requestsSandboxBypass(input) && sandboxRequested(controlsFrom(ctx));
+  let decision = resolved.decision;
+  if (resolved.decision === "deny") {
+    noticeToolDenied(ctx, state.noticedDenials, toolName, resolved.restriction, ANTIGRAVITY_CAPABILITIES);
+  } else if (sandboxEscape) {
+    decision = "ask";
+  }
   if (decision !== "ask") {
     const option = pickPermissionOption(options, decision, false);
     try {
@@ -393,7 +508,9 @@ function handlePermission(
     resolve: (response) => {
       state.pendingRpcPermissions.delete(requestId);
       ctx.session.pendingPermissions.delete(requestId);
-      const persistent = response.behavior === "allow" && ctx.session.sessionApprovals.has(toolName);
+      // A sandbox escape is approved once: "allow always" could become a
+      // standing agy rule that lets later escapes skip the user.
+      const persistent = response.behavior === "allow" && ctx.session.sessionApprovals.has(toolName) && !sandboxEscape;
       const option = pickPermissionOption(options, response.behavior, persistent);
       try {
         client.respond(rpcId, option
@@ -434,9 +551,10 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
   const controls = controlsFrom(ctx);
   const prompt = requireSupportedProfilePrompt(ANTIGRAVITY_CAPABILITIES, ctx.profile);
   const env = antigravityEnvironment(ctx.profile?.env);
+  const resolvedServers = mcpServers(ctx);
   const client = new GrokAcpClient({
     executable: state.command.executable,
-    args: [...state.command.prefixArgs, ...antigravityLaunchArgs(controls)],
+    args: [...state.command.prefixArgs, ...antigravityLaunchArgs(controls, resolvedServers)],
     cwd,
     env,
     sensitiveValues: [env.GEMINI_API_KEY, env.GOOGLE_API_KEY],
@@ -473,7 +591,6 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
   // in, so Modus never calls `authenticate` and never drives an OAuth flow.
   await client.request("initialize", ANTIGRAVITY_INITIALIZE_PARAMS, 60_000);
 
-  const resolvedServers = mcpServers(ctx);
   client.addSensitiveValues(resolvedServers.flatMap((server) => [
     ...(server.headers ?? []), ...(server.env ?? []),
   ].map((entry: { value: string }) => entry.value)));
@@ -560,6 +677,80 @@ function emitTurnError(ctx: TurnContext, message: string): void {
   ctx.emitEvent({ type: "done" });
 }
 
+function finishTurn(
+  ctx: TurnContext,
+  state: AntigravityState,
+  subtype: "success" | "error_max_turns",
+  result: any,
+): void {
+  const { session } = ctx;
+  const usage = antigravityUsage(result);
+  ctx.emitEvent({
+    type: "result",
+    subtype,
+    result: state.turnText,
+    stop_reason: subtype === "error_max_turns" ? "max_turns" : result?.stopReason,
+    harness_duration_ms: Date.now() - session.turnStartedAt,
+    input_tokens: usage.input + state.steerUsage.input,
+    output_tokens: usage.output + state.steerUsage.output,
+    total_tokens: usage.total + state.steerUsage.total,
+    // Model calls, as Claude counts them: one per tool batch, plus the final
+    // reply unless the limit cut the turn off before it.
+    num_turns: subtype === "error_max_turns" ? state.rounds : state.rounds + 1,
+    total_cost_usd: 0,
+  });
+  session.numTurns += 1;
+  session.status = "idle";
+  ctx.updateSessionDb({
+    status: "idle",
+    messageCount: (session.exchangeCount + 1) * 2,
+    costUsd: session.costUsd,
+    lastPrompt: session.preview,
+    lastResponse: state.turnText.slice(0, 200),
+  });
+  ctx.emitEvent({ type: "done" });
+}
+
+/**
+ * Antigravity steers a running turn when a second `session/prompt` arrives
+ * during it (Antigravity ACP guide: "sending a prompt while a turn runs steers
+ * that turn"). The request only settles when that turn ends, so acceptance is
+ * the absence of an immediate rejection: a refusal inside the grace window
+ * falls back to the queue, and the turn waits for the steer before finishing.
+ */
+export const ANTIGRAVITY_STEER_REJECTION_WINDOW_MS = 1_500;
+
+async function steerTurn(ctx: TurnContext, state: AntigravityState, content: MessageContent): Promise<boolean> {
+  const client = state.client;
+  if (!state.turnActive || state.disposed || !client?.running || !state.providerSessionId) return false;
+  const sentAt = Date.now();
+  const request = client.request("session/prompt", {
+    sessionId: state.providerSessionId,
+    prompt: contentBlocks(content),
+  }, 24 * 60 * 60 * 1_000);
+  // Tracked from the moment it is sent, so a turn that ends inside the grace
+  // window still waits for it and keeps the steered reply.
+  const tracked: Promise<void> = request.then(
+    (result) => {
+      const usage = antigravityUsage(result);
+      state.steerUsage.input += usage.input;
+      state.steerUsage.output += usage.output;
+      state.steerUsage.total += usage.total;
+    },
+    (error) => {
+      // An early refusal falls back to the queue; only a late one is news.
+      if (Date.now() - sentAt < ANTIGRAVITY_STEER_REJECTION_WINDOW_MS || !state.turnActive) return;
+      emitProviderNotice(ctx, `Antigravity did not take the steered message: ${error instanceof Error ? error.message : String(error)}`);
+    },
+  ).finally(() => { state.steering.delete(tracked); });
+  state.steering.add(tracked);
+  const early = await Promise.race([
+    request.then(() => "settled" as const, () => "rejected" as const),
+    Bun.sleep(ANTIGRAVITY_STEER_REJECTION_WINDOW_MS).then(() => "pending" as const),
+  ]);
+  return early !== "rejected";
+}
+
 async function runTurn(
   ctx: TurnContext,
   state: AntigravityState,
@@ -584,12 +775,26 @@ async function runTurn(
     state.thinking = "";
     state.turnText = "";
     state.tools.clear();
+    state.noticedDenials.clear();
+    state.askedToolIds.clear();
+    state.rounds = 0;
+    state.lastWasTool = false;
+    state.maxTurnsReached = false;
+    state.steerUsage = { input: 0, output: 0, total: 0 };
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
     const result = await turnClient.request("session/prompt", {
       sessionId: state.providerSessionId,
       prompt: contentBlocks(content),
     }, 24 * 60 * 60 * 1_000);
+    // A message steered in near the end can outlive the prompt it joined;
+    // its reply belongs to this turn, so keep collecting until it settles.
+    while (state.steering.size) await Promise.allSettled([...state.steering]);
+    if (state.maxTurnsReached && !turnAbortController.signal.aborted) {
+      flushAssistantRound(ctx, state);
+      finishTurn(ctx, state, "error_max_turns", result);
+      return;
+    }
     if (turnAbortController.signal.aborted || result?.stopReason === "cancelled") {
       flushAssistantRound(ctx, state);
       session.status = "idle";
@@ -602,29 +807,7 @@ async function runTurn(
       emitTurnError(ctx, ANTIGRAVITY_VERIFICATION_MESSAGE);
       return;
     }
-    const usage = antigravityUsage(result);
-    ctx.emitEvent({
-      type: "result",
-      subtype: "success",
-      result: state.turnText,
-      stop_reason: result?.stopReason,
-      harness_duration_ms: Date.now() - session.turnStartedAt,
-      input_tokens: usage.input,
-      output_tokens: usage.output,
-      total_tokens: usage.total,
-      num_turns: 1,
-      total_cost_usd: 0,
-    });
-    session.numTurns += 1;
-    session.status = "idle";
-    ctx.updateSessionDb({
-      status: "idle",
-      messageCount: (session.exchangeCount + 1) * 2,
-      costUsd: session.costUsd,
-      lastPrompt: session.preview,
-      lastResponse: state.turnText.slice(0, 200),
-    });
-    ctx.emitEvent({ type: "done" });
+    finishTurn(ctx, state, "success", result);
   } catch (error) {
     if (turnAbortController.signal.aborted) {
       session.status = "idle";
@@ -716,6 +899,15 @@ export function createAntigravityProvider(options?: {
         effort: ctx.opts.effort ?? ctx.profile?.effort,
         restartBeforeNextTurn: false,
         command,
+        noticedDenials: new Set(),
+        askedToolIds: new Set(),
+        unaskedNoticed: new Set(),
+        sandboxFailureNoticed: false,
+        rounds: 0,
+        lastWasTool: false,
+        maxTurnsReached: false,
+        steering: new Set(),
+        steerUsage: { input: 0, output: 0, total: 0 },
       };
       ctx.session._providerState = state;
       void runTurn(ctx, state, ctx.session.initialContent, { resume }, cleanupLegacyPlugin);
@@ -733,6 +925,10 @@ export function createAntigravityProvider(options?: {
       ctx.session.preview = contentPreview(content);
       ctx.session.turnStartedAt = Date.now();
       void runTurn(ctx, state, content, { resume: true }, cleanupLegacyPlugin);
+    },
+
+    steerMessage(ctx, content) {
+      return steerTurn(ctx, getState(ctx.session), content);
     },
 
     abort(session) {
@@ -762,9 +958,10 @@ export function createAntigravityProvider(options?: {
       const state = getState(session);
       if (typeof config.model === "string") state.model = config.model || undefined;
       if (typeof config.effort === "string") state.effort = config.effort || undefined;
-      if (config.providerControls || config.tools || config.disallowedTools || config.toolStates || config.maxTurns) {
-        state.restartBeforeNextTurn = true;
-      }
+      // Tools, tool states, maxTurns, and the permission policy are read from the
+      // session on every decision, so they apply without relaunching agy. The
+      // controls carry the --sandbox launch flag and the session mode.
+      if (config.providerControls) state.restartBeforeNextTurn = true;
     },
 
     switchProfile(session, ctx) {

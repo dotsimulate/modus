@@ -452,6 +452,7 @@ export function AgentConfig({
               extraGroups={mcpToolGroups(availableTools ?? [])}
               provider={effectiveProvider}
               builtInGroups={builtInGroups}
+              toolAliases={providerCapabilities[effectiveProvider]?.toolAliases}
             />
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { PendingPermission } from "../../../sdk/index";
+import { toolFamily, toolInputCommand, toolInputPath } from "../tool-names";
 
 type Props = {
   permissions: PendingPermission[];
@@ -30,16 +31,13 @@ function setFormState(requestId: string, patch: Partial<FormState>) {
   formStore.set(requestId, { ...prev, ...patch });
 }
 
-/** Summarize tool input for display */
+/**
+ * Summarize tool input for display. Matched by tool family, so every provider's
+ * spelling of a command or file tool (`Bash`, `run_command`, `read_file`, ...)
+ * shows what the user is approving.
+ */
 function inputSummary(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
-    case "Bash":
-      return (input.command as string) ?? "";
-    case "Read":
-    case "Write":
-    case "Edit":
-    case "MultiEdit":
-      return ((input.file_path as string) ?? "").replace(/^\/home\/[^/]+\//, "~/");
     case "Grep":
       return `/${input.pattern}/`;
     case "Glob":
@@ -48,6 +46,19 @@ function inputSummary(toolName: string, input: Record<string, unknown>): string 
       return (input.url as string) ?? "";
     case "WebSearch":
       return (input.query as string) ?? "";
+  }
+  switch (toolFamily(toolName)) {
+    case "shell": {
+      const command = toolInputCommand(input) ?? "";
+      // Antigravity asks before a command leaves its terminal sandbox.
+      return input.BypassSandbox === true && command ? `${command}\n(runs outside the sandbox)` : command;
+    }
+    case "read":
+    case "write":
+    case "edit":
+      return (toolInputPath(input) ?? "").replace(/^\/home\/[^/]+\//, "~/");
+    case "web":
+      return String(input.query ?? input.Query ?? input.url ?? "");
     default:
       return "";
   }

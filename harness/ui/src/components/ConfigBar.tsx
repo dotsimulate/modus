@@ -8,7 +8,7 @@ import {
 import { SearchDropdown } from "./SearchDropdown";
 import { profileOptions } from "../profile-options";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools, getToolGroups, isAntigravityProvider, isCodexProvider, isGeminiProvider, isGrokBuildProvider, isToolEnabled } from "../tools";
+import { getAllTools, getToolGroups, isAntigravityProvider, isCodexProvider, isGeminiProvider, effectiveToolState, isGrokBuildProvider, isToolEnabled } from "../tools";
 import { isDiffTool, isGrepTool, isListTool, isReadTool, toolInputPath } from "../tool-names";
 import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
@@ -88,11 +88,13 @@ function summarizeAntigravityTools(
   toolStates: AgentConfigState["toolStates"],
   profileTools: string[] | "all",
   availableTools?: string[],
+  toolAliases?: Record<string, string[]>,
 ): string {
   const runtimeTools = new Set((availableTools ?? []).filter((tool) => getAllTools("antigravity").includes(tool)));
   if (runtimeTools.size === 0) return "Antigravity tools";
   const labels = getToolGroups("antigravity")
-    .filter((group) => group.tools.some((tool) => runtimeTools.has(tool) && isToolEnabled(tool, toolStates[tool] ?? "inherit", profileTools)))
+    .filter((group) => group.tools.some((tool) => runtimeTools.has(tool)
+      && isToolEnabled(tool, effectiveToolState(tool, toolStates, toolAliases), profileTools, toolAliases)))
     .map((group) => group.label);
   return labels.length > 0 ? labels.join("/") : "Antigravity tools";
 }
@@ -251,7 +253,7 @@ export function ConfigBar({
   const toolSummary = isCodexProvider(effectiveProvider)
     ? (codexControls.sandboxMode ?? "sandbox:auto")
     : isAntigravityProvider(effectiveProvider)
-      ? summarizeAntigravityTools(agentConfig.toolStates, profileTools, availableTools)
+      ? summarizeAntigravityTools(agentConfig.toolStates, profileTools, availableTools, providerCapabilities.antigravity?.toolAliases)
       : isGeminiProvider(effectiveProvider)
         ? summarizeGeminiTools(agentConfig.toolStates, profileTools, availableTools)
       : `${toolCount} tools`;

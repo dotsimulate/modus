@@ -10,9 +10,7 @@ import {
   getGlobalConfig,
   resolveProfilePrompt,
   type McpServerConfig,
-  type PermissionPolicy,
 } from "../profiles";
-import { permissionPolicyNeedsApproval } from "../permission-policy";
 import { resolveMcpServers } from "../mcp-config";
 import type { SessionProvider, TurnContext } from "./types";
 import { GrokAcpClient, type JsonRpcId } from "./grok-build-acp";
@@ -26,6 +24,13 @@ import {
 import { resolveSecret } from "../secrets";
 import { resolveCli } from "./resolve-cli";
 import { claudeToolResultContent, peelToolResultImages } from "../tool-result-images";
+import {
+  decideTool,
+  noticeToolDenied,
+  toolRestriction,
+  toolRestrictionConfig,
+  type ToolDecision,
+} from "./tool-restrictions";
 
 type GrokBuildControls = {
   mode?: "default" | "auto" | "plan" | "always-approve";
@@ -60,6 +65,8 @@ type GrokState = {
   effort?: string;
   restartBeforeNextTurn: boolean;
   command: GrokCommand;
+  /** Denials already explained in this turn's transcript. */
+  noticedDenials: Set<string>;
 };
 
 type Usage = {
@@ -134,28 +141,44 @@ function controlsFrom(ctx: TurnContext): GrokBuildControls {
   return asObject(asObject(controls).grokBuild) as GrokBuildControls;
 }
 
-function normalizedSet(values: Iterable<string>): Set<string> {
-  return new Set(Array.from(values, (value) => value.toLowerCase()));
-}
-
 const GROK_SHELL_TOOLS = new Set(["run_terminal_cmd", "run_terminal_command"]);
 
-export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
-  const lower = toolName.toLowerCase();
-  const configuredTools = ctx.session._configOverrides.tools ?? ctx.opts.tools ?? ctx.profile?.tools;
-  if (configuredTools?.length && !normalizedSet(configuredTools).has(lower)) return "deny";
-  const disallowed = normalizedSet([
-    ...(ctx.profile?.disallowedTools ?? []),
-    ...(ctx.opts.disallowedTools ?? []),
-    ...(ctx.session._configOverrides.disallowedTools ?? []),
-  ]);
-  const toolStates = ctx.session._configOverrides.toolStates ?? ctx.opts.toolStates;
-  const disabled = Object.entries(toolStates ?? {}).some(([name, state]) => name.toLowerCase() === lower && state === "off");
-  if (disallowed.has(lower) || disabled) return "deny";
-  if (ctx.session.sessionApprovals.has(toolName)) return "allow";
+/** The full decision, with the restriction that denied the tool when one did. */
+export function grokToolDecision(ctx: TurnContext, toolName: string): ToolDecision {
+  return decideTool(ctx.session, toolName, toolRestrictionConfig(ctx), {
+    aliases: GROK_BUILD_CAPABILITIES.toolAliases,
+    shellTools: GROK_SHELL_TOOLS,
+  });
+}
 
-  const policy: PermissionPolicy = ctx.opts.permissionPolicy ?? ctx.profile?.permissionPolicy ?? "bypass";
-  return permissionPolicyNeedsApproval(policy, toolName, GROK_SHELL_TOOLS) ? "ask" : "allow";
+export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
+  return grokToolDecision(ctx, toolName).decision;
+}
+
+/**
+ * Grok's own `--tools`/`--disallowed-tools` take Grok names, so a profile's
+ * shared names (`Read`, `Bash`, ...) are resolved to Grok built-ins here.
+ * Entries that are neither (MCP tools, tools newer than the catalog) pass
+ * through as written.
+ */
+export function grokToolArgs(ctx: TurnContext): string[] {
+  const config = toolRestrictionConfig(ctx);
+  const aliases = GROK_BUILD_CAPABILITIES.toolAliases;
+  const known = new Set([...GROK_TOOLS, ...Object.keys(aliases ?? {})].map((name) => name.toLowerCase()));
+  const denied = new Set<string>();
+  for (const tool of GROK_TOOLS) if (toolRestriction(tool, config, aliases)) denied.add(tool);
+  const offEntries = Object.entries(config.toolStates).filter(([, toolState]) => toolState === "off").map(([name]) => name);
+  for (const entry of [...config.disallowedTools, ...offEntries]) {
+    if (!known.has(entry.toLowerCase())) denied.add(entry);
+  }
+  const args: string[] = [];
+  const allowed = [
+    ...GROK_TOOLS.filter((tool) => !denied.has(tool)),
+    ...(config.tools ?? []).filter((entry) => !known.has(entry.toLowerCase())),
+  ];
+  if (config.tools?.length && allowed.length) args.push("--tools", allowed.join(","));
+  if (denied.size) args.push("--disallowed-tools", Array.from(denied).join(","));
+  return args;
 }
 
 function pickPermissionOption(options: any[], decision: "allow" | "deny", persistent: boolean): any | undefined {
@@ -242,20 +265,7 @@ export function launchArgs(ctx: TurnContext, state: GrokState): string[] {
   if (controls.disableWebSearch) args.push("--disable-web-search");
   if (controls.mode === "always-approve") args.push("--always-approve");
 
-  const allowed = ctx.session._configOverrides.tools ?? ctx.opts.tools ?? ctx.profile?.tools;
-  const denied = new Set([
-    ...(ctx.profile?.disallowedTools ?? []),
-    ...(ctx.opts.disallowedTools ?? []),
-    ...(ctx.session._configOverrides.disallowedTools ?? []),
-  ]);
-  const toolStates = ctx.session._configOverrides.toolStates ?? ctx.opts.toolStates ?? {};
-  for (const [name, toolState] of Object.entries(toolStates)) if (toolState === "off") denied.add(name);
-  if (allowed?.length) {
-    const allowSet = normalizedSet(allowed);
-    for (const tool of GROK_TOOLS) if (!allowSet.has(tool.toLowerCase())) denied.add(tool);
-  }
-  if (allowed?.length) args.push("--tools", allowed.join(","));
-  if (denied.size) args.push("--disallowed-tools", Array.from(denied).join(","));
+  args.push(...grokToolArgs(ctx));
   args.push("agent", "stdio");
   return args;
 }
@@ -417,7 +427,11 @@ function handlePermission(
   const toolName = toolNameFromCall(call);
   const input = asObject(call.rawInput ?? call.raw_input ?? call.input);
   const options = Array.isArray(params?.options) ? params.options : [];
-  const decision = toolDecision(ctx, toolName);
+  const resolved = grokToolDecision(ctx, toolName);
+  const decision = resolved.decision;
+  if (resolved.decision === "deny") {
+    noticeToolDenied(ctx, state.noticedDenials, toolName, resolved.restriction, GROK_BUILD_CAPABILITIES);
+  }
   if (decision !== "ask") {
     const option = pickPermissionOption(options, decision, false);
     try {
@@ -596,6 +610,7 @@ async function runTurn(
     state.thinking = "";
     state.turnText = "";
     state.tools.clear();
+    state.noticedDenials.clear();
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
     const result = await turnClient.request("session/prompt", {
@@ -744,6 +759,7 @@ export function createGrokBuildProvider(options?: {
         effort: ctx.opts.effort ?? ctx.profile?.effort,
         restartBeforeNextTurn: false,
         command,
+        noticedDenials: new Set(),
       };
       ctx.session._providerState = state;
       void runTurn(ctx, state, ctx.session.initialContent, { resume });

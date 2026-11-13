@@ -15,6 +15,30 @@ export const GROK_BUILD_TOOL_GROUPS = [
   { label: "interaction", tools: ["ask_user_question", "enter_plan_mode", "exit_plan_mode"] },
 ] as const;
 
+/** The shared Modus/Claude tool names a profile writes, onto Grok Build's tools. */
+export const GROK_BUILD_TOOL_ALIASES: Record<string, string[]> = {
+  Bash: ["run_terminal_cmd", "run_terminal_command"],
+  PowerShell: ["run_terminal_cmd", "run_terminal_command"],
+  Read: ["read_file"],
+  Write: ["write_file"],
+  Edit: ["search_replace"],
+  MultiEdit: ["search_replace"],
+  NotebookEdit: ["search_replace"],
+  Glob: ["list_dir"],
+  Grep: ["grep", "grep_search"],
+  WebSearch: ["web_search", "x_search", "x_keyword_search", "x_semantic_search", "x_user_search"],
+  WebFetch: ["web_fetch", "open_page", "open_page_with_find", "x_thread_fetch"],
+  Agent: ["task", "spawn_subagent"],
+  TodoWrite: ["todo_write"],
+  CronCreate: ["scheduler_create"],
+  CronList: ["scheduler_list"],
+  CronDelete: ["scheduler_delete"],
+  Monitor: ["monitor"],
+  AskUserQuestion: ["ask_user_question"],
+  EnterPlanMode: ["enter_plan_mode"],
+  ExitPlanMode: ["exit_plan_mode"],
+};
+
 export const GROK_BUILD_CAPABILITIES: ProviderCapabilities = {
   name: "grok-build",
   label: "Grok Build",
@@ -22,6 +46,7 @@ export const GROK_BUILD_CAPABILITIES: ProviderCapabilities = {
   builtInTools: GROK_BUILD_TOOL_GROUPS.flatMap((group) => group.tools),
   builtInToolGroups: GROK_BUILD_TOOL_GROUPS.map((group) => ({ label: group.label, tools: [...group.tools] })),
   builtInToolMode: "event-derived",
+  toolAliases: GROK_BUILD_TOOL_ALIASES,
   slashCommands: [
     { command: "/plan", label: "Plan", description: "Enter or leave plan mode" },
     { command: "/compact", label: "Compact", description: "Compact the current context" },

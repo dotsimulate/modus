@@ -85,7 +85,7 @@ lookups key on `user/prompt` rows.
 | `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns, steer |
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
-| `antigravity` | antigravity | Google Antigravity CLI (`agy acp`) | Persistent ACP session on the user's Google AI plan, full MCP, streaming tool/thought events, live Modus approvals |
+| `antigravity` | antigravity | Google Antigravity CLI (`agy acp`) | Persistent ACP session on the user's Google AI plan, full MCP, streaming tool/thought events, live Modus approvals, steer |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
 | `muse-code` | muse-code | Meta Muse Code CLI (`muse serve`) | Persistent MSP session, full MCP, streaming tool/reasoning events, live Modus approvals, steer |
 | `opencode` | opencode | OpenCode CLI subprocess | Event-derived tools, `bunx opencode-ai` fallback; Modus MCP injection is not implemented |
@@ -210,6 +210,8 @@ after the turn starts:
 | `claude-code` | the Agent SDK's streaming-input iterator |
 | `claude-code-pty` | stdin, kept open by `--input-format stream-json` |
 | `codex` | app-server `turn/steer`, acknowledged against the active native turn id |
+| `muse-code` | the MSP `turn/steer` command on the warm `muse serve` host |
+| `antigravity` | a second ACP `session/prompt` during the turn, which Antigravity documents as steering it; an immediate refusal falls back to the queue |
 | Any declarative PI provider, including `openai-compat`, `ollama`, and `openrouter` | `AgentSession.sendUserMessage(content, { deliverAs: "steer" })` |
 
 Every other provider runs one prompt per turn with no way in.
@@ -352,11 +354,20 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   as `gemini-4-hydrogen-high` is also accepted. A model the account does not
   offer fails the turn and lists what it does offer. Lists come from a
   throwaway ACP session, shared with the health check for a minute.
-- **Modes.** `providerControls.antigravity.mode` selects the ACP session mode:
-  `default` (Antigravity asks Modus before edits and commands), `accept-edits`,
-  `auto`, or `plan`. Under `default`, Modus answers each request from the
-  profile `permissionPolicy`, or with a live prompt. `sandbox: true` launches
-  `agy acp --sandbox`.
+- **Modes and approvals.** `providerControls.antigravity.mode` selects the ACP
+  session mode: `default`, `accept-edits`, `auto`, or `plan`. Antigravity decides
+  which calls reach Modus for approval: in `default` it asks before commands and
+  file edits, in `accept-edits` before commands only, and in `auto` only before
+  commands it judges risky. Reads, web search, and MCP calls never ask. Modus
+  answers each request from the session's tools and `permissionPolicy`, or with a
+  live prompt. A restricted tool that Antigravity runs without asking cannot be
+  blocked, so Modus reports it in the transcript instead.
+- **Sandbox.** `sandbox: true` launches `agy acp --sandbox`; `auto` mode turns
+  Antigravity's terminal sandbox on by itself. A command that asks to bypass the
+  sandbox (`BypassSandbox`) always waits for the user, whatever the permission
+  policy. Where the sandbox cannot start (Google lists its Windows requirements in
+  the [sandbox docs](https://antigravity.google/docs/sandbox/)), every sandboxed
+  command fails; Modus names that once per session in the transcript.
 - **Profile prompts.** `append` is delivered as ACP session metadata
   (`_meta.antigravity.systemPrompt.append`). `custom` is rejected: ACP offers no
   replacement channel. Antigravity always loads its own rules and project
@@ -366,10 +377,23 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   child so a stray key cannot move a session from the plan to API billing. A key
   set deliberately in the profile `env` is passed through. Turns report token
   usage; their dollar cost is recorded as zero.
-- **Tools.** MCP tools appear as `mcp_<server>_<tool>`; Antigravity does not
-  return MCP output to the client, so those rows show only completion. Prompt
+- **Tools.** A profile's `tools`, `disallowedTools`, and session tool toggles may
+  use the shared Modus names (`Read`, `Bash`, ...) or Antigravity's own
+  (`read_file`, `run_command`, ...); see Tool names across providers below.
+  MCP tools appear as `mcp_<server>_<tool>`; Antigravity does not return MCP or
+  `read_file` output to the client, so those rows show only completion. Prompt
   attachments accept text and images; Antigravity's ACP server reports no audio
-  input.
+  input. HTTP and SSE MCP servers launch `agy acp --process-per-session`, which
+  Antigravity requires for them.
+- **Steering.** A message sent while a turn runs goes into that turn as a second
+  ACP `session/prompt`, which Antigravity's ACP server documents as steering the
+  running turn. If Antigravity refuses it at once, Modus queues it instead.
+- **Turn limit.** ACP has no turn limit, so Modus counts model rounds (each batch
+  of tool calls is one) and cancels the turn at `maxTurns`, ending it with
+  `error_max_turns`.
+- **Slash commands.** The composer offers Antigravity's own commands (`/goal`,
+  `/compact`, `/plan`, `/schedule`, ...); a prompt starting with one is handled by
+  Antigravity. Installed agy skills are invoked the same way.
 - **Legacy plugin.** Earlier Modus builds installed an agy plugin named
   `modus-provider` whose hooks fail every agy tool call. On first use per backend
   process Modus disables it if it is enabled (`agy plugin enable modus-provider`
@@ -377,6 +401,36 @@ that satisfies the terms for a given account is Google's call, not Modus's.
 
 `ANTIGRAVITY_CLI_PATH` points at a specific `agy` executable. Otherwise `agy`
 is found on `PATH`, then in the CLI's default per-user install location.
+
+### Tool names across providers
+
+Profiles name tools in one shared vocabulary, the Claude Code names (`Read`,
+`Write`, `Edit`, `Bash`, `WebSearch`, ...), because that is what the profile
+editor and starter content write. Providers with their own tool names publish a
+`toolAliases` map in their capabilities, and Modus reads `tools`,
+`disallowedTools`, session tool toggles, and permission-policy name lists through
+it, so one profile restricts the same capabilities on every provider. Native
+names are accepted as well. The tool grid reads the same map, so it shows what
+the backend enforces.
+
+| Shared name | Antigravity | Grok Build | Muse Code |
+|---|---|---|---|
+| `Bash`, `PowerShell` | `run_command`, `manage_task` | `run_terminal_cmd`, `run_terminal_command` | `shell` |
+| `Read` | `read_file` | `read_file` | `read_file` |
+| `Write` | `write_file` | `write_file` | `write_file` |
+| `Edit`, `MultiEdit`, `NotebookEdit` | `edit_file` | `search_replace` | `write_file` |
+| `Glob` / `Grep` | none | `list_dir` / `grep`, `grep_search` | none |
+| `WebSearch` / `WebFetch` | `search_web` | web and X search / fetch tools | none |
+| `Agent` | subagent and swarm tools | `task`, `spawn_subagent` | none |
+| `AskUserQuestion` | `ask_question` | `ask_user_question` | none |
+
+The full maps live in each provider's capabilities file. As on Claude Code,
+`tools` limits built-in tools only; MCP tools stay available unless
+`disallowedTools` names them (`mcp__server__tool`, or `mcp__server` for a whole
+server). A toggle switched on re-enables a tool the list leaves out; a toggle on a
+tool's own name takes precedence over one on a shared name. When Modus refuses a
+tool, the transcript says which setting blocked it and which names would allow
+it.
 
 ### Grok Build support boundary
 

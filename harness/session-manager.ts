@@ -2920,7 +2920,9 @@ function observeDeclaredFileTools(session: ActiveSession, event: any): void {
     if (block?.type !== "tool_use" || typeof block.name !== "string" || !block.input || typeof block.input !== "object") continue;
     const name = block.name.toLowerCase();
     if (!/(write|edit|replace|patch|notebook)/.test(name)) continue;
-    const rawPath = block.input.file_path ?? block.input.path ?? block.input.notebook_path;
+    // Antigravity spells its arguments in PascalCase (`Path`, `TargetFile`).
+    const rawPath = block.input.file_path ?? block.input.path ?? block.input.notebook_path
+      ?? block.input.Path ?? block.input.TargetFile;
     if (typeof rawPath !== "string" || !rawPath.trim()) continue;
     const operation = /(write|create)/.test(name) ? "write" : "edit";
     insertFileObservation({

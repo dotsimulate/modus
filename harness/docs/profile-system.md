@@ -177,6 +177,9 @@ declarative provider `baseUrl`, `apiKeyName`, `headers`, and Modus secrets.
 
 **`tools`**: Allowlist of tool names. Omit to inherit all available tools for the provider.
 Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Namespaces.
+Write the shared Claude Code names (`Read`, `Bash`, ...): Antigravity, Grok Build, and
+Muse Code read them through their own tool names, and accept their native names too. See
+`docs/providers.md` § Tool names across providers.
 
 **`compaction`**: Override compaction thresholds per-agent. See `docs/config-resolution.md`.
 
@@ -184,7 +187,8 @@ Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Na
 `"bypass"` to never ask, `"auto-edit"` to allow edits while asking for shell,
 `"ask"` to approve every tool call, or an object with
 `autoApprove`/`requireApproval` lists for granular control. Claude Code,
-Grok Build, and Antigravity honor the per-tool lists; Codex and OpenCode flatten them to the
+Grok Build, Antigravity, and Muse Code honor the per-tool lists, which may use the
+shared tool names; Codex and OpenCode flatten them to the
 object's default. The legacy object spelling
 `default: "allow"` is read as `"approve"` and reported once, without rewriting
 the profile.
@@ -194,10 +198,12 @@ profile file. The file uses the same `{ "mcpServers": { ... } }` shape as
 `_global.json` and can be shared by multiple profiles.
 
 **`providerControls.antigravity`**: Optional Antigravity ACP controls. `mode`
-may be `"default"` (Antigravity asks Modus before edits and commands),
-`"accept-edits"`, `"auto"`, or `"plan"`; `sandbox: true` launches
-`agy acp --sandbox`. Changes apply on the next turn by restarting the ACP child
-and loading the same Antigravity session.
+may be `"default"` (Antigravity asks Modus before commands and file edits),
+`"accept-edits"` (before commands only), `"auto"` (only before commands it judges
+risky; also turns on Antigravity's terminal sandbox), or `"plan"`; `sandbox: true`
+launches `agy acp --sandbox`. Changes apply on the next turn by restarting the ACP
+child and loading the same Antigravity session. Tool lists, toggles, `maxTurns`,
+and the permission policy apply without a restart.
 
 **`providerControls.grokBuild`**: Optional Grok Build ACP controls. `mode` may
 be `"default"`, `"auto"`, `"plan"`, or `"always-approve"`; `sandbox` names a

@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from "react";
 import type { ToolCall } from "../../../sdk/index";
 import { ticketedRawFileUrl, ticketedShareableFileUrl } from "../rawFileUrl";
 import { useFileViewer } from "../providers/FileViewerContext";
-import { canonicalToolName, toolFamily, toolInputPath, toolWriteContent } from "../tool-names";
+import { canonicalToolName, toolEditHunks, toolFamily, toolInputPath, toolWriteContent } from "../tool-names";
 
 export type FileEdit = {
   filePath: string;
@@ -21,8 +21,7 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
     const family = toolFamily(tc.name ?? "");
     const name = canonicalToolName(tc.name ?? "");
     const fp = toolInputPath(tc.input);
-    const hasBatchEdits = Array.isArray(tc.input.edits);
-    const hasSingleEdit = typeof tc.input.old_string === "string" || typeof tc.input.new_string === "string";
+    const hunks = toolEditHunks(tc.input);
     const writeContent = toolWriteContent(tc.input);
     const hasWrite = writeContent != null;
 
@@ -43,25 +42,10 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
       continue;
     }
 
-    if (family === "edit" || hasBatchEdits || hasSingleEdit) {
+    if (family === "edit" || hunks.length > 0) {
       if (!fp) continue;
-
-      if ((name === "multiedit" || hasBatchEdits) && Array.isArray(tc.input.edits)) {
-        for (const edit of tc.input.edits as Array<{ old_string?: string; new_string?: string }>) {
-          edits.push({
-            filePath: fp,
-            type: "edit",
-            oldString: edit.old_string ?? "",
-            newString: edit.new_string ?? "",
-          });
-        }
-      } else {
-        edits.push({
-          filePath: fp,
-          type: "edit",
-          oldString: tc.input.old_string as string ?? "",
-          newString: tc.input.new_string as string ?? "",
-        });
+      for (const hunk of hunks.length ? hunks : [{ oldString: "", newString: "" }]) {
+        edits.push({ filePath: fp, type: "edit", ...hunk });
       }
     } else if (family === "write" || hasWrite) {
       if (!fp) continue;

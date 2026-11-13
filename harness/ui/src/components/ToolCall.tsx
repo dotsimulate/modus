@@ -32,6 +32,7 @@ import {
   isTodoTool,
   isWriteTool,
   toolFamily,
+  toolEditHunks,
   toolInputCommand,
   toolInputPath,
   toolWriteContent,
@@ -527,12 +528,11 @@ function EditDiffDetail({ tool }: { tool: ToolCallType }) {
 
   if (isWriteTool(name)) {
     edits.push({ filePath: fp, type: "write", content: toolWriteContent(inp) ?? "" });
-  } else if (canonicalToolName(name) === "multiedit" && Array.isArray(inp.edits)) {
-    for (const e of inp.edits as Array<{ old_string?: string; new_string?: string }>) {
-      edits.push({ filePath: fp, type: "edit", oldString: e.old_string ?? "", newString: e.new_string ?? "" });
-    }
   } else {
-    edits.push({ filePath: fp, type: "edit", oldString: inp.old_string as string ?? "", newString: inp.new_string as string ?? "" });
+    const hunks = toolEditHunks(inp);
+    for (const hunk of hunks.length ? hunks : [{ oldString: "", newString: "" }]) {
+      edits.push({ filePath: fp, type: "edit", ...hunk });
+    }
   }
 
   return (

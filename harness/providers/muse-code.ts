@@ -8,7 +8,6 @@ import {
 } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import type { PermissionPolicy } from "../profiles";
-import { permissionPolicyNeedsApproval } from "../permission-policy";
 import { resolveMcpServers } from "../mcp-config";
 import { resolveSecret } from "../secrets";
 import type { SessionProvider, TurnContext } from "./types";
@@ -24,6 +23,12 @@ import {
 } from "./muse-code-runtime";
 import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
 import { resolveCli } from "./resolve-cli";
+import {
+  decideTool,
+  noticeToolDenied,
+  toolRestrictionConfig,
+  type ToolDecision,
+} from "./tool-restrictions";
 
 type MuseClient = GrokAcpClient;
 
@@ -73,6 +78,8 @@ type MuseState = {
   approvalMode?: string;
   restartBeforeNextTurn: boolean;
   command: MuseCommand;
+  /** Denials already explained in this turn's transcript. */
+  noticedDenials: Set<string>;
 };
 
 const MUSE_SHELL_TOOLS = new Set(["shell"]);
@@ -86,10 +93,6 @@ function getState(session: ActiveSession): MuseState {
 
 function asObject(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? value as Record<string, any> : {};
-}
-
-function normalizedSet(values: Iterable<string>): Set<string> {
-  return new Set(Array.from(values, (value) => value.toLowerCase()));
 }
 
 /** Modus effort names onto MSP's closed `ReasoningEffort` vocabulary. */
@@ -110,23 +113,19 @@ function toolRestrictions(ctx: TurnContext): boolean {
 }
 
 function permissionPolicy(ctx: TurnContext): PermissionPolicy {
-  return ctx.opts.permissionPolicy ?? ctx.profile?.permissionPolicy ?? "bypass";
+  return toolRestrictionConfig(ctx).policy;
+}
+
+/** The full decision, with the restriction that denied the tool when one did. */
+export function museToolDecision(ctx: TurnContext, toolName: string): ToolDecision {
+  return decideTool(ctx.session, toolName, toolRestrictionConfig(ctx), {
+    aliases: MUSE_CODE_CAPABILITIES.toolAliases,
+    shellTools: MUSE_SHELL_TOOLS,
+  });
 }
 
 export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
-  const lower = toolName.toLowerCase();
-  const configuredTools = ctx.session._configOverrides.tools ?? ctx.opts.tools ?? ctx.profile?.tools;
-  if (configuredTools?.length && !normalizedSet(configuredTools).has(lower)) return "deny";
-  const disallowed = normalizedSet([
-    ...(ctx.profile?.disallowedTools ?? []),
-    ...(ctx.opts.disallowedTools ?? []),
-    ...(ctx.session._configOverrides.disallowedTools ?? []),
-  ]);
-  const toolStates = ctx.session._configOverrides.toolStates ?? ctx.opts.toolStates;
-  const disabled = Object.entries(toolStates ?? {}).some(([name, state]) => name.toLowerCase() === lower && state === "off");
-  if (disallowed.has(lower) || disabled) return "deny";
-  if (ctx.session.sessionApprovals.has(toolName)) return "allow";
-  return permissionPolicyNeedsApproval(permissionPolicy(ctx), toolName, MUSE_SHELL_TOOLS) ? "ask" : "allow";
+  return museToolDecision(ctx, toolName).decision;
 }
 
 /**
@@ -442,7 +441,11 @@ function handleApproval(
   const toolName = typeof params?.toolName === "string" ? params.toolName : "MuseTool";
   const input = parseArgs(params?.rawArgs);
   const choices = Array.isArray(params?.availableChoices) ? params.availableChoices : [];
-  const decision = toolDecision(ctx, toolName);
+  const resolved = museToolDecision(ctx, toolName);
+  const decision = resolved.decision;
+  if (resolved.decision === "deny") {
+    noticeToolDenied(ctx, state.noticedDenials, toolName, resolved.restriction, MUSE_CODE_CAPABILITIES);
+  }
   if (decision !== "ask") {
     void decideApproval(client, state, params, pickChoice(choices, decision, false));
     return;
@@ -630,6 +633,7 @@ async function runTurn(
     state.turnText = "";
     state.items.clear();
     state.tools.clear();
+    state.noticedDenials.clear();
     state.completedTurns.clear();
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
@@ -821,6 +825,7 @@ export function createMuseCodeProvider(options?: {
         effort: ctx.opts.effort ?? ctx.profile?.effort,
         restartBeforeNextTurn: false,
         command,
+        noticedDenials: new Set(),
       };
       ctx.session._providerState = state;
       void runTurn(ctx, state, ctx.session.initialContent, { resume });

@@ -5,6 +5,16 @@
  * diff, `allow`/`deny` permission options, MCP tools named `mcp_<server>_<tool>`
  * with an injected `toolSummary`, and the unverified-account notice.
  *
+ * Also recorded from 1.5.7: `run_command` input (`CommandLine`, `BypassSandbox`)
+ * and output (`rawOutput.output`), the sandbox start failure text, which tools
+ * ask before running (commands and edits do; reads and MCP calls do not), and a
+ * rejected call surfacing as a `failed` update with no output.
+ *
+ * Steering is modelled on Antigravity's ACP guide ("sending a prompt while a
+ * turn runs steers that turn"), not a recording: a second `session/prompt`
+ * during a `steerable` turn is folded into it and both requests settle when the
+ * turn ends. During a `nosteer` turn it is refused at once.
+ *
  * Every request is appended to $MODUS_AGY_CAPTURE (JSONL) when it is set.
  */
 import { appendFileSync } from "fs";
@@ -15,6 +25,37 @@ const capture = process.env.MODUS_AGY_CAPTURE;
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 let pendingPromptId: string | number | null = null;
 let permissionTool: "write" | null = null;
+let turnKind: "steerable" | "nosteer" | "loop" | null = null;
+const steerIds: Array<string | number> = [];
+let loopTimer: ReturnType<typeof setInterval> | null = null;
+let loopRound = 0;
+const permissionReplies = new Map<string, (allowed: boolean) => void>();
+
+const PERMISSION_OPTIONS = [
+  { optionId: "allow", name: "Allow", kind: "allow_once" },
+  { optionId: "deny", name: "Deny", kind: "reject_once" },
+];
+
+function askPermission(id: string, toolCall: Record<string, unknown>, then: (allowed: boolean) => void): void {
+  permissionReplies.set(id, then);
+  send({
+    jsonrpc: "2.0",
+    id,
+    method: "session/request_permission",
+    params: { sessionId: SESSION, toolCall: { ...toolCall, status: "pending" }, options: PERMISSION_OPTIONS },
+  });
+}
+
+function commandCall(id: string, input: Record<string, unknown>) {
+  return { toolCallId: id, name: "run_command", kind: "execute", title: String(input.CommandLine ?? ""), rawInput: input };
+}
+
+function commandResult(id: string, input: Record<string, unknown>, allowed: boolean, output: string): void {
+  const call = commandCall(id, input);
+  update(allowed
+    ? { sessionUpdate: "tool_call_update", ...call, status: "completed", rawOutput: { output } }
+    : { sessionUpdate: "tool_call_update", ...call, status: "failed" });
+}
 
 function send(message: unknown): void {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -25,6 +66,11 @@ function update(update: Record<string, unknown>): void {
 }
 
 function finish(stopReason = "end_turn"): void {
+  if (loopTimer) { clearInterval(loopTimer); loopTimer = null; }
+  turnKind = null;
+  for (const id of steerIds.splice(0)) {
+    send({ jsonrpc: "2.0", id, result: { stopReason, usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } } });
+  }
   if (pendingPromptId == null) return;
   send({
     jsonrpc: "2.0",
@@ -106,9 +152,78 @@ lines.on("line", (line) => {
     finish("cancelled");
     return;
   }
+  if (typeof message.id === "string" && permissionReplies.has(message.id) && message.result) {
+    const then = permissionReplies.get(message.id)!;
+    permissionReplies.delete(message.id);
+    then(message.result?.outcome?.optionId === "allow");
+    return;
+  }
+  if (message.method === "session/prompt" && pendingPromptId != null) {
+    const text = String(message.params?.prompt?.[0]?.text ?? "");
+    if (turnKind === "steerable") {
+      steerIds.push(message.id);
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: ` (steered: ${text})` } });
+      finish();
+      return;
+    }
+    send({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: "a turn is already running" } });
+    return;
+  }
   if (message.method === "session/prompt") {
     pendingPromptId = message.id;
     const text = String(message.params?.prompt?.[0]?.text ?? "");
+    if (text.includes("nosteer")) {
+      turnKind = "nosteer";
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "working" } });
+      return;
+    }
+    if (text.includes("steerable")) {
+      turnKind = "steerable";
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "working" } });
+      return;
+    }
+    if (text.includes("loop")) {
+      // One read per round, with a thought between rounds, until cancelled.
+      turnKind = "loop";
+      loopRound = 0;
+      loopTimer = setInterval(() => {
+        loopRound += 1;
+        update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: `round ${loopRound}` } });
+        const call = { toolCallId: `call-loop-${loopRound}`, name: "read_file", kind: "read", title: "note.txt", rawInput: { Path: "note.txt" } };
+        update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
+        update({ sessionUpdate: "tool_call_update", ...call, status: "completed" });
+      }, 15);
+      return;
+    }
+    if (text.includes("sandbox-fail")) {
+      const input = { CommandLine: "cmd /c echo hi", WaitMsBeforeAsync: 5000 };
+      update({ sessionUpdate: "tool_call", ...commandCall("call-sandbox", input), status: "in_progress" });
+      commandResult("call-sandbox", input, true,
+        "Created At: 2026-11-13T00:52:44-05:00\nCompleted At: 2026-11-13T00:52:46-05:00\n"
+        + "Command failed to run: exebox: creating sandbox: CreateProcessSecurityEnvironment: The environment is incorrect..\n\nNo output from the command.");
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "the sandbox failed" } });
+      finish();
+      return;
+    }
+    if (text.includes("read-unasked")) {
+      const call = { toolCallId: "call-read", name: "read_file", kind: "read", title: "note.txt", rawInput: { Path: "note.txt" } };
+      update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
+      update({ sessionUpdate: "tool_call_update", ...call, status: "completed" });
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "read it" } });
+      finish();
+      return;
+    }
+    if (text.includes("command") || text.includes("bypass")) {
+      const input: Record<string, unknown> = { CommandLine: "cmd /c echo hi", WaitMsBeforeAsync: 5000 };
+      if (text.includes("bypass")) input.BypassSandbox = true;
+      update({ sessionUpdate: "tool_call", ...commandCall("call-command", input), status: "in_progress" });
+      askPermission("permission-command", commandCall("call-command", input), (allowed) => {
+        commandResult("call-command", input, allowed, "hi");
+        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: allowed ? "ran it" : "it was refused" } });
+        finish();
+      });
+      return;
+    }
     if (text.includes("unverified")) {
       update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "\n⚠ Verification Required\n" } });
       finish();

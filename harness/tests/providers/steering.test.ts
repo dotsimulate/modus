@@ -68,7 +68,7 @@ describe("provider steering capability", () => {
     for (const name of ["cursor", "grok-build", "opencode"]) {
       expect(supportsSteering(name)).toBe(false);
     }
-    for (const name of ["claude-code", "claude-code-pty", "codex", "muse-code", ...PI_PROVIDERS]) {
+    for (const name of ["claude-code", "claude-code-pty", "codex", "muse-code", "antigravity", ...PI_PROVIDERS]) {
       expect(supportsSteering(name)).toBe(true);
     }
   });

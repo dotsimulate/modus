@@ -12,8 +12,8 @@ import { useMemo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Message, ToolCall } from "../../../sdk/index";
 import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerContext";
 import {
-  canonicalToolName,
   isWriteTool,
+  toolEditHunks,
   toolFamily,
   toolInputCommand,
   toolInputPath,
@@ -305,24 +305,21 @@ function EditCard({ tool, expanded, toggleControl, intoTurnMs }: ToolCardProps) 
   const writeContent = toolWriteContent(tool.input) ?? "";
 
   let adds = 0, dels = 0, editCount = 0;
+  const hunks = isWrite ? [] : toolEditHunks(tool.input);
   if (isWrite) {
     adds = countLines(writeContent);
     editCount = 1;
-  } else if (canonicalToolName(tool.name) === "multiedit" && Array.isArray(tool.input.edits)) {
-    editCount = (tool.input.edits as any[]).length;
-    for (const e of tool.input.edits as Array<{ old_string?: string; new_string?: string }>) {
-      const d = countDiffChanges(e.old_string ?? "", e.new_string ?? "");
+  } else {
+    editCount = Math.max(1, hunks.length);
+    for (const hunk of hunks) {
+      const d = countDiffChanges(hunk.oldString, hunk.newString);
       adds += d.adds; dels += d.dels;
     }
-  } else {
-    editCount = 1;
-    const d = countDiffChanges((tool.input.old_string as string) ?? "", (tool.input.new_string as string) ?? "");
-    adds = d.adds; dels = d.dels;
   }
 
   const showPreview = !isWrite && editCount === 1;
-  const oldStr = (tool.input.old_string as string) ?? "";
-  const newStr = (tool.input.new_string as string) ?? "";
+  const oldStr = hunks[0]?.oldString ?? "";
+  const newStr = hunks[0]?.newString ?? "";
   const dir = dirOf(fp);
 
   return {

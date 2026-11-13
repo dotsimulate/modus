@@ -1130,6 +1130,8 @@ export type ProviderCapabilities = {
   builtInToolGroups: ProviderToolGroup[];
   /** "explicit" means the tool list is known upfront; "event-derived" means tools are discovered from events. */
   builtInToolMode: "explicit" | "event-derived";
+  /** Modus/Claude tool name → this provider's native names, where they differ. Profiles' tool lists read through it. */
+  toolAliases?: Record<string, string[]>;
   slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";

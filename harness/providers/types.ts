@@ -33,6 +33,12 @@ export type ProviderCapabilities = {
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   builtInToolMode: "explicit" | "event-derived";
+  /**
+   * Modus/Claude tool name → this provider's native names, for providers whose
+   * tools differ. Profiles write the shared names (`Read`, `Bash`, ...); the
+   * backend and the tool grid both read a profile's tools through this map.
+   */
+  toolAliases?: Record<string, string[]>;
   slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";

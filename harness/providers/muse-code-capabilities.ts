@@ -10,6 +10,17 @@ export const MUSE_CODE_TOOL_GROUPS = [
   { label: "exec", tools: ["shell"] },
 ] as const;
 
+/** The shared Modus/Claude tool names a profile writes, onto Muse Code's tools. */
+export const MUSE_CODE_TOOL_ALIASES: Record<string, string[]> = {
+  Bash: ["shell"],
+  PowerShell: ["shell"],
+  Read: ["read_file"],
+  Write: ["write_file"],
+  Edit: ["write_file"],
+  MultiEdit: ["write_file"],
+  NotebookEdit: ["write_file"],
+};
+
 export const MUSE_CODE_CAPABILITIES: ProviderCapabilities = {
   name: "muse-code",
   label: "Muse Code",
@@ -17,6 +28,7 @@ export const MUSE_CODE_CAPABILITIES: ProviderCapabilities = {
   builtInTools: MUSE_CODE_TOOL_GROUPS.flatMap((group) => group.tools),
   builtInToolGroups: MUSE_CODE_TOOL_GROUPS.map((group) => ({ label: group.label, tools: [...group.tools] })),
   builtInToolMode: "event-derived",
+  toolAliases: MUSE_CODE_TOOL_ALIASES,
   supportsMcp: true,
   mcpSupport: "full",
   profilePrompt: {

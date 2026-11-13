@@ -77,12 +77,13 @@ export function acceptsInjectedSkillPaths(name: string): boolean {
  * - PI providers â€” `AgentSession.sendUserMessage(content, { deliverAs: "steer" })`.
  *
  * Codex uses app-server's acknowledged `turn/steer` request over live stdin,
- * and Muse Code the MSP `turn/steer` command on its warm `muse serve` host.
- * Everything else runs one prompt per turn with no injection point, so a
- * message sent mid-turn there can only be queued.
+ * Muse Code the MSP `turn/steer` command on its warm `muse serve` host, and
+ * Antigravity a second ACP `session/prompt` during the turn, which its ACP server
+ * documents as steering that turn. Everything else runs one prompt per turn
+ * with no injection point, so a message sent mid-turn there can only be queued.
  */
 export function listSteerableProviders(): string[] {
-  return ["claude-code", "claude-code-pty", "codex", "muse-code", ...listPiProviders()];
+  return ["claude-code", "claude-code-pty", "codex", "muse-code", "antigravity", ...listPiProviders()];
 }
 
 export function supportsSteering(name: string): boolean {
@@ -90,6 +91,7 @@ export function supportsSteering(name: string): boolean {
     || name === "claude-code-pty"
     || name === "codex"
     || name === "muse-code"
+    || name === "antigravity"
     || getProviderDefinition(name)?.kind === "pi";
 }
 

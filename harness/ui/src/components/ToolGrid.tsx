@@ -8,7 +8,7 @@
  *   profile includes. No "inherit" concept — you're setting the baseline.
  */
 
-import { getToolGroups, isToolEnabled, mcpToolDisplayName, type ToolGroup, type ToolState, type ToolStates } from "../tools";
+import { effectiveToolState, getToolGroups, isToolEnabled, mcpToolDisplayName, type ToolGroup, type ToolState, type ToolStates } from "../tools";
 
 type BaseProps = {
   /** Called when any tool state changes */
@@ -25,6 +25,12 @@ type BaseProps = {
    * reflects exactly what the running provider exposes.
    */
   builtInGroups?: ToolGroup[];
+  /**
+   * The provider's map from shared tool names (`Read`, `Bash`, ...) to its own,
+   * from its capabilities. Lets a profile's tools and toggles written with shared
+   * names show on this provider's pills the way the backend applies them.
+   */
+  toolAliases?: Record<string, string[]>;
 };
 
 type OverrideProps = BaseProps & {
@@ -103,7 +109,7 @@ export function ToolGrid(props: Props) {
 
   const enabledCount = mode === "baseline"
     ? Object.values(states).filter((s) => s === "on").length
-    : allTools.filter((t) => isToolEnabled(t, states[t] ?? "inherit", profileTools)).length;
+    : allTools.filter((t) => isToolEnabled(t, effectiveToolState(t, states, props.toolAliases), profileTools, props.toolAliases)).length;
 
   const totalLabel = mode === "permission"
     ? `${overrideCount} exception${overrideCount === 1 ? "" : "s"}`
@@ -146,7 +152,7 @@ export function ToolGrid(props: Props) {
                   enabled = state !== "off";
                   isOverride = state !== "inherit";
                 } else {
-                  enabled = isToolEnabled(tool, state, profileTools);
+                  enabled = isToolEnabled(tool, effectiveToolState(tool, states, props.toolAliases), profileTools, props.toolAliases);
                   isOverride = state !== "inherit";
                 }
 
