@@ -222,9 +222,8 @@ const ProviderControlsSchema = z.object({
     permissionMode: z.enum(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"]).optional(),
   }).optional(),
   antigravity: z.object({
-    mode: z.enum(["accept-edits", "plan"]).optional(),
+    mode: z.enum(["default", "accept-edits", "auto", "plan"]).optional(),
     sandbox: z.boolean().optional(),
-    printTimeout: z.string().min(1).optional(),
   }).optional(),
   grokBuild: z.object({
     mode: z.enum(["default", "auto", "plan", "always-approve"]).optional(),

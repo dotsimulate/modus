@@ -494,11 +494,11 @@ await client.resumeMission(runId);
 
 ## Providers
 
-Providers are execution backends (Claude Code, Codex, Cursor, Grok Build, PI agent variants).
+Providers are execution backends (Claude Code, Codex, Cursor, Grok Build, Antigravity, PI agent variants).
 
 ```typescript
 const providers = await client.listProviders();
-// ["claude-code", "claude-code-pty", "codex", "cursor", "grok-build", "opencode", ...]
+// ["antigravity", "claude-code", "claude-code-pty", "codex", "cursor", "grok-build", ...]
 // Retired standalone Google adapters are unavailable in the distributed app.
 
 const caps = await client.getProviderCapabilities();

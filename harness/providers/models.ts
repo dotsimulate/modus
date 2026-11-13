@@ -2,6 +2,7 @@
  * Provider Models — fetch available models from each provider's API.
  */
 
+import { probeAntigravity } from "./antigravity-runtime";
 import { readCodexModelsCache } from "./codex-model-cache";
 import { resolveSecret } from "../secrets";
 import { fetchCursorModels } from "./cursor-runtime";
@@ -132,6 +133,12 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
     } catch {
       return GROK_BUILD_FALLBACK_MODELS;
     }
+  }
+
+  // Antigravity: the signed-in plan's models, read from a throwaway ACP session.
+  // No offline fallback: the list depends on the account's tier.
+  if (provider === "antigravity") {
+    return (await probeAntigravity()).models;
   }
 
   // Muse Code: the host's catalog over MSP `model/list`. No offline fallback,

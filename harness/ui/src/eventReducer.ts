@@ -590,13 +590,15 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
   if (rawAntigravity && typeof rawAntigravity === "object") {
     const antigravity = rawAntigravity as Record<string, unknown>;
     next.antigravity = {};
-    if (antigravity.mode === "accept-edits" || antigravity.mode === "plan") {
+    if (
+      antigravity.mode === "default"
+      || antigravity.mode === "accept-edits"
+      || antigravity.mode === "auto"
+      || antigravity.mode === "plan"
+    ) {
       next.antigravity.mode = antigravity.mode;
     }
     if (typeof antigravity.sandbox === "boolean") next.antigravity.sandbox = antigravity.sandbox;
-    if (typeof antigravity.printTimeout === "string" && antigravity.printTimeout.trim()) {
-      next.antigravity.printTimeout = antigravity.printTimeout;
-    }
   }
   const rawGrokBuild = (providerControls as Record<string, unknown>).grokBuild;
   if (rawGrokBuild && typeof rawGrokBuild === "object") {

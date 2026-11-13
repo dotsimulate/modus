@@ -28,6 +28,7 @@ const STEERABLE_PROVIDERS = listSteerableProviders();
 
 /** Provider name → the file implementing it. PI backs all of its names with one module. */
 const IMPLEMENTATION: Record<string, string> = {
+  "antigravity": "antigravity.ts",
   "claude-code": "claude-code.ts",
   "claude-code-pty": "claude-code-pty.ts",
   "codex": "codex.ts",

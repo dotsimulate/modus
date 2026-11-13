@@ -6,9 +6,9 @@ import { isKnownProvider, listProviders } from "../../providers/provider-names";
 import { checkProviderHealth, getProvider, getProviderCapabilities } from "../../providers/registry";
 import { ProfileSchema } from "../../profile-schemas";
 
-const removed = ["gemini-cli", "antigravity"];
+const removed = ["gemini-cli"];
 
-describe("removed standalone Google providers", () => {
+describe("removed standalone Gemini CLI provider", () => {
   test("explicit names reject session, capability, health, and model routes with migration guidance", async () => {
     for (const name of removed) {
       expect(isKnownProvider(name)).toBe(false);

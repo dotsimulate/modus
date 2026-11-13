@@ -155,8 +155,8 @@ defaults, overridden by user profile `templateVars`.
 system/developer/rule channel; `"custom"` replaces the provider's built-in
 system instructions. The user's message is not rewritten. Providers advertise
 their supported modes through `profilePrompt.supportedModes`; unsupported modes
-are disabled in the editor and rejected by the backend. Cursor supports append
-only. The retired standalone Gemini CLI and Antigravity adapters are unavailable
+are disabled in the editor and rejected by the backend. Cursor and Antigravity
+support append only. The retired standalone Gemini CLI adapter is unavailable
 in the distributed app.
 
 **loadProjectSettings**: controls native project instructions only when

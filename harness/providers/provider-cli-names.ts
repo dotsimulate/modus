@@ -12,6 +12,7 @@
  */
 
 export const PROVIDER_CLI_NAMES: Readonly<Record<string, string>> = {
+  "antigravity": "agy",
   "claude-code": "claude",
   "claude-code-pty": "claude",
   "codex": "codex",

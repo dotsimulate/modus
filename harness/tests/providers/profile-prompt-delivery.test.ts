@@ -6,7 +6,7 @@ import { buildCodexConfig, buildCodexInput } from "../../providers/codex";
 import { buildCursorInput, syncCursorProfilePlugin } from "../../providers/cursor";
 import { buildOpenCodeInput, buildOpenCodeProfileLaunch } from "../../providers/opencode";
 import { buildGeminiRequest } from "../../providers/gemini-cli-input";
-import { buildAntigravityArgs } from "../../providers/antigravity";
+import { antigravitySessionMeta } from "../../providers/antigravity";
 import { launchArgs as buildGrokLaunchArgs } from "../../providers/grok-build";
 import { piProfileResourceOverrides } from "../../providers/pi-agent";
 import { getProviderCapabilities } from "../../providers/registry";
@@ -49,7 +49,6 @@ describe("profile prompt delivery", () => {
     expect(buildCursorInput(message, ctx)).toBe(message);
     expect(buildOpenCodeInput(message, ctx)).toBe(message);
     expect(buildGeminiRequest(message)).toEqual([{ text: message }]);
-    expect(buildAntigravityArgs({ prompt: message })[1]).toBe(message);
   });
 
   test("uses Codex native instruction config and disables AGENTS discovery when requested", () => {
@@ -108,6 +107,15 @@ describe("profile prompt delivery", () => {
     expect(customArgs.slice(1, 3)).toEqual(["--system-prompt-override", "Keep answers concise."]);
   });
 
+  test("appends Antigravity profile prompts through ACP session metadata only", () => {
+    expect(antigravitySessionMeta("Keep answers concise.")).toEqual({
+      antigravity: { systemPrompt: { append: "Keep answers concise." } },
+    });
+    expect(antigravitySessionMeta(undefined)).toBeUndefined();
+    expect(() => requireSupportedProfilePrompt(getProviderCapabilities("antigravity"), context("custom").profile))
+      .toThrow("cannot deliver a custom profile prompt");
+  });
+
   test("maps PI append/custom modes without inverting them", () => {
     const appendState = { prompt: { text: "Profile", mode: "append" as const }, loadProjectSettings: false };
     const append = piProfileResourceOverrides(appendState, "Extra roots");
@@ -123,6 +131,7 @@ describe("profile prompt delivery", () => {
 
   test("advertises unsupported modes and project controls per provider", () => {
     const expected = {
+      antigravity: [["append"], "always"],
       "claude-code": [["append", "custom"], "toggle"],
       "claude-code-pty": [["append", "custom"], "toggle"],
       codex: [["append", "custom"], "toggle"],

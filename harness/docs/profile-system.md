@@ -96,13 +96,13 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 
 ### Key Fields
 
-**`provider`**: Execution backend. The built-ins are `"claude-code"`,
+**`provider`**: Execution backend. The built-ins are `"antigravity"`, `"claude-code"`,
 `"claude-code-pty"`, `"codex"`, `"cursor"`,
 `"grok-build"`, `"muse-code"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
 `"openrouter"`. Current-Vault and plugin declarative providers extend this set at
 runtime. Legacy `"litellm"` remains accepted as an alias of
-`"openai-compat"`. The standalone `"antigravity"` and `"gemini-cli"` names are
-not available in the distributed app; migrate old profiles to a supported provider.
+`"openai-compat"`. The standalone `"gemini-cli"` name is not available in the
+distributed app; migrate old profiles to a supported provider.
 
 **`cwd`**: Pins the profile to a fixed working directory. Any agent profile may
 set it, not just plugin profiles — it is a plain optional string
@@ -131,6 +131,7 @@ added to a user message. Provider support is explicit:
 
 | Provider | Prompt modes | Project instructions |
 |----------|--------------|----------------------|
+| Antigravity | append only | always loads Antigravity rules and project instructions |
 | Claude Code / Claude Code PTY | append, custom | toggleable project `CLAUDE.md` and settings |
 | Codex | append, custom | toggleable `AGENTS.md` discovery |
 | Cursor | append only | always loads Cursor project rules |
@@ -170,7 +171,7 @@ providers pass the result to Claude Code as `autoCompactWindow` (see
 See [Claude's settings-source contract](https://code.claude.com/docs/en/agent-sdk/claude-code-features).
 
 **`env`**: Provider-specific process environment, not a universal endpoint
-override. The Claude Code SDK, Claude Code PTY, and Grok Build providers consume it today; other
+override. The Claude Code SDK, Claude Code PTY, Grok Build, and Antigravity providers consume it today; other
 CLI providers ignore it. PI providers run in-process and instead use
 declarative provider `baseUrl`, `apiKeyName`, `headers`, and Modus secrets.
 
@@ -182,8 +183,8 @@ Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Na
 **`permissionPolicy`**: omit to inherit (the compatibility default is `"bypass"`),
 `"bypass"` to never ask, `"auto-edit"` to allow edits while asking for shell,
 `"ask"` to approve every tool call, or an object with
-`autoApprove`/`requireApproval` lists for granular control. Claude Code and
-Grok Build honor the per-tool lists; Codex and OpenCode flatten them to the
+`autoApprove`/`requireApproval` lists for granular control. Claude Code,
+Grok Build, and Antigravity honor the per-tool lists; Codex and OpenCode flatten them to the
 object's default. The legacy object spelling
 `default: "allow"` is read as `"approve"` and reported once, without rewriting
 the profile.
@@ -191,6 +192,12 @@ the profile.
 **`mcpConfig`**: Path to an external MCP JSON file, resolved relative to the
 profile file. The file uses the same `{ "mcpServers": { ... } }` shape as
 `_global.json` and can be shared by multiple profiles.
+
+**`providerControls.antigravity`**: Optional Antigravity ACP controls. `mode`
+may be `"default"` (Antigravity asks Modus before edits and commands),
+`"accept-edits"`, `"auto"`, or `"plan"`; `sandbox: true` launches
+`agy acp --sandbox`. Changes apply on the next turn by restarting the ACP child
+and loading the same Antigravity session.
 
 **`providerControls.grokBuild`**: Optional Grok Build ACP controls. `mode` may
 be `"default"`, `"auto"`, `"plan"`, or `"always-approve"`; `sandbox` names a

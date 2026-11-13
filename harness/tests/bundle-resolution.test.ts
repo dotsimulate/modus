@@ -44,14 +44,12 @@ describe("packaged bundle resolves", () => {
       if (entry === "index.ts" && result.success) {
         const serverBundle = await result.outputs[0]!.text();
         for (const removedRuntime of [
-          "createAntigravityProvider",
           "createGeminiCliProvider",
           "@google/gemini-cli-core",
           "antigravity-mcp-bridge",
-          "resolveAntigravityExecutable",
+          "antigravity-hook",
+          "antigravityPluginFiles",
           "fetchGeminiUsageSnapshot",
-          "runAntigravityCommand",
-          "AGY_CLI_DISABLE_AUTO_UPDATE",
         ]) {
           expect(serverBundle).not.toContain(removedRuntime);
         }

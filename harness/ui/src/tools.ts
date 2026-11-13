@@ -51,13 +51,14 @@ export const GEMINI_TOOL_GROUPS: ToolGroup[] = [
   { label: "web", tools: ["google_web_search"] },
 ];
 
-// Google Antigravity tool identifiers from its documented JSON Hooks contract.
+// Google Antigravity tools as `agy acp` reports them (matches antigravity-capabilities.ts).
 export const ANTIGRAVITY_TOOL_GROUPS: ToolGroup[] = [
-  { label: "files", tools: ["view_file", "write_to_file", "replace_file_content", "multi_replace_file_content", "list_dir", "find_by_name"] },
-  { label: "search", tools: ["grep_search", "search_web", "read_url_content"] },
-  { label: "exec", tools: ["run_command", "manage_task", "schedule", "list_permissions", "ask_permission"] },
-  { label: "agent", tools: ["invoke_subagent", "define_subagent", "send_message", "manage_subagents"] },
-  { label: "interaction", tools: ["generate_image"] },
+  { label: "files", tools: ["read_file", "write_file", "edit_file"] },
+  { label: "exec", tools: ["run_command", "manage_task", "schedule"] },
+  { label: "web", tools: ["search_web"] },
+  { label: "agents", tools: ["invoke_subagent", "define_subagent", "manage_subagents", "send_message", "swarm"] },
+  { label: "resources", tools: ["list_resources", "read_resource"] },
+  { label: "interaction", tools: ["ask_question"] },
 ];
 
 // Cursor Agent tools (matches cursor.ts builtInToolGroups)

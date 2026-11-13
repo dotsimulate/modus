@@ -99,7 +99,7 @@ describe("provider aliases", () => {
 
 describe("removed standalone providers", () => {
   test("old names are rejected but reserved against declarative reuse", () => {
-    expect(REMOVED_PROVIDER_NAMES).toEqual(["gemini-cli", "antigravity"]);
+    expect(REMOVED_PROVIDER_NAMES).toEqual(["gemini-cli"]);
     for (const name of REMOVED_PROVIDER_NAMES) {
       expect(STANDALONE_PROVIDER_NAMES).not.toContain(name as never);
       expect(isKnownProvider(name)).toBe(false);

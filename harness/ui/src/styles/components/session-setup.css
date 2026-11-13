@@ -332,6 +332,11 @@
   display: flex;
   gap: 8px;
 }
+.agent-config-note {
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  line-height: 1.4;
+}
 .agent-config-field {
   display: flex;
   flex-direction: column;

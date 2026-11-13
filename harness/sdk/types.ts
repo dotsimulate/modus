@@ -249,9 +249,10 @@ export type AgentConfigState = {
       permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk" | "auto";
     };
     antigravity?: {
-      mode?: "accept-edits" | "plan";
+      /** ACP session mode; "default" asks Modus before edits and commands. */
+      mode?: "default" | "accept-edits" | "auto" | "plan";
+      /** Launch `agy acp --sandbox` (terminal restrictions enabled). */
       sandbox?: boolean;
-      printTimeout?: string;
     };
     grokBuild?: {
       mode?: "default" | "auto" | "plan" | "always-approve";

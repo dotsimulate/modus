@@ -22,6 +22,7 @@ export const KNOWN_PI_APIS = [
 ] as const;
 
 export const STANDALONE_PROVIDER_NAMES = [
+  "antigravity",
   "claude-code",
   "claude-code-pty",
   "codex",
@@ -32,12 +33,13 @@ export const STANDALONE_PROVIDER_NAMES = [
 ] as const;
 
 /** Reserved so a declarative definition cannot silently reuse an old profile name. */
-export const REMOVED_PROVIDER_NAMES = ["gemini-cli", "antigravity"] as const;
+export const REMOVED_PROVIDER_NAMES = ["gemini-cli"] as const;
 
 export function removedProviderMigrationError(name: string): Error | undefined {
   if (!REMOVED_PROVIDER_NAMES.includes(name as (typeof REMOVED_PROVIDER_NAMES)[number])) return undefined;
   return new Error(
     `Provider "${name}" was removed from Modus. Update this profile to use a supported provider. `
+    + "For a Google AI Pro or Ultra plan, use the antigravity provider. "
     + "For paid Google API access, configure a declarative PI provider with the google-generative-ai or google-vertex protocol and a named API secret.",
   );
 }

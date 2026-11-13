@@ -7,6 +7,9 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { isSecretSet } from "../secrets";
+import { createAntigravityProvider } from "./antigravity";
+import { ANTIGRAVITY_CAPABILITIES } from "./antigravity-capabilities";
+import { probeAntigravity, resolveAntigravityCommand } from "./antigravity-runtime";
 import { createClaudeCodeProvider } from "./claude-code";
 import { createClaudeCodePtyProvider } from "./claude-code-pty";
 import { createCodexProvider } from "./codex";
@@ -60,7 +63,9 @@ export function getProvider(name: string): SessionProvider {
   if (cached) return cached;
 
   let provider: SessionProvider;
-  if (name === "claude-code") {
+  if (name === "antigravity") {
+    provider = createAntigravityProvider();
+  } else if (name === "claude-code") {
     provider = createClaudeCodeProvider();
   } else if (name === "claude-code-pty") {
     provider = createClaudeCodePtyProvider();
@@ -89,7 +94,8 @@ export function getProvider(name: string): SessionProvider {
 
 export function getProviderCapabilities(name: string): ProviderCapabilities {
   const base =
-    name === "grok-build" ? GROK_BUILD_CAPABILITIES
+    name === "antigravity" ? ANTIGRAVITY_CAPABILITIES
+    : name === "grok-build" ? GROK_BUILD_CAPABILITIES
     : name === "muse-code" ? MUSE_CODE_CAPABILITIES
     : name === "opencode" ? OPENCODE_CAPABILITIES
     : getProvider(name).capabilities;
@@ -165,6 +171,8 @@ export async function checkProviderHealth(name: string): Promise<ProviderHealthI
     const found =
       name === "cursor"
         ? resolveCursorAgentExecutable()
+        : name === "antigravity"
+            ? resolveAntigravityCommand()?.executable
         : name === "grok-build"
             ? resolveGrokBuildCommand()?.executable
           : name === "muse-code"
@@ -193,6 +201,16 @@ export async function checkProviderHealth(name: string): Promise<ProviderHealthI
   }
 
   if (name === "codex") checks.push(checkCodexAuth());
+
+  if (name === "antigravity" && checks.every((check) => check.passed)) {
+    const probe = await probeAntigravity();
+    checks.push({
+      type: "auth",
+      label: "Google sign-in",
+      passed: probe.authenticated,
+      detail: probe.detail,
+    });
+  }
 
   if (name === "grok-build") {
     const auth = await probeGrokBuildAuth();

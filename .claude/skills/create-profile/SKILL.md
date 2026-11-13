@@ -163,13 +163,14 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 | `cursor` | composer-2-fast (default), others | Cursor Agent CLI; auto-approve, no per-tool approval | [references/cursor.md](references/cursor.md) |
 | `codex` | Runtime-discovered Codex models | OpenAI Codex CLI; sandbox modes and Starlark rules | [references/codex.md](references/codex.md) |
 | `opencode` | Runtime-discovered OpenCode models | OpenCode CLI or `bunx` fallback | See `harness/docs/providers.md` |
+| `antigravity` | Gemini models the signed-in Google plan offers | `agy` CLI signed in with Google (AI Pro/Ultra); append-only profile prompts | See `harness/docs/providers.md` |
 | `grok-build` | Runtime-discovered Grok Build models | `grok` CLI; SuperGrok/X Premium+ login or `XAI_API_KEY` | See `harness/docs/providers.md` |
 | `muse-code` | Muse Code host catalog (`model/list`) | `muse` CLI signed in to a Meta Model API account, or `MODEL_API_KEY`; no profile prompts | See `harness/docs/providers.md` |
 | `openai-compat` | Any OpenAI-compatible endpoint | Local models, LiteLLM, vLLM, llama.cpp | See `harness/docs/providers.md` |
 | `ollama` | Ollama models | Local Ollama server | — |
 | `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |
 
-The standalone `gemini-cli` and `antigravity` adapters are unavailable in the
+The standalone `gemini-cli` adapter is unavailable in the
 distributed app. Migrate old profiles to a listed provider. `litellm` remains
 an accepted alias of `openai-compat`. For `cursor` and `codex`, read the linked
 reference before writing profile JSON; their permissions, tools, and MCP

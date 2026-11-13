@@ -328,7 +328,12 @@ export function AgentConfig({
         </div>
       ) : null}
 
-      {/* Antigravity headless controls map directly to documented agy flags. */}
+      {/* Antigravity controls map to ACP session modes and the `agy acp --sandbox` flag. */}
+      {isAntigravityProvider(effectiveProvider) ? (
+        <div className="agent-config-note">
+          Runs Google's own `agy` CLI under your Google sign-in and plan, subject to Google's Antigravity terms.
+        </div>
+      ) : null}
       {isAntigravityProvider(effectiveProvider) ? (
         <div className="agent-config-row">
           <label className="agent-config-field">
@@ -336,8 +341,8 @@ export function AgentConfig({
             <SearchDropdown
               className={dropdownClassName}
               value={antigravityControls.mode ?? ""}
-              options={[{ value: "accept-edits" }, { value: "plan" }]}
-              placeholder="accept-edits"
+              options={[{ value: "default" }, { value: "accept-edits" }, { value: "auto" }, { value: "plan" }]}
+              placeholder="default"
               searchPlaceholder="search mode..."
               onChange={(mode) => updateAntigravityControls({
                 mode: (mode || undefined) as NonNullable<NonNullable<AgentConfigState["providerControls"]>["antigravity"]>["mode"],
@@ -498,7 +503,6 @@ function equalProviderControls(
     && leftClaude.permissionMode === rightClaude.permissionMode
     && leftAntigravity.mode === rightAntigravity.mode
     && leftAntigravity.sandbox === rightAntigravity.sandbox
-    && leftAntigravity.printTimeout === rightAntigravity.printTimeout
   );
 }
 

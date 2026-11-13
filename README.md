@@ -41,8 +41,8 @@ Harness: Hono + Bun (:3777)
         | SessionProvider interface
         v
 Providers:
-  claude-code, claude-code-pty, codex, cursor, grok-build, muse-code,
-  opencode, openai-compat, ollama, openrouter
+  antigravity, claude-code, claude-code-pty, codex, cursor, grok-build,
+  muse-code, opencode, openai-compat, ollama, openrouter
 
 Shared extension surfaces:
   MCP servers, moves, actions, pages, client extensions, plugins
@@ -175,6 +175,7 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 
 | Provider | Backend | What you need |
 |----------|---------|---------------|
+| `antigravity` | Google Antigravity CLI (`agy acp`) | `agy` installed and signed in with Google (Google AI Pro or Ultra plan) |
 | `claude-code` | Claude Agent SDK | [Claude Code](https://claude.com/claude-code) CLI installed |
 | `claude-code-pty` | Claude Code CLI PTY | [Claude Code](https://claude.com/claude-code) CLI installed |
 | `codex` | OpenAI Codex CLI | `codex` CLI plus `CODEX_API_KEY`, `OPENAI_API_KEY`, or Codex OAuth |
@@ -196,7 +197,9 @@ For Grok Build, install the official CLI (`irm https://x.ai/cli/install.ps1 | ie
 
 For Muse Code, install Meta's `muse` CLI and sign in. Modus drives that same CLI through its `muse serve` session protocol, so a Muse Code subscription covers Modus sessions; models such as Muse Wonder Full that Meta serves only to subscribers are available the same way. A `MODEL_API_KEY` Modus secret switches it to pay-as-you-go API billing.
 
-The standalone `gemini-cli` and `antigravity` adapters are not included in the distributed app. Existing profiles naming either provider need a different backend. For paid Google API access, use a declarative provider definition with a Google API or Vertex AI protocol and your own API credential; see the [provider guide](harness/docs/providers.md#declarative-pi-providers). Modus does not reuse either CLI's OAuth credentials. Google's [Antigravity terms](https://antigravity.google/terms) restrict third-party access to that service.
+For Google Antigravity, install Google's Antigravity CLI and run `agy` once to sign in with Google. Modus drives that same CLI through its `agy acp` server, so a Google AI Pro or Ultra plan covers Modus sessions, with whichever Gemini models that plan offers. Modus never reads or reuses the CLI's sign-in. Antigravity is governed by Google's [Antigravity terms](https://antigravity.google/terms), which restrict use of the service with products Google does not provide; see the [provider guide](harness/docs/providers.md#antigravity-support-boundary).
+
+The standalone `gemini-cli` adapter is not included in the distributed app. For paid Google API access, use a declarative provider definition with a Google API or Vertex AI protocol and your own API credential; see the [provider guide](harness/docs/providers.md#declarative-pi-providers).
 
 See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
 

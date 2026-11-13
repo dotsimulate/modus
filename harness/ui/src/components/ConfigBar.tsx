@@ -298,7 +298,7 @@ export function ConfigBar({
       strip.push({ key: "codex-web", node: <span className="config-bar-value">{codexControls.webSearchMode ?? "web:auto"}</span> });
     }
     if (isAntigravityProvider(effectiveProvider)) {
-      strip.push({ key: "ag-mode", node: <span className="config-bar-value">{antigravityControls.mode ?? "accept-edits"}</span> });
+      strip.push({ key: "ag-mode", node: <span className="config-bar-value">{antigravityControls.mode ?? "default"}</span> });
       strip.push({
         key: "ag-sandbox",
         node: (

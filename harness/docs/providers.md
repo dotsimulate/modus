@@ -85,6 +85,7 @@ lookups key on `user/prompt` rows.
 | `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns, steer |
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
+| `antigravity` | antigravity | Google Antigravity CLI (`agy acp`) | Persistent ACP session on the user's Google AI plan, full MCP, streaming tool/thought events, live Modus approvals |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
 | `muse-code` | muse-code | Meta Muse Code CLI (`muse serve`) | Persistent MSP session, full MCP, streaming tool/reasoning events, live Modus approvals, steer |
 | `opencode` | opencode | OpenCode CLI subprocess | Event-derived tools, `bunx opencode-ai` fallback; Modus MCP injection is not implemented |
@@ -92,16 +93,14 @@ lookups key on `user/prompt` rows.
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
 | `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge, steer |
 
-## Retired standalone Google adapters
+## Retired Gemini CLI adapter
 
-The standalone `gemini-cli` and `antigravity` adapters are excluded from the
-distributed app. They are not provider choices, and an old profile naming one
-must be changed before starting a new session. Modus does not read or reuse
-either CLI's OAuth credentials. Google's [Antigravity terms](https://antigravity.google/terms)
-restrict third-party access to that service; Gemini CLI's individual-account
-service ended, while API-key and enterprise paths remain separately available.
-For paid Google API access, use a declarative provider definition with your own
-API key or Vertex AI configuration instead of either standalone adapter.
+The standalone `gemini-cli` adapter is excluded from the distributed app. It is
+not a provider choice, and an old profile naming it must be changed before
+starting a new session. Gemini CLI no longer serves individual Google accounts.
+For a Google AI Pro or Ultra plan, use the `antigravity` provider. For paid
+Google API access, use a declarative provider definition with your own API key
+or Vertex AI configuration.
 
 ## Declarative PI providers
 
@@ -324,6 +323,61 @@ roots are passed first, and PI keeps the first path on a name collision, so a
 user's own skill always wins. Sessions on PI therefore do **not** get the Modus
 skill tools; every other provider does. See `skills`.
 
+### Antigravity support boundary
+
+Modus starts one `agy acp` child per active session: the Agent Client Protocol
+server that ships inside Google's Antigravity CLI. It initializes ACP, creates or
+loads the provider-native Antigravity session, and keeps that process warm for
+follow-up turns. Text, thought, tool, permission, usage, cancellation, image,
+model, mode, and MCP data use native ACP messages.
+
+Install the Antigravity CLI, then run `agy` once in a terminal and sign in with
+Google. That sign-in, and the plan behind it, is what Modus sessions run on:
+Modus never calls ACP `authenticate`, never drives an OAuth flow, and never
+reads the CLI's credential files. Google decides which models a plan offers;
+Modus lists whatever the signed-in account reports. Newly created Google
+accounts may first have to complete Google's verification inside `agy`; until
+then every turn fails with a message saying so.
+
+Antigravity is a Google service governed by Google's
+[Antigravity terms](https://antigravity.google/terms), which restrict use of the
+service with products Google does not provide. Modus launches only Google's own
+binary through the client protocol Google publishes for other editors; whether
+that satisfies the terms for a given account is Google's call, not Modus's.
+
+- **Models.** The picker lists base models (for example `gemini-4-hydrogen`);
+  the profile `effort` picks the thinking level, mapped onto ACP's per-level
+  model ids (`off` → `low`, `max` → `xhigh`, falling back to `high` for models
+  without an extra tier, and to `medium` when no effort is set). A full id such
+  as `gemini-4-hydrogen-high` is also accepted. A model the account does not
+  offer fails the turn and lists what it does offer. Lists come from a
+  throwaway ACP session, shared with the health check for a minute.
+- **Modes.** `providerControls.antigravity.mode` selects the ACP session mode:
+  `default` (Antigravity asks Modus before edits and commands), `accept-edits`,
+  `auto`, or `plan`. Under `default`, Modus answers each request from the
+  profile `permissionPolicy`, or with a live prompt. `sandbox: true` launches
+  `agy acp --sandbox`.
+- **Profile prompts.** `append` is delivered as ACP session metadata
+  (`_meta.antigravity.systemPrompt.append`). `custom` is rejected: ACP offers no
+  replacement channel. Antigravity always loads its own rules and project
+  instructions.
+- **Billing.** Inherited `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+  `GOOGLE_GENAI_API_KEY`, and `GOOGLE_APPLICATION_CREDENTIALS` are removed from the
+  child so a stray key cannot move a session from the plan to API billing. A key
+  set deliberately in the profile `env` is passed through. Turns report token
+  usage; their dollar cost is recorded as zero.
+- **Tools.** MCP tools appear as `mcp_<server>_<tool>`; Antigravity does not
+  return MCP output to the client, so those rows show only completion. Prompt
+  attachments accept text and images; Antigravity's ACP server reports no audio
+  input.
+- **Legacy plugin.** Earlier Modus builds installed an agy plugin named
+  `modus-provider` whose hooks fail every agy tool call. On first use per backend
+  process Modus disables it if it is enabled (`agy plugin enable modus-provider`
+  reverses that); it touches no other plugin.
+
+`ANTIGRAVITY_CLI_PATH` points at a specific `agy` executable. Otherwise `agy`
+is found on `PATH`, then in the CLI's default per-user install location.
+
 ### Grok Build support boundary
 
 Modus starts one `grok --no-auto-update agent stdio` ACP child per active
@@ -403,6 +457,7 @@ Provider-specific normalization:
   turn; `claude-code-pty` restarts its process on the next turn instead.
 - **codex**: `"off"` disables reasoning. `"low"/"medium"/"high"/"xhigh"` map to Codex reasoning effort; `"max"` maps to `"xhigh"`.
 - Other providers accept the resolved effort only if their implementation uses it.
+- **antigravity**: effort selects the ACP thinking-level model variant (see the Antigravity section).
 - **grok-build**: effort is applied at ACP process startup and included in prompt metadata for compatible Grok versions.
 - **muse-code**: effort is sent per turn as MSP `reasoningEffort`; `"off"` maps to `"none"`.
 
@@ -476,6 +531,7 @@ The routes read other tools' transcripts, so like the file APIs they require
 | `claude-code`, `claude-code-pty` | `claude` CLI |
 | `codex` | `codex` CLI plus `CODEX_API_KEY` / `OPENAI_API_KEY` or `~/.codex/auth.json` |
 | `cursor` | `cursor-agent` CLI (or configured resolver path) |
+| `antigravity` | `agy` CLI plus a throwaway ACP session that reports Google sign-in and plan tier |
 | `grok-build` | `grok` CLI plus a headless ACP authentication probe (`grok login` or `XAI_API_KEY`) |
 | `muse-code` | `muse` CLI (or `MODUS_MUSE_CLI`). MSP has no sign-in status method, so a missing login surfaces on the first turn |
 | `opencode` | `opencode` CLI, or `bunx` for `opencode-ai` fallback |
@@ -521,8 +577,8 @@ is still launched as a last resort.
 A provider that cannot find its CLI fails the turn before it starts and reports
 the reason as a persisted system message, so the explanation survives a reload
 rather than living only on whichever stream happened to be open. Setting the
-provider's explicit path override (`MODUS_GROK_CLI`, `CLAUDE_PATH`) skips the
-search entirely.
+provider's explicit path override (`MODUS_GROK_CLI`, `ANTIGRAVITY_CLI_PATH`,
+`CLAUDE_PATH`) skips the search entirely.
 
 **Source**: `providers/resolve-cli.ts`.
 
