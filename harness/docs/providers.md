@@ -388,6 +388,15 @@ that satisfies the terms for a given account is Google's call, not Modus's.
 - **Steering.** A message sent while a turn runs goes into that turn as a second
   ACP `session/prompt`, which Antigravity's ACP server documents as steering the
   running turn. If Antigravity refuses it at once, Modus queues it instead.
+- **Background commands.** `run_command` moves a command to the background after
+  its `WaitMsBeforeAsync`, and Antigravity can end its reply while the command
+  runs. When the command finishes, Antigravity completes that tool call and keeps
+  working on its own, with no ACP prompt around the work and no event that marks
+  its end. A turn whose reply leaves a command running therefore stays open: it
+  closes once no command is left running and Antigravity has been quiet for a
+  minute. Stopping the turn ends the wait, and so does a message sent during
+  it, which Antigravity takes into whatever it is doing. Work Antigravity starts after a turn has already closed is shown as a
+  turn of its own. That work reports no token usage.
 - **Turn limit.** ACP has no turn limit, so Modus counts model rounds (each batch
   of tool calls is one) and cancels the turn at `maxTurns`, ending it with
   `error_max_turns`.

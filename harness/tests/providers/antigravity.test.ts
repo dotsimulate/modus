@@ -20,6 +20,7 @@ import {
 import {
   ANTIGRAVITY_CLI_MISSING,
   ANTIGRAVITY_SANDBOX_FAILURE_NOTICE,
+  ANTIGRAVITY_WAKE_NOTICE,
   antigravityLaunchArgs,
   antigravityToolOutput,
   createAntigravityProvider,
@@ -59,8 +60,9 @@ function makeHarness(options: {
   permissionPolicy?: "ask" | "bypass";
   profile?: Record<string, unknown>;
   capture?: string;
+  wakeQuietMs?: number;
 }) {
-  const provider = createAntigravityProvider({ command: fixtureCommand });
+  const provider = createAntigravityProvider({ command: fixtureCommand, wakeQuietMs: options.wakeQuietMs });
   const events: any[] = [];
   const updates: any[] = [];
   const configChanges: any[] = [];
@@ -410,6 +412,64 @@ describe("Antigravity provider", () => {
     expect(events.some((event) => event.subtype === "provider_message")).toBe(false);
     provider.abort(session);
     await waitFor(() => events.some((event) => event.type === "done"));
+    await provider.dispose?.(session);
+  });
+
+  test("keeps a turn open over a backgrounded command and the work agy does when it finishes", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", wakeQuietMs: 300 });
+    session.initialContent = "look in the background";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.subtype === "provider_message"));
+    expect(events.find((event) => event.subtype === "provider_message").content).toContain("`voro lab look scene.voro`");
+    expect(events.some((event) => event.type === "result")).toBe(false);
+    expect(session.status).toBe("running");
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const results = events.filter((event) => event.type === "result");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ subtype: "success", result: "waiting for it to finish then fixed the bark" });
+    const resultFor = (id: string) => events.findIndex((event) => event.subtype === "tool_result"
+      && event.message.content[0].tool_use_id === id);
+    expect(resultFor("call-background")).toBeGreaterThan(-1);
+    expect(resultFor("call-after-wake")).toBeGreaterThan(resultFor("call-background"));
+    expect(events.indexOf(results[0])).toBeGreaterThan(resultFor("call-after-wake"));
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("a queued message ends the wait on a background command that never finishes", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "start the server";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.subtype === "provider_message"));
+    provider.sendMessage(ctx, "read-unasked");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    expect(events.filter((event) => event.type === "result").map((event) => event.result))
+      .toEqual(["waiting for it to finish", "read it"]);
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("stopping a turn held on a background command returns it to idle", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "start the server";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.subtype === "provider_message"));
+    provider.abort(session);
+    await waitFor(() => events.some((event) => event.type === "done"));
+    expect(session.status).toBe("idle");
+    expect(events.some((event) => event.type === "result")).toBe(false);
+    await provider.dispose?.(session);
+  });
+
+  test("renders work agy starts on its own after a turn closed as a turn of its own", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", wakeQuietMs: 200 });
+    session.initialContent = "late-wake";
+    provider.startTurn(ctx);
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    expect(events.filter((event) => event.type === "result").map((event) => event.result))
+      .toEqual(["done for now", "picked it back up"]);
+    expect(events.some((event) => event.subtype === "provider_message" && event.content === ANTIGRAVITY_WAKE_NOTICE)).toBe(true);
+    expect(session.status).toBe("idle");
     await provider.dispose?.(session);
   });
 

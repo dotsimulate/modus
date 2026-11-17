@@ -213,6 +213,34 @@ lines.on("line", (line) => {
       finish();
       return;
     }
+    if (text.includes("background") || text.includes("server")) {
+      // run_command past WaitMsBeforeAsync: the reply ends with the call still
+      // open. When the command finishes, agy completes that call and works on
+      // with no prompt around it (agy 1.5.9 conversation record and worker log).
+      const input = { CommandLine: text.includes("server") ? "npm run dev" : "voro lab look scene.voro", WaitMsBeforeAsync: 10000 };
+      update({ sessionUpdate: "tool_call", ...commandCall("call-background", input), status: "in_progress" });
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "waiting for it to finish" } });
+      finish();
+      if (text.includes("server")) return;
+      setTimeout(() => {
+        commandResult("call-background", input, true, "look done");
+        update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "reviewing the look" } });
+        const call = { toolCallId: "call-after-wake", name: "read_file", kind: "read", title: "look.png", rawInput: { Path: "look.png" } };
+        update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
+        update({ sessionUpdate: "tool_call_update", ...call, status: "completed" });
+        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " then fixed the bark" } });
+      }, 150);
+      return;
+    }
+    if (text.includes("late-wake")) {
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done for now" } });
+      finish();
+      setTimeout(() => {
+        update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "a task finished" } });
+        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "picked it back up" } });
+      }, 150);
+      return;
+    }
     if (text.includes("command") || text.includes("bypass")) {
       const input: Record<string, unknown> = { CommandLine: "cmd /c echo hi", WaitMsBeforeAsync: 5000 };
       if (text.includes("bypass")) input.BypassSandbox = true;
