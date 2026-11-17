@@ -390,13 +390,18 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   running turn. If Antigravity refuses it at once, Modus queues it instead.
 - **Background commands.** `run_command` moves a command to the background after
   its `WaitMsBeforeAsync`, and Antigravity can end its reply while the command
-  runs. When the command finishes, Antigravity completes that tool call and keeps
-  working on its own, with no ACP prompt around the work and no event that marks
-  its end. A turn whose reply leaves a command running therefore stays open: it
-  closes once no command is left running and Antigravity has been quiet for a
-  minute. Stopping the turn ends the wait, and so does a message sent during
-  it, which Antigravity takes into whatever it is doing. Work Antigravity starts after a turn has already closed is shown as a
-  turn of its own. That work reports no token usage.
+  runs. When the command finishes, Antigravity starts working again on its own,
+  but it streams updates and asks for approvals only while a `session/prompt` is
+  open, so that work is invisible and its first approval waits indefinitely. A
+  turn whose reply leaves a command running therefore stays open, and Modus
+  watches Antigravity's own conversation record
+  (`~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl`)
+  for the message that wakes it. The command's result comes from that record,
+  and Modus sends a short prompt, shown as a notice in the transcript, that
+  reconnects the stream; the turn ends when Antigravity's run does. The wait ends
+  sooner if the user stops the turn or sends a message, which Antigravity takes
+  into whatever it is doing, and after 30 minutes otherwise. A command still
+  running then is picked up with the next message.
 - **Turn limit.** ACP has no turn limit, so Modus counts model rounds (each batch
   of tool calls is one) and cancels the turn at `maxTurns`, ending it with
   `error_max_turns`.

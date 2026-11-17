@@ -28,6 +28,14 @@ import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
 import { resolveCli } from "./resolve-cli";
 import { claudeToolResultContent, peelToolResultImages } from "../tool-result-images";
 import {
+  AntigravityTranscriptTail,
+  antigravityTranscriptPath,
+  backgroundTaskFinished,
+  backgroundTaskStarted,
+  commandLineText,
+  stepIsWake,
+} from "./antigravity-transcript";
+import {
   decideTool,
   describeToolRestriction,
   emitProviderNotice,
@@ -50,6 +58,8 @@ type ToolState = {
   name: string;
   input: Record<string, unknown>;
   resultEmitted: boolean;
+  /** A background command Modus stopped waiting on; it no longer holds the turn open. */
+  released?: boolean;
 };
 
 type AntigravityState = {
@@ -87,15 +97,17 @@ type AntigravityState = {
   /** Mid-turn prompts in flight; the turn is not finished until they settle. */
   steering: Set<Promise<unknown>>;
   steerUsage: { input: number; output: number; total: number };
-  /** When agy last streamed anything for the current turn. */
-  lastActivityAt: number;
-  /** A turn is being set up; its own prompt will collect what agy sends. */
-  startingTurn: boolean;
   /** The prompt has returned and the turn is waiting on agy's background work. */
   holding: boolean;
   /** The user spoke during the hold, so background commands no longer keep it open. */
   holdReleased: boolean;
-  wakeQuietMs: number;
+  holdLimitMs: number;
+  holdPollMs: number;
+  transcriptPath: (providerSessionId: string) => string;
+  /** agy's step record from where the current turn began; see antigravity-transcript.ts. */
+  transcript: AntigravityTranscriptTail | null;
+  /** agy background task id -> the `run_command` call it belongs to, this turn. */
+  taskTools: Map<string, string>;
   cleanupLegacyPlugin: ((executable: string) => Promise<void>) | undefined;
 };
 
@@ -373,8 +385,6 @@ export function antigravityToolOutput(update: any): string | Array<Record<string
   return stringify(update?.status === "failed" ? "tool call failed" : "tool call completed");
 }
 
-const AGENT_ACTIVITY_UPDATES = new Set(["agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update", "plan"]);
-
 function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): void {
   const update = params?.update ?? params;
   const type = update?.sessionUpdate ?? update?.session_update;
@@ -384,9 +394,8 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     ctx.notifyConfigChange({ providerControls: { antigravity: { ...controlsFrom(ctx), mode: update.currentModeId } } });
     return;
   }
-  if (!state.turnActive && !(AGENT_ACTIVITY_UPDATES.has(type) && beginWakeTurn(ctx, state))) return;
+  if (!state.turnActive) return;
   ctx.session.lastEventAt = Date.now();
-  state.lastActivityAt = ctx.session.lastEventAt;
   if (type === "agent_message_chunk") {
     const text = update?.content?.text;
     if (typeof text !== "string") return;
@@ -768,22 +777,34 @@ async function steerTurn(ctx: TurnContext, state: AntigravityState, content: Mes
 
 /**
  * `run_command` moves a command to the background after `WaitMsBeforeAsync`,
- * and agy can end its reply while the command runs. When it finishes, agy
- * completes the original tool call and starts working again on its own, with
- * no ACP prompt around that work and nothing that marks its end. So a turn
- * whose reply left a command running stays open over that work, and closes
- * once nothing is running and agy has been quiet this long.
+ * and agy can end its reply while the command runs. When it finishes, agy wakes
+ * and works on, but with no prompt open it streams nothing and its approvals
+ * wait (see antigravity-transcript.ts). So a turn whose reply left a command
+ * running stays open; when agy's record shows it woke, Modus sends a prompt,
+ * which reconnects the stream and joins the run agy already started. That
+ * prompt returns when agy's run ends, which ends the turn.
  */
-export const ANTIGRAVITY_WAKE_QUIET_MS = 60_000;
-const HOLD_POLL_MS = 100;
+export const ANTIGRAVITY_HOLD_LIMIT_MS = 30 * 60_000;
+const HOLD_POLL_MS = 500;
 
-export const ANTIGRAVITY_WAKE_NOTICE = "Antigravity started working again on its own after background work finished.";
+/** What Modus sends when agy wakes; agy folds it into the run it already started. */
+export const ANTIGRAVITY_WAKE_PROMPT = "Your background command finished. Carry on with what you were doing.";
 
 export const ANTIGRAVITY_EXITED_DURING_HOLD =
   "Antigravity exited while it still had background work running, so whatever it would have done next is lost.";
 
 function backgroundCommands(state: AntigravityState): ToolState[] {
-  return [...state.tools.values()].filter((tool) => ANTIGRAVITY_SHELL_TOOLS.has(tool.name) && !tool.resultEmitted);
+  return [...state.tools.values()].filter((tool) =>
+    ANTIGRAVITY_SHELL_TOOLS.has(tool.name) && !tool.resultEmitted && !tool.released);
+}
+
+function commandNames(tools: ToolState[]): string {
+  return tools.map((tool) => `\`${commandLineText(tool.input.CommandLine) || tool.name}\``).join(", ");
+}
+
+function minutes(ms: number): string {
+  const value = Math.max(1, Math.round(ms / 60_000));
+  return `${value} minute${value === 1 ? "" : "s"}`;
 }
 
 function beginTurnState(state: AntigravityState): void {
@@ -797,73 +818,175 @@ function beginTurnState(state: AntigravityState): void {
   state.lastWasTool = false;
   state.maxTurnsReached = false;
   state.steerUsage = { input: 0, output: 0, total: 0 };
-  state.lastActivityAt = Date.now();
   state.holding = false;
   state.holdReleased = false;
+  state.taskTools.clear();
+  state.transcript = state.providerSessionId
+    ? new AntigravityTranscriptTail(state.transcriptPath(state.providerSessionId))
+    : null;
 }
 
 /**
- * Wait out agy's background work for the current turn. Returns false only when
- * agy exited first. A queued or steered message from the user ends the wait on
- * background commands: agy takes that prompt into whatever it is doing.
+ * Read agy's new steps: tie background tasks to their `run_command` calls,
+ * record finished commands as those calls' results, and report whether agy
+ * started working on its own after `since`.
+ */
+function readTranscript(ctx: TurnContext, state: AntigravityState, since: number): { woke: boolean; finished: ToolState[] } {
+  const finished: ToolState[] = [];
+  let woke = false;
+  for (const step of state.transcript?.read() ?? []) {
+    const started = backgroundTaskStarted(step);
+    if (started && !state.taskTools.has(started.taskId)) {
+      const tied = new Set(state.taskTools.values());
+      const tool = [...state.tools.values()].find((candidate) =>
+        ANTIGRAVITY_SHELL_TOOLS.has(candidate.name) && !tied.has(candidate.id)
+        && commandLineText(candidate.input.CommandLine) === started.description);
+      if (tool) state.taskTools.set(started.taskId, tool.id);
+    }
+    const done = backgroundTaskFinished(step);
+    if (done) {
+      let tool = state.tools.get(state.taskTools.get(done.taskId) ?? "");
+      if (!tool) {
+        // A task Modus could not tie to a call settles the oldest untied one.
+        const tied = new Set(state.taskTools.values());
+        tool = backgroundCommands(state).find((candidate) => !tied.has(candidate.id));
+        if (tool) state.taskTools.set(done.taskId, tool.id);
+      }
+      if (tool && !tool.resultEmitted) {
+        tool.resultEmitted = true;
+        flushAssistantRound(ctx, state);
+        ctx.emitEvent({
+          type: "user",
+          subtype: "tool_result",
+          isSynthetic: true,
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: tool.id, content: done.output || "Command finished.", is_error: false }],
+          },
+        });
+        finished.push(tool);
+      }
+    }
+    if (stepIsWake(step, since)) woke = true;
+  }
+  return { woke, finished };
+}
+
+/** Reconnect agy's stream to the run it started on its own. The reply belongs to this turn. */
+function promptAfterWake(ctx: TurnContext, state: AntigravityState, client: GrokAcpClient, finished: ToolState[]): void {
+  flushAssistantRound(ctx, state);
+  const what = finished.length ? `${commandNames(finished)} finished in the background` : "Background work finished";
+  emitProviderNotice(
+    ctx,
+    `${what} and Antigravity started working again. It only reports progress and asks for approvals while a prompt is open, `
+      + `so Modus sent it one: "${ANTIGRAVITY_WAKE_PROMPT}"`,
+    "info",
+  );
+  const request = client.request("session/prompt", {
+    sessionId: state.providerSessionId,
+    prompt: contentBlocks(ANTIGRAVITY_WAKE_PROMPT),
+  }, 24 * 60 * 60 * 1_000);
+  const tracked: Promise<void> = request.then(
+    (result) => {
+      const usage = antigravityUsage(result);
+      state.steerUsage.input += usage.input;
+      state.steerUsage.output += usage.output;
+      state.steerUsage.total += usage.total;
+    },
+    (error) => {
+      if (!state.turnActive) return;
+      emitProviderNotice(ctx, `Antigravity did not take Modus's prompt after its background work: ${error instanceof Error ? error.message : String(error)}`);
+    },
+  ).finally(() => { state.steering.delete(tracked); });
+  state.steering.add(tracked);
+}
+
+type HoldOutcome = "settled" | "woke" | "released" | "limit" | "stopped" | "exited";
+
+/**
+ * Wait on agy's background commands after a prompt returned. Ends when the
+ * commands report results, when agy wakes (Modus then prompts it), when the
+ * user stops the turn or sends a message, or at the hold limit.
  */
 async function holdForBackgroundWork(
   ctx: TurnContext,
   state: AntigravityState,
   turnAbortController: AbortController,
   client: GrokAcpClient,
-): Promise<boolean> {
-  let noticeCommands = true;
+): Promise<HoldOutcome> {
+  const since = Date.now();
   state.holding = true;
   try {
+    // Ties tasks to calls before naming them, and catches a task that finished as the prompt returned.
+    const first = readTranscript(ctx, state, since);
+    let finished = first.finished;
+    let woke = first.woke;
+    const running = backgroundCommands(state);
+    if (running.length && !woke) {
+      flushAssistantRound(ctx, state);
+      emitProviderNotice(
+        ctx,
+        `Antigravity is still running ${commandNames(running)} in the background and picks the work back up when it finishes, `
+          + `so this turn stays open until then, for up to ${minutes(state.holdLimitMs)}. Stop the turn or send a message to end it sooner.`,
+        "info",
+      );
+    }
     for (;;) {
-      if (turnAbortController.signal.aborted || state.disposed || state.maxTurnsReached) return true;
-      if (state.client !== client || !client.running) return false;
+      if (turnAbortController.signal.aborted || state.disposed || state.maxTurnsReached) return "stopped";
+      if (state.client !== client || !client.running) return "exited";
       if (ctx.session.pendingDispatch.length) state.holdReleased = true;
-      const running = state.holdReleased ? [] : backgroundCommands(state);
-      if (noticeCommands && running.length) {
-        noticeCommands = false;
+      if (state.holdReleased) return "released";
+      if (woke) {
+        promptAfterWake(ctx, state, client, finished);
+        return "woke";
+      }
+      if (!backgroundCommands(state).length && !state.pendingRpcPermissions.size && !state.steering.size) return "settled";
+      if (Date.now() - since >= state.holdLimitMs) {
+        const left = backgroundCommands(state);
+        for (const tool of left) tool.released = true;
         flushAssistantRound(ctx, state);
-        const names = running.map((tool) => `\`${String(tool.input.CommandLine ?? tool.name)}\``).join(", ");
         emitProviderNotice(
           ctx,
-          `Antigravity is still running ${names} in the background and picks the work back up when it finishes, `
-            + "so this turn stays open until then. Stop the turn or send a message to end it sooner.",
+          `Modus stopped waiting on ${commandNames(left)} after ${minutes(state.holdLimitMs)}. `
+            + "If it finishes later, Antigravity picks the work back up with your next message.",
           "info",
         );
+        return "limit";
       }
-      const busy = running.length > 0 || state.pendingRpcPermissions.size > 0 || state.steering.size > 0;
-      const quiet = state.holdReleased || Date.now() - state.lastActivityAt >= state.wakeQuietMs;
-      if (!busy && quiet) return true;
-      await Bun.sleep(HOLD_POLL_MS);
+      await Bun.sleep(state.holdPollMs);
+      const next = readTranscript(ctx, state, since);
+      finished = [...finished, ...next.finished];
+      woke = woke || next.woke;
     }
   } finally {
     state.holding = false;
   }
 }
 
-/** Everything after the prompt returns (or, for a wake, after agy starts on its own). */
+/** Everything after the prompt returns, including background work it left running. */
 async function concludeTurn(
   ctx: TurnContext,
   state: AntigravityState,
   turnAbortController: AbortController,
   client: GrokAcpClient,
   result: any,
-  wake: boolean,
 ): Promise<void> {
   const { session } = ctx;
-  // A message steered in near the end can outlive the prompt it joined;
-  // its reply belongs to this turn, so keep collecting until it settles.
-  while (state.steering.size) await Promise.allSettled([...state.steering]);
-  state.lastActivityAt = Math.max(state.lastActivityAt, Date.now());
   const stopped = () => turnAbortController.signal.aborted || result?.stopReason === "cancelled";
-  if (!stopped() && !state.maxTurnsReached && (wake || backgroundCommands(state).length)) {
-    if (!await holdForBackgroundWork(ctx, state, turnAbortController, client)) {
+  for (;;) {
+    // A steered message or Modus's wake prompt can outlive the prompt it
+    // joined; its reply belongs to this turn, so keep collecting until it settles.
+    while (state.steering.size) await Promise.allSettled([...state.steering]);
+    if (stopped() || state.maxTurnsReached || state.disposed || !backgroundCommands(state).length) break;
+    const outcome = await holdForBackgroundWork(ctx, state, turnAbortController, client);
+    if (outcome === "exited") {
       flushAssistantRound(ctx, state);
       emitTurnError(ctx, ANTIGRAVITY_EXITED_DURING_HOLD);
       return;
     }
+    if (outcome !== "woke") break;
   }
+  while (state.steering.size) await Promise.allSettled([...state.steering]);
   if (state.maxTurnsReached && !turnAbortController.signal.aborted) {
     flushAssistantRound(ctx, state);
     finishTurn(ctx, state, "error_max_turns", result);
@@ -877,11 +1000,10 @@ async function concludeTurn(
     return;
   }
   flushAssistantRound(ctx, state);
-  if (!wake && state.tools.size === 0 && isAntigravityVerificationNotice(state.turnText)) {
+  if (state.tools.size === 0 && isAntigravityVerificationNotice(state.turnText)) {
     emitTurnError(ctx, ANTIGRAVITY_VERIFICATION_MESSAGE);
     return;
   }
-  // Work agy did after the prompt returned has no usage report of its own.
   finishTurn(ctx, state, "success", result);
 }
 
@@ -897,38 +1019,6 @@ function dispatchQueued(ctx: TurnContext, state: AntigravityState): void {
   void runTurn(ctx, state, next, { resume: true });
 }
 
-/**
- * agy started working with no turn open: a background command finished after
- * the turn that started it had already closed. Its work becomes a turn of its
- * own rather than being dropped. Returns whether the update should be handled.
- */
-function beginWakeTurn(ctx: TurnContext, state: AntigravityState): boolean {
-  const { session } = ctx;
-  const client = state.client;
-  if (state.disposed || state.startingTurn || !client?.running || session.status !== "idle") return false;
-  session.abortController = new AbortController();
-  state.abortController = session.abortController;
-  session.turnStartedAt = Date.now();
-  beginTurnState(state);
-  state.turnActive = true;
-  session.status = "running";
-  updateSessionStatus(session.sessionId, "running");
-  emitInit(ctx, state);
-  emitProviderNotice(ctx, ANTIGRAVITY_WAKE_NOTICE, "info");
-  const turnAbortController = state.abortController;
-  void (async () => {
-    try {
-      await concludeTurn(ctx, state, turnAbortController, client, undefined, true);
-    } catch (error) {
-      emitTurnError(ctx, error instanceof Error ? error.message : String(error));
-    } finally {
-      if (state.abortController === turnAbortController) state.turnActive = false;
-    }
-    dispatchQueued(ctx, state);
-  })();
-  return true;
-}
-
 async function runTurn(
   ctx: TurnContext,
   state: AntigravityState,
@@ -938,8 +1028,6 @@ async function runTurn(
   const { session } = ctx;
   const turnAbortController = state.abortController;
   let turnClient: GrokAcpClient | null = null;
-  // Covers session/load, which replays history as updates that must not render.
-  state.startingTurn = true;
   try {
     if (state.cleanupLegacyPlugin) await state.cleanupLegacyPlugin(state.command.executable);
     await connect(ctx, state, options.resume);
@@ -951,14 +1039,13 @@ async function runTurn(
     emitInit(ctx, state);
     beginTurnState(state);
     state.turnActive = true;
-    state.startingTurn = false;
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
     const result = await turnClient.request("session/prompt", {
       sessionId: state.providerSessionId,
       prompt: contentBlocks(content),
     }, 24 * 60 * 60 * 1_000);
-    await concludeTurn(ctx, state, turnAbortController, turnClient, result, false);
+    await concludeTurn(ctx, state, turnAbortController, turnClient, result);
   } catch (error) {
     if (turnAbortController.signal.aborted) {
       session.status = "idle";
@@ -970,7 +1057,6 @@ async function runTurn(
     const failedClient = turnClient ?? state.client;
     await failedClient?.close();
   } finally {
-    state.startingTurn = false;
     if (state.abortController === turnAbortController) state.turnActive = false;
   }
 
@@ -1005,8 +1091,11 @@ export function createAntigravityProvider(options?: {
   resolveCommand?: () => AntigravityCommand | null;
   /** Defaults to the real legacy-plugin check unless a fixed test command is injected. */
   cleanupLegacyPlugin?: (executable: string) => Promise<void>;
-  /** Test seam: how long agy must be quiet before a held turn closes. */
-  wakeQuietMs?: number;
+  /** Test seams: how long a turn waits on background commands, and how often it checks. */
+  holdLimitMs?: number;
+  holdPollMs?: number;
+  /** Test seam: where agy keeps a conversation's step record. */
+  transcriptPath?: (providerSessionId: string) => string;
 }): SessionProvider {
   const cleanupLegacyPlugin = options?.cleanupLegacyPlugin
     ?? (options?.command ? undefined : (executable: string) => disableLegacyModusPlugin(executable));
@@ -1054,11 +1143,13 @@ export function createAntigravityProvider(options?: {
         maxTurnsReached: false,
         steering: new Set(),
         steerUsage: { input: 0, output: 0, total: 0 },
-        lastActivityAt: Date.now(),
-        startingTurn: false,
         holding: false,
         holdReleased: false,
-        wakeQuietMs: options?.wakeQuietMs ?? ANTIGRAVITY_WAKE_QUIET_MS,
+        holdLimitMs: options?.holdLimitMs ?? ANTIGRAVITY_HOLD_LIMIT_MS,
+        holdPollMs: options?.holdPollMs ?? HOLD_POLL_MS,
+        transcriptPath: options?.transcriptPath ?? ((id) => antigravityTranscriptPath(id)),
+        transcript: null,
+        taskTools: new Map(),
         cleanupLegacyPlugin,
       };
       ctx.session._providerState = state;

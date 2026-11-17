@@ -15,13 +15,32 @@
  * during a `steerable` turn is folded into it and both requests settle when the
  * turn ends. During a `nosteer` turn it is refused at once.
  *
- * Every request is appended to $MODUS_AGY_CAPTURE (JSONL) when it is set.
+ * Background commands follow agy 1.5.9's worker log and conversation record:
+ * the update stream exists only while a `session/prompt` is open. A command
+ * past `WaitMsBeforeAsync` is recorded as a background task and the reply ends.
+ * When it finishes agy posts a SYSTEM_MESSAGE step and works on, streaming
+ * nothing, and a write in that run waits for approval until the next prompt
+ * arrives; that prompt joins the run and returns when the run ends.
+ *
+ * Every request is appended to $MODUS_AGY_CAPTURE (JSONL) when it is set, and
+ * agy's step record is written to $MODUS_AGY_TRANSCRIPT when it is set.
  */
 import { appendFileSync } from "fs";
 import { createInterface } from "readline";
 
 const SESSION = "fake-agy-session";
 const capture = process.env.MODUS_AGY_CAPTURE;
+const transcript = process.env.MODUS_AGY_TRANSCRIPT;
+let stepIndex = 0;
+/** A run agy started on its own; it streams once a prompt opens. */
+let wokenRun: (() => void) | null = null;
+
+function step(source: string, type: string, content: string): void {
+  if (!transcript) return;
+  stepIndex += 1;
+  const createdAt = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  appendFileSync(transcript, `${JSON.stringify({ step_index: stepIndex, source, type, status: "DONE", created_at: createdAt, content })}\n`);
+}
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 let pendingPromptId: string | number | null = null;
 let permissionTool: "write" | null = null;
@@ -169,6 +188,14 @@ lines.on("line", (line) => {
     send({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: "a turn is already running" } });
     return;
   }
+  if (message.method === "session/prompt" && wokenRun) {
+    // Opening a prompt reconnects the stream to the run agy started on its own.
+    pendingPromptId = message.id;
+    const run = wokenRun;
+    wokenRun = null;
+    run();
+    return;
+  }
   if (message.method === "session/prompt") {
     pendingPromptId = message.id;
     const text = String(message.params?.prompt?.[0]?.text ?? "");
@@ -214,30 +241,29 @@ lines.on("line", (line) => {
       return;
     }
     if (text.includes("background") || text.includes("server")) {
-      // run_command past WaitMsBeforeAsync: the reply ends with the call still
-      // open. When the command finishes, agy completes that call and works on
-      // with no prompt around it (agy 1.5.9 conversation record and worker log).
       const input = { CommandLine: text.includes("server") ? "npm run dev" : "voro lab look scene.voro", WaitMsBeforeAsync: 10000 };
+      const task = `${SESSION}/task-${stepIndex + 1}`;
       update({ sessionUpdate: "tool_call", ...commandCall("call-background", input), status: "in_progress" });
+      step("MODEL", "GENERIC", `Tool is running as a background task with task id: ${task}\nTask Description: ${input.CommandLine}\n`
+        + "YOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: A) either proceed to other relevant work (if any) or, B) simply update the user");
       update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "waiting for it to finish" } });
+      step("MODEL", "PLANNER_RESPONSE", "waiting for it to finish");
       finish();
       if (text.includes("server")) return;
       setTimeout(() => {
-        commandResult("call-background", input, true, "look done");
-        update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "reviewing the look" } });
-        const call = { toolCallId: "call-after-wake", name: "read_file", kind: "read", title: "look.png", rawInput: { Path: "look.png" } };
-        update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
-        update({ sessionUpdate: "tool_call_update", ...call, status: "completed" });
-        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " then fixed the bark" } });
-      }, 150);
-      return;
-    }
-    if (text.includes("late-wake")) {
-      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "done for now" } });
-      finish();
-      setTimeout(() => {
-        update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "a task finished" } });
-        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "picked it back up" } });
+        step("SYSTEM", "SYSTEM_MESSAGE", "<SYSTEM_MESSAGE>\n[Message] sender=" + task
+          + ` content=Task id "${task}" finished with result:\nCommand exited with code 0.\r\r\n\r\r\nlook done\n</SYSTEM_MESSAGE>`);
+        // Nothing below streams until a prompt opens; the write waits on approval.
+        wokenRun = () => {
+          update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "reviewing the look" } });
+          const call = { toolCallId: "call-after-wake", name: "write_file", kind: "edit", title: "bark.py", rawInput: { Path: "bark.py", Content: "crisp" } };
+          update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
+          askPermission("permission-after-wake", call, (allowed) => {
+            update({ sessionUpdate: "tool_call_update", ...call, status: allowed ? "completed" : "failed" });
+            update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " then fixed the bark" } });
+            finish();
+          });
+        };
       }, 150);
       return;
     }
