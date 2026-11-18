@@ -904,9 +904,9 @@ function promptAfterWake(ctx: TurnContext, state: AntigravityState, client: Grok
 type HoldOutcome = "settled" | "woke" | "released" | "limit" | "stopped" | "exited";
 
 /**
- * Wait on agy's background commands after a prompt returned. Ends when the
- * commands report results, when agy wakes (Modus then prompts it), when the
- * user stops the turn or sends a message, or at the hold limit.
+ * Wait on agy's background commands after a prompt returned. Ends when one
+ * of them finishes or agy wakes (Modus then prompts it), when the user stops
+ * the turn or sends a message, or at the hold limit.
  */
 async function holdForBackgroundWork(
   ctx: TurnContext,
@@ -919,9 +919,12 @@ async function holdForBackgroundWork(
   try {
     // Ties tasks to calls before naming them, and catches a task that finished as the prompt returned.
     const first = readTranscript(ctx, state, since);
-    let finished = first.finished;
     let woke = first.woke;
     const running = backgroundCommands(state);
+    // agy wakes whenever a background task finishes. The finish can reach Modus
+    // over ACP before agy records the wake step, so a command this hold waits
+    // on finishing is itself the wake, whichever path reported it.
+    const finished = () => [...first.finished, ...running.filter((tool) => tool.resultEmitted)];
     if (running.length && !woke) {
       flushAssistantRound(ctx, state);
       emitProviderNotice(
@@ -936,8 +939,8 @@ async function holdForBackgroundWork(
       if (state.client !== client || !client.running) return "exited";
       if (ctx.session.pendingDispatch.length) state.holdReleased = true;
       if (state.holdReleased) return "released";
-      if (woke) {
-        promptAfterWake(ctx, state, client, finished);
+      if (woke || running.some((tool) => tool.resultEmitted)) {
+        promptAfterWake(ctx, state, client, finished());
         return "woke";
       }
       if (!backgroundCommands(state).length && !state.pendingRpcPermissions.size && !state.steering.size) return "settled";
@@ -954,9 +957,7 @@ async function holdForBackgroundWork(
         return "limit";
       }
       await Bun.sleep(state.holdPollMs);
-      const next = readTranscript(ctx, state, since);
-      finished = [...finished, ...next.finished];
-      woke = woke || next.woke;
+      woke = readTranscript(ctx, state, since).woke || woke;
     }
   } finally {
     state.holding = false;

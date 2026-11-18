@@ -20,7 +20,10 @@
  * past `WaitMsBeforeAsync` is recorded as a background task and the reply ends.
  * When it finishes agy posts a SYSTEM_MESSAGE step and works on, streaming
  * nothing, and a write in that run waits for approval until the next prompt
- * arrives; that prompt joins the run and returns when the run ends.
+ * arrives; that prompt joins the run and returns when the run ends. An
+ * "over acp" prompt models a finish seen on a 1.5.9 run: the command's
+ * `tool_call_update` reaches the client before the SYSTEM_MESSAGE step is
+ * written.
  *
  * Every request is appended to $MODUS_AGY_CAPTURE (JSONL) when it is set, and
  * agy's step record is written to $MODUS_AGY_TRANSCRIPT when it is set.
@@ -251,8 +254,15 @@ lines.on("line", (line) => {
       finish();
       if (text.includes("server")) return;
       setTimeout(() => {
-        step("SYSTEM", "SYSTEM_MESSAGE", "<SYSTEM_MESSAGE>\n[Message] sender=" + task
+        const wake = () => step("SYSTEM", "SYSTEM_MESSAGE", "<SYSTEM_MESSAGE>\n[Message] sender=" + task
           + ` content=Task id "${task}" finished with result:\nCommand exited with code 0.\r\r\n\r\r\nlook done\n</SYSTEM_MESSAGE>`);
+        if (text.includes("over acp")) {
+          // The finish reaches the client before agy records the step that wakes it.
+          commandResult("call-background", input, true, "Command exited with code 0.\n\nlook done");
+          setTimeout(wake, 200);
+        } else {
+          wake();
+        }
         // Nothing below streams until a prompt opens; the write waits on approval.
         wokenRun = () => {
           update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "reviewing the look" } });

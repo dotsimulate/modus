@@ -448,6 +448,25 @@ describe("Antigravity provider", () => {
     await provider.dispose?.(session);
   });
 
+  test("prompts agy when a background command's finish arrives over ACP before agy records its wake", async () => {
+    const capture = join(testRoot, `wake-acp-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture });
+    session.initialContent = "look in the background, report over acp";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const results = events.filter((event) => event.type === "result");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ subtype: "success", result: "waiting for it to finish then fixed the bark" });
+    const prompts = capturedRequests(capture).filter((entry) => entry.method === "session/prompt");
+    expect(prompts.map((entry) => entry.params.prompt[0].text)).toEqual(["look in the background, report over acp", ANTIGRAVITY_WAKE_PROMPT]);
+    expect(events.filter((event) => event.subtype === "tool_result"
+      && event.message.content[0].tool_use_id === "call-background")).toHaveLength(1);
+    const notice = events.find((event) => event.subtype === "provider_message" && event.content.includes(ANTIGRAVITY_WAKE_PROMPT));
+    expect(notice.content).toContain("`voro lab look scene.voro` finished in the background");
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
   test("asks the user about a write agy makes after it wakes", async () => {
     const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "ask" });
     session.initialContent = "look in the background";
