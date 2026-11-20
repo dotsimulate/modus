@@ -389,19 +389,24 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   ACP `session/prompt`, which Antigravity's ACP server documents as steering the
   running turn. If Antigravity refuses it at once, Modus queues it instead.
 - **Background commands.** `run_command` moves a command to the background after
-  its `WaitMsBeforeAsync`, and Antigravity can end its reply while the command
-  runs. When the command finishes, Antigravity starts working again on its own,
-  but it streams updates and asks for approvals only while a `session/prompt` is
-  open, so that work is invisible and its first approval waits indefinitely. A
-  turn whose reply leaves a command running therefore stays open, and Modus
-  watches Antigravity's own conversation record
-  (`~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl`)
-  for the message that wakes it. The command's result comes from that record,
-  and Modus sends a short prompt, shown as a notice in the transcript, that
-  reconnects the stream; the turn ends when Antigravity's run does. The wait ends
-  sooner if the user stops the turn or sends a message, which Antigravity takes
-  into whatever it is doing, and after 30 minutes otherwise. A command still
-  running then is picked up with the next message.
+  its `WaitMsBeforeAsync`, `schedule` sets a timer the same way, and Antigravity
+  can end its reply while either runs. When one finishes, Antigravity starts
+  working again on its own, but it streams updates and asks for approvals only
+  while a `session/prompt` is open, so that work is invisible and its first
+  approval waits indefinitely. A turn whose reply leaves background work
+  therefore stays open. Modus holds it on Antigravity's own conversation record
+  (`~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl`):
+  the tasks it started and has not finished, and a timer until the next message
+  wakes Antigravity or its time is up. Each task is tied to its call by the
+  whole command line, so a command's result comes from that record only for
+  its own call, and a finish Antigravity already responded to does not count
+  again. When the record shows Antigravity woke, Modus sends a short prompt,
+  shown as a notice in the transcript, that reconnects the stream; the turn
+  ends when Antigravity's run does. The wait ends sooner if the user stops the
+  turn or sends a message, which Antigravity takes into whatever it is doing,
+  and after 30 minutes otherwise. If Antigravity wakes after a turn has ended,
+  for example when a command Modus stopped waiting on finishes, Modus opens a
+  new turn with the same prompt and a notice saying why.
 - **Turn limit.** ACP has no turn limit, so Modus counts model rounds (each batch
   of tool calls is one) and cancels the turn at `maxTurns`, ending it with
   `error_max_turns`.

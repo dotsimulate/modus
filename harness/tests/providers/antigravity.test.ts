@@ -67,6 +67,8 @@ function makeHarness(options: {
     command: fixtureCommand,
     holdLimitMs: options.holdLimitMs,
     holdPollMs: 20,
+    transcriptLagMs: 200,
+    idleWatchMs: 20,
     transcriptPath: () => transcript,
   });
   const events: any[] = [];
@@ -463,6 +465,53 @@ describe("Antigravity provider", () => {
       && event.message.content[0].tool_use_id === "call-background")).toHaveLength(1);
     const notice = events.find((event) => event.subtype === "provider_message" && event.content.includes(ANTIGRAVITY_WAKE_PROMPT));
     expect(notice.content).toContain("`voro lab look scene.voro` finished in the background");
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("holds on the command agy is still running, not on a finish it took in earlier in the turn", async () => {
+    const capture = join(testRoot, `replay-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture });
+    session.initialContent = "replay the lost end";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const resultsFor = (id: string) => events.filter((event) => event.subtype === "tool_result"
+      && event.message.content[0].tool_use_id === id);
+    // The three-line command gets its own output, never the earlier command's.
+    expect(resultsFor("call-142")).toHaveLength(1);
+    expect(resultsFor("call-142")[0].message.content[0].content).toBe("Command exited with code 0.\n\nCommand output:\n{\n \"ok\": true\n}");
+    expect(resultsFor("call-75")).toHaveLength(1);
+    expect(resultsFor("call-75")[0].message.content[0].content).toContain("GraphNotLoaded");
+    const notices = events.filter((event) => event.subtype === "provider_message").map((event) => event.content);
+    expect(notices[0]).toContain("voro lab disconnect stage/gallery.voro");
+    expect(notices[0]).not.toContain("examples/09");
+    expect(notices.some((content) => content.includes(ANTIGRAVITY_WAKE_PROMPT))).toBe(true);
+    const prompts = capturedRequests(capture).filter((entry) => entry.method === "session/prompt");
+    expect(prompts.map((entry) => entry.params.prompt[0].text)).toEqual(["replay the lost end", ANTIGRAVITY_WAKE_PROMPT]);
+    const results = events.filter((event) => event.type === "result");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      subtype: "success",
+      result: "Waiting for 10 to render its first look. The look rendered; committed it.",
+    });
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("opens a turn when agy wakes after Modus stopped waiting on it", async () => {
+    const capture = join(testRoot, `late-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture, holdLimitMs: 300 });
+    session.initialContent = "look in the background after the hold";
+    provider.startTurn(ctx);
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    const results = events.filter((event) => event.type === "result");
+    expect(results.map((event) => event.result)).toEqual(["waiting for it to finish", " then fixed the bark"]);
+    const reopened = events.findIndex((event) => event.subtype === "provider_message"
+      && event.content.startsWith("Antigravity started working again after the last turn ended"));
+    expect(reopened).toBeGreaterThan(events.indexOf(results[0]));
+    expect(events[reopened + 1]).toMatchObject({ type: "user", subtype: "prompt", message: { content: ANTIGRAVITY_WAKE_PROMPT } });
+    const prompts = capturedRequests(capture).filter((entry) => entry.method === "session/prompt");
+    expect(prompts.map((entry) => entry.params.prompt[0].text)).toEqual(["look in the background after the hold", ANTIGRAVITY_WAKE_PROMPT]);
     expect(session.status).toBe("idle");
     await provider.dispose?.(session);
   });

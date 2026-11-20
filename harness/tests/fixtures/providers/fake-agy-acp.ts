@@ -23,7 +23,9 @@
  * arrives; that prompt joins the run and returns when the run ends. An
  * "over acp" prompt models a finish seen on a 1.5.9 run: the command's
  * `tool_call_update` reaches the client before the SYSTEM_MESSAGE step is
- * written.
+ * written. A "replay" prompt follows the step order of a 1.5.9 run whose end
+ * Modus lost: multi-line commands, an earlier finish already taken in, and a
+ * `schedule` timer beside the command the reply waits on.
  *
  * Every request is appended to $MODUS_AGY_CAPTURE (JSONL) when it is set, and
  * agy's step record is written to $MODUS_AGY_TRANSCRIPT when it is set.
@@ -38,11 +40,31 @@ let stepIndex = 0;
 /** A run agy started on its own; it streams once a prompt opens. */
 let wokenRun: (() => void) | null = null;
 
-function step(source: string, type: string, content: string): void {
+function step(source: string, type: string, content: string, extra: Record<string, unknown> = {}): void {
   if (!transcript) return;
   stepIndex += 1;
   const createdAt = new Date().toISOString().replace(/\.\d+Z$/, "Z");
-  appendFileSync(transcript, `${JSON.stringify({ step_index: stepIndex, source, type, status: "DONE", created_at: createdAt, content })}\n`);
+  appendFileSync(transcript, `${JSON.stringify({ step_index: stepIndex, source, type, status: "DONE", created_at: createdAt, content, ...extra })}\n`);
+}
+
+/** The model response that calls a tool; agy records each argument as JSON text. */
+function callStep(name: string, args: Record<string, unknown>): void {
+  const recorded = Object.fromEntries(Object.entries(args).map(([key, value]) => [key, JSON.stringify(value)]));
+  step("MODEL", "PLANNER_RESPONSE", "", { tool_calls: [{ name, args: recorded }] });
+}
+
+/** agy 1.5.9's step for a tool it moved to the background. */
+function backgroundStep(task: string, description: string, logOutput = ""): void {
+  step("MODEL", "GENERIC", `Created At: 2026-11-20T05:51:42-05:00\nTool is running as a background task with task id: ${task}\n`
+    + `Task Description: ${description}\nTask logs are available at: file:///logs/${task}.log\n`
+    + (logOutput ? `Log output:\n${logOutput}\n` : "")
+    + "YOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: A) either proceed to other relevant work (if any) or, B) simply update the user");
+}
+
+/** The SYSTEM_MESSAGE agy posts to itself when a background task finishes. */
+function finishStep(task: string, output: string): void {
+  step("SYSTEM", "SYSTEM_MESSAGE", "The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n<SYSTEM_MESSAGE>\n"
+    + `[Message] sender=${task} priority=MESSAGE_PRIORITY_HIGH content=Task id "${task}" finished with result:\n${output}\n</SYSTEM_MESSAGE>`);
 }
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 let pendingPromptId: string | number | null = null;
@@ -243,19 +265,62 @@ lines.on("line", (line) => {
       finish();
       return;
     }
+    if (text.includes("replay")) {
+      // The order of an agy 1.5.9 run that lost its end: an earlier two-line
+      // command finished mid-run (its result over ACP, its SYSTEM_MESSAGE
+      // taken in by the run); the reply then ended on a three-line command
+      // and a `schedule` timer, both in the background.
+      const early = { CommandLine: "cd D:/studies/shapes\nvoro lab look examples/09/scene.voro settle=4", WaitMsBeforeAsync: "10000" };
+      callStep("run_command", early);
+      update({ sessionUpdate: "tool_call", ...commandCall("call-75", early), status: "in_progress" });
+      backgroundStep(`${SESSION}/task-75`, early.CommandLine);
+      commandResult("call-75", early, true, "Command exited with code 1.\n\nGraphNotLoaded: scene.voro did not load");
+      finishStep(`${SESSION}/task-75`, "Command exited with code 1.\r\n\r\nGraphNotLoaded: scene.voro did not load");
+      step("MODEL", "PLANNER_RESPONSE", "fixing the scene");
+      const last = {
+        CommandLine: "cd D:/studies/shapes\nvoro lab disconnect stage/gallery.voro\nvoro lab look examples/10/scene.voro settle=2",
+        WaitMsBeforeAsync: "10000",
+      };
+      callStep("run_command", last);
+      update({ sessionUpdate: "tool_call", ...commandCall("call-142", last), status: "in_progress" });
+      backgroundStep(`${SESSION}/task-142`, last.CommandLine, "{\r\n \"disconnected\": \"tfbh2f\"\r\n}");
+      const timer = { DurationSeconds: "25", Prompt: "Check task-142 progress if it has not yet finished", TimerCondition: "any" };
+      callStep("schedule", timer);
+      const timerCall = { toolCallId: "call-144", name: "schedule", kind: "other", title: "schedule", rawInput: timer };
+      update({ sessionUpdate: "tool_call", ...timerCall, status: "in_progress" });
+      update({ sessionUpdate: "tool_call_update", ...timerCall, status: "completed" });
+      backgroundStep(`${SESSION}/task-144`, `Timer: 25s, Prompt: ${timer.Prompt}`);
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Waiting for 10 to render its first look." } });
+      step("MODEL", "PLANNER_RESPONSE", "Waiting for 10 to render its first look.");
+      finish();
+      setTimeout(() => {
+        finishStep(`${SESSION}/task-142`, "Command exited with code 0.\r\n\r\nCommand output:\r\n{\r\n \"ok\": true\r\n}");
+        wokenRun = () => {
+          update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " The look rendered; committed it." } });
+          step("MODEL", "PLANNER_RESPONSE", "The look rendered; committed it.");
+          finish();
+        };
+      }, 300);
+      return;
+    }
     if (text.includes("background") || text.includes("server")) {
       const input = { CommandLine: text.includes("server") ? "npm run dev" : "voro lab look scene.voro", WaitMsBeforeAsync: 10000 };
-      const task = `${SESSION}/task-${stepIndex + 1}`;
+      const task = `${SESSION}/task-${stepIndex + 2}`;
+      callStep("run_command", input);
       update({ sessionUpdate: "tool_call", ...commandCall("call-background", input), status: "in_progress" });
-      step("MODEL", "GENERIC", `Tool is running as a background task with task id: ${task}\nTask Description: ${input.CommandLine}\n`
-        + "YOU MUST TAKE ONE OF THE FOLLOWING TWO ACTIONS: A) either proceed to other relevant work (if any) or, B) simply update the user");
+      backgroundStep(task, input.CommandLine);
       update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "waiting for it to finish" } });
       step("MODEL", "PLANNER_RESPONSE", "waiting for it to finish");
       finish();
       if (text.includes("server")) return;
+      // "after the hold" finishes once the test's hold limit has ended the turn.
       setTimeout(() => {
-        const wake = () => step("SYSTEM", "SYSTEM_MESSAGE", "<SYSTEM_MESSAGE>\n[Message] sender=" + task
-          + ` content=Task id "${task}" finished with result:\nCommand exited with code 0.\r\r\n\r\r\nlook done\n</SYSTEM_MESSAGE>`);
+        let woken = false;
+        const wake = () => {
+          if (woken) return;
+          woken = true;
+          finishStep(task, "Command exited with code 0.\r\r\n\r\r\nlook done");
+        };
         if (text.includes("over acp")) {
           // The finish reaches the client before agy records the step that wakes it.
           commandResult("call-background", input, true, "Command exited with code 0.\n\nlook done");
@@ -265,16 +330,19 @@ lines.on("line", (line) => {
         }
         // Nothing below streams until a prompt opens; the write waits on approval.
         wokenRun = () => {
+          // agy records the message that woke it before anything it does about it.
+          wake();
           update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "reviewing the look" } });
           const call = { toolCallId: "call-after-wake", name: "write_file", kind: "edit", title: "bark.py", rawInput: { Path: "bark.py", Content: "crisp" } };
           update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
           askPermission("permission-after-wake", call, (allowed) => {
             update({ sessionUpdate: "tool_call_update", ...call, status: allowed ? "completed" : "failed" });
             update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " then fixed the bark" } });
+            step("MODEL", "PLANNER_RESPONSE", "then fixed the bark");
             finish();
           });
         };
-      }, 150);
+      }, text.includes("after the hold") ? 900 : 150);
       return;
     }
     if (text.includes("command") || text.includes("bypass")) {

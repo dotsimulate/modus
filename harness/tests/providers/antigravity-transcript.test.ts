@@ -4,11 +4,13 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   AntigravityTranscriptTail,
+  agyWoke,
   antigravityTranscriptPath,
   backgroundTaskFinished,
   backgroundTaskStarted,
   commandLineText,
   stepIsWake,
+  timerSeconds,
 } from "../../providers/antigravity-transcript";
 
 const root = mkdtempSync(join(tmpdir(), "modus-agy-transcript-"));
@@ -56,8 +58,53 @@ describe("agy conversation record", () => {
     expect(backgroundTaskFinished(finished)).toEqual({
       taskId: "conv-1/task-110",
       output: "Command exited with code 0.\n\nCommand output:\n{\n \"ok\": true\n}\n\nLog: file:///logs/task-110.log",
+      canceled: false,
     });
     expect(backgroundTaskFinished({ ...finished, source: "MODEL" })).toBeNull();
+    // A canceled task ends too, so nothing waits on it.
+    expect(backgroundTaskFinished({
+      ...finished,
+      content: "<SYSTEM_MESSAGE>\n[Message] sender=conv-1/task-82 priority=MESSAGE_PRIORITY_LOW "
+        + "content=Task id \"conv-1/task-82\" was canceled with result:\nTool execution was canceled\nLog: file:///logs/task-82.log\n</SYSTEM_MESSAGE>",
+    })).toEqual({ taskId: "conv-1/task-82", output: "Tool execution was canceled\nLog: file:///logs/task-82.log", canceled: true });
+  });
+
+  test("reads a multi-line command's whole description, and a timer's length", () => {
+    const multiLine = {
+      ...started,
+      content: "Created At: 2026-11-20T05:51:42-05:00\nTool is running as a background task with task id: conv-1/task-142\r\n"
+        + "Task Description: cd D:/studies/shapes\r\nvoro lab disconnect stage/gallery.voro\nvoro lab look examples/10/scene.voro settle=2\n"
+        + "Task logs are available at: file:///logs/task-142.log\nLog output:\n{\r\n \"disconnected\": \"tfbh2f\"\r\n}",
+    };
+    expect(backgroundTaskStarted(multiLine)).toEqual({
+      taskId: "conv-1/task-142",
+      description: "cd D:/studies/shapes\nvoro lab disconnect stage/gallery.voro\nvoro lab look examples/10/scene.voro settle=2",
+    });
+    expect(backgroundTaskStarted(multiLine)?.description)
+      .toBe(commandLineText("\"cd D:/studies/shapes\\nvoro lab disconnect stage/gallery.voro\\nvoro lab look examples/10/scene.voro settle=2\""));
+    const timer = {
+      ...started,
+      content: "Tool is running as a background task with task id: conv-1/task-144\n"
+        + "Task Description: Timer: 25s, Prompt: Check task-142 progress if it has not yet finished\nTask logs are available at: file:///logs/task-144.log",
+    };
+    const description = backgroundTaskStarted(timer)?.description ?? "";
+    expect(description).toBe("Timer: 25s, Prompt: Check task-142 progress if it has not yet finished");
+    expect(timerSeconds(description)).toBe(25);
+    expect(timerSeconds("voro lab look scene.voro")).toBeNull();
+  });
+
+  test("a system message is a wake only until agy responds to it", () => {
+    const returned = Date.parse("2026-11-20T10:52:09.437Z");
+    const response = { source: "MODEL", type: "PLANNER_RESPONSE", created_at: "2026-11-20T10:52:04Z" };
+    const stale = { ...finished, created_at: "2026-11-20T10:43:14Z" };
+    // A finish the run already took in, read late at the hold, is not a wake.
+    expect(agyWoke([stale, { ...response, created_at: "2026-11-20T10:43:14Z" }, response], returned)).toBe(false);
+    // One posted after agy's last response is, whatever its timestamp.
+    expect(agyWoke([response, { ...finished, created_at: "2026-11-20T10:52:08Z" }], returned)).toBe(true);
+    // As is any model step agy started after the prompt returned.
+    expect(agyWoke([{ ...response, created_at: "2026-11-20T10:52:20Z" }], returned)).toBe(true);
+    expect(agyWoke([{ source: "SYSTEM", type: "CHECKPOINT", created_at: "2026-11-20T10:52:20Z" }], returned)).toBe(false);
+    expect(agyWoke([], returned)).toBe(false);
   });
 
   test("counts only steps agy started after the prompt returned as a wake", () => {
