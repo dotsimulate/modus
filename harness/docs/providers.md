@@ -381,7 +381,9 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   use the shared Modus names (`Read`, `Bash`, ...) or Antigravity's own
   (`read_file`, `run_command`, ...); see Tool names across providers below.
   MCP tools appear as `mcp_<server>_<tool>`; Antigravity does not return MCP or
-  `read_file` output to the client, so those rows show only completion. Prompt
+  `read_file` output to the client, so those rows show only completion. A
+  `read_file` of a PNG, JPEG, GIF, or WebP image up to 5 MB is the exception:
+  Modus loads the file Antigravity read and shows the picture. Prompt
   attachments accept text and images; Antigravity's ACP server reports no audio
   input. HTTP and SSE MCP servers launch `agy acp --process-per-session`, which
   Antigravity requires for them.

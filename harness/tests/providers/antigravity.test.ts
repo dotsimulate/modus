@@ -22,6 +22,7 @@ import {
   ANTIGRAVITY_SANDBOX_FAILURE_NOTICE,
   ANTIGRAVITY_WAKE_PROMPT,
   antigravityLaunchArgs,
+  antigravityReadImage,
   antigravityToolOutput,
   createAntigravityProvider,
   isSandboxStartFailure,
@@ -591,6 +592,37 @@ describe("Antigravity provider", () => {
       name: "write_file",
       rawInput: { Path: "a.txt", Content: "x" },
     })).toEqual({ name: "write_file", input: { Path: "a.txt", Content: "x" } });
+  });
+
+  test("shows the picture agy read, which ACP does not send", async () => {
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489", "hex");
+    writeFileSync(join(testRoot, "look.png"), png);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+    session.initialContent = "read-image";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const result = events.find((event) => event.subtype === "tool_result"
+      && event.message.content[0].tool_use_id === "call-read-image");
+    expect(result.message.content[0].content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } },
+    ]);
+    await provider.dispose?.(session);
+  });
+
+  test("loads only image files within the size limit for a read", () => {
+    const dir = mkdtempSync(join(testRoot, "read-image-"));
+    writeFileSync(join(dir, "a.JPG"), Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+    writeFileSync(join(dir, "notes.txt"), "text");
+    writeFileSync(join(dir, "big.png"), Buffer.alloc(64, 1));
+    expect(antigravityReadImage({ Path: join(dir, "a.JPG") }, testRoot)).toEqual({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString("base64") },
+    });
+    expect(antigravityReadImage({ Path: "a.JPG" }, dir)).not.toBeNull();
+    expect(antigravityReadImage({ Path: join(dir, "notes.txt") }, dir)).toBeNull();
+    expect(antigravityReadImage({ Path: join(dir, "missing.png") }, dir)).toBeNull();
+    expect(antigravityReadImage({ Path: join(dir, "big.png") }, dir, 32)).toBeNull();
+    expect(antigravityReadImage({}, dir)).toBeNull();
   });
 
   test("renders edit diffs as tool output and falls back to a status line", () => {

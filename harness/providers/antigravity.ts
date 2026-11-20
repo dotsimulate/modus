@@ -1,4 +1,5 @@
-import { isAbsolute } from "path";
+import { readFileSync, statSync } from "fs";
+import { extname, isAbsolute, resolve } from "path";
 import {
   contentPreview,
   createPendingDispatchItem,
@@ -410,6 +411,54 @@ export function antigravityToolOutput(update: any): string | Array<Record<string
   return stringify(update?.status === "failed" ? "tool call failed" : "tool call completed");
 }
 
+const ANTIGRAVITY_IMAGE_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+/** Largest picture Modus copies into a transcript; the Claude API's own per-image limit. */
+export const ANTIGRAVITY_IMAGE_READ_LIMIT_BYTES = 5 * 1024 * 1024;
+
+/**
+ * agy's `read_file` of a picture shows the model the image but sends the
+ * client no content at all (agy 1.5.12), so the transcript had only a
+ * completion line. The file agy just read is the image, so Modus loads it,
+ * for image extensions only and up to the size limit.
+ */
+export function antigravityReadImage(
+  input: Record<string, unknown>,
+  cwd: string,
+  limitBytes = ANTIGRAVITY_IMAGE_READ_LIMIT_BYTES,
+): Record<string, unknown> | null {
+  const requested = typeof input.Path === "string" ? input.Path.trim() : "";
+  if (!requested) return null;
+  const mediaType = ANTIGRAVITY_IMAGE_TYPES[extname(requested).toLowerCase()];
+  if (!mediaType) return null;
+  const path = isAbsolute(requested) ? requested : resolve(cwd, requested);
+  try {
+    const stats = statSync(path);
+    if (!stats.isFile() || stats.size === 0 || stats.size > limitBytes) return null;
+    return { type: "image", source: { type: "base64", media_type: mediaType, data: readFileSync(path).toString("base64") } };
+  } catch {
+    return null;
+  }
+}
+
+/** A `read_file` result with the picture it read, when ACP carried none. */
+function withReadImage(
+  output: string | Array<Record<string, unknown>>,
+  tool: ToolState,
+  cwd: string,
+): string | Array<Record<string, unknown>> {
+  if (tool.name !== "read_file" || typeof output !== "string") return output;
+  const image = antigravityReadImage(tool.input, cwd);
+  if (!image) return output;
+  return output && output !== "tool call completed" ? [{ type: "text", text: output }, image] : [image];
+}
+
 function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): void {
   const update = params?.update ?? params;
   const type = update?.sessionUpdate ?? update?.session_update;
@@ -454,7 +503,9 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     const status = update.status;
     if (!tool.resultEmitted && (status === "completed" || status === "failed")) {
       tool.resultEmitted = true;
-      const output = antigravityToolOutput(update);
+      const output = status === "completed"
+        ? withReadImage(antigravityToolOutput(update), tool, ctx.session.cwd ?? ctx.opts.cwd ?? process.cwd())
+        : antigravityToolOutput(update);
       ctx.emitEvent({
         type: "user",
         subtype: "tool_result",

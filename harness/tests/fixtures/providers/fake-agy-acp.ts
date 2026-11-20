@@ -257,6 +257,15 @@ lines.on("line", (line) => {
       finish();
       return;
     }
+    if (text.includes("read-image")) {
+      // agy 1.5.12 completes an image read with no content for the client.
+      const call = { toolCallId: "call-read-image", name: "read_file", kind: "read", title: "look.png", rawInput: { Path: "look.png" } };
+      update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
+      update({ sessionUpdate: "tool_call_update", ...call, status: "completed" });
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "looked at it" } });
+      finish();
+      return;
+    }
     if (text.includes("read-unasked")) {
       const call = { toolCallId: "call-read", name: "read_file", kind: "read", title: "note.txt", rawInput: { Path: "note.txt" } };
       update({ sessionUpdate: "tool_call", ...call, status: "in_progress" });
