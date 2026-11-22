@@ -329,9 +329,10 @@ skill tools; every other provider does. See `skills`.
 
 Modus starts one `agy acp` child per active session: the Agent Client Protocol
 server that ships inside Google's Antigravity CLI. It initializes ACP, creates or
-loads the provider-native Antigravity session, and keeps that process warm for
-follow-up turns. Text, thought, tool, permission, usage, cancellation, image,
-model, mode, and MCP data use native ACP messages.
+resumes (`session/resume` when advertised, otherwise `session/load`) the
+provider-native Antigravity session, and keeps that process warm for follow-up
+turns. Text, thought, tool, permission, usage, context-window, cancellation,
+image, model, mode, and MCP data use native ACP messages.
 
 Install the Antigravity CLI, then run `agy` once in a terminal and sign in with
 Google. That sign-in, and the plan behind it, is what Modus sessions run on:
@@ -355,28 +356,33 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   offer fails the turn and lists what it does offer. Lists come from a
   throwaway ACP session, shared with the health check for a minute.
 - **Modes and approvals.** `providerControls.antigravity.mode` selects the ACP
-  session mode: `default`, `accept-edits`, `auto`, or `plan`. Antigravity decides
-  which calls reach Modus for approval: in `default` it asks before commands and
-  file edits, in `accept-edits` before commands only, and in `auto` only before
-  commands it judges risky. Reads, web search, and MCP calls never ask. Modus
-  answers each request from the session's tools and `permissionPolicy`, or with a
-  live prompt. A restricted tool that Antigravity runs without asking cannot be
-  blocked, so Modus reports it in the transcript instead.
+  session mode: `default`, `accept-edits`, `auto`, or `plan`, applied live via
+  `session/set_mode` without restarting `agy`. When unset, Modus reads the
+  session's active `modes.currentModeId` from `agy` (`auto` by default on `agy`
+  1.5.7+). Antigravity decides which calls reach Modus for approval: in `default`
+  it asks before commands and file edits, in `accept-edits` before commands only,
+  and in `auto` only before commands it judges risky. Reads, web search, and MCP
+  calls never ask. Modus answers each request from the session's tools and
+  `permissionPolicy`, or with a live prompt. A restricted tool that Antigravity
+  runs without asking cannot be blocked, so Modus reports it in the transcript
+  instead.
 - **Sandbox.** `sandbox: true` launches `agy acp --sandbox`; `auto` mode turns
   Antigravity's terminal sandbox on by itself. A command that asks to bypass the
   sandbox (`BypassSandbox`) always waits for the user, whatever the permission
-  policy. Where the sandbox cannot start (Google lists its Windows requirements in
-  the [sandbox docs](https://antigravity.google/docs/sandbox/)), every sandboxed
+  policy (including when `agy` started in `auto` by default). Where the sandbox
+  cannot start (Google lists its Windows requirements in the
+  [sandbox docs](https://antigravity.google/docs/sandbox/)), every sandboxed
   command fails; Modus names that once per session in the transcript.
 - **Profile prompts.** `append` is delivered as ACP session metadata
   (`_meta.antigravity.systemPrompt.append`). `custom` is rejected: ACP offers no
   replacement channel. Antigravity always loads its own rules and project
   instructions.
-- **Billing.** Inherited `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+- **Billing and context usage.** Inherited `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
   `GOOGLE_GENAI_API_KEY`, and `GOOGLE_APPLICATION_CREDENTIALS` are removed from the
   child so a stray key cannot move a session from the plan to API billing. A key
-  set deliberately in the profile `env` is passed through. Turns report token
-  usage; their dollar cost is recorded as zero.
+  set deliberately in the profile `env` is passed through. Turns report token and
+  cached-token usage plus context-window fill from ACP `usage_update` (`agy`
+  1.5.8+); dollar cost is recorded as zero.
 - **Tools.** A profile's `tools`, `disallowedTools`, and session tool toggles may
   use the shared Modus names (`Read`, `Bash`, ...) or Antigravity's own
   (`read_file`, `run_command`, ...); see Tool names across providers below.
@@ -392,29 +398,25 @@ that satisfies the terms for a given account is Google's call, not Modus's.
   running turn. If Antigravity refuses it at once, Modus queues it instead.
 - **Background commands.** `run_command` moves a command to the background after
   its `WaitMsBeforeAsync`, `schedule` sets a timer the same way, and Antigravity
-  can end its reply while either runs. When one finishes, Antigravity starts
-  working again on its own, but it streams updates and asks for approvals only
-  while a `session/prompt` is open, so that work is invisible and its first
-  approval waits indefinitely. A turn whose reply leaves background work
-  therefore stays open. Modus holds it on Antigravity's own conversation record
-  (`~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl`):
-  the tasks it started and has not finished, and a timer until the next message
-  wakes Antigravity or its time is up. Each task is tied to its call by the
-  whole command line, so a command's result comes from that record only for
-  its own call, and a finish Antigravity already responded to does not count
-  again. When the record shows Antigravity woke, Modus sends a short prompt,
-  shown as a notice in the transcript, that reconnects the stream; the turn
-  ends when Antigravity's run does. The wait ends sooner if the user stops the
-  turn or sends a message, which Antigravity takes into whatever it is doing,
-  and after 30 minutes otherwise. If Antigravity wakes after a turn has ended,
-  for example when a command Modus stopped waiting on finishes, Modus opens a
-  new turn with the same prompt and a notice saying why.
+  can end its reply while either runs. Long-running daemon commands and crons
+  (`IsDaemon: true`) do not hold the turn open. On `agy` 1.5.10+, post-wake
+  replies, tool calls, and approvals stream directly while the turn is held and
+  settle without a synthetic prompt. On earlier `agy` builds that only stream
+  while a `session/prompt` is open, Modus holds the turn on Antigravity's
+  conversation record
+  (`~/.gemini/antigravity-cli/brain/<session>/.system_generated/logs/transcript.jsonl`),
+  tying each task to its call by the whole command line and respecting each
+  timer's `TimerCondition`, and sends a short wake prompt (shown as a notice in
+  the transcript) when the record shows Antigravity woke silently. The wait ends
+  sooner if the user stops the turn or sends a message, and after 30 minutes
+  otherwise. If Antigravity wakes after a turn has ended, Modus opens a new turn
+  with a notice (without emitting a synthetic user prompt).
 - **Turn limit.** ACP has no turn limit, so Modus counts model rounds (each batch
   of tool calls is one) and cancels the turn at `maxTurns`, ending it with
   `error_max_turns`.
 - **Slash commands.** The composer offers Antigravity's own commands (`/goal`,
-  `/compact`, `/plan`, `/schedule`, ...); a prompt starting with one is handled by
-  Antigravity. Installed agy skills are invoked the same way.
+  `/compact`, `/plan`, `/schedule`, `/thinking`, ...); a prompt starting with one
+  is handled by Antigravity. Installed agy skills are invoked the same way.
 - **Legacy plugin.** Earlier Modus builds installed an agy plugin named
   `modus-provider` whose hooks fail every agy tool call. On first use per backend
   process Modus disables it if it is enabled (`agy plugin enable modus-provider`
@@ -443,6 +445,7 @@ the backend enforces.
 | `Glob` / `Grep` | none | `list_dir` / `grep`, `grep_search` | none |
 | `WebSearch` / `WebFetch` | `search_web` | web and X search / fetch tools | none |
 | `Agent` | subagent and swarm tools | `task`, `spawn_subagent` | none |
+| `Workflow` | `run_workflow` | none | none |
 | `AskUserQuestion` | `ask_question` | `ask_user_question` | none |
 
 The full maps live in each provider's capabilities file. As on Claude Code,

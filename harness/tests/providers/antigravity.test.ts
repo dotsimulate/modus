@@ -31,6 +31,7 @@ import {
   sandboxRequested,
   toolDecision,
 } from "../../providers/antigravity";
+import { fetchProviderModels } from "../../providers/models";
 
 const testRoot = mkdtempSync(join(tmpdir(), "modus-antigravity-provider-"));
 const fixture = join(import.meta.dir, "..", "fixtures", "providers", "fake-agy-acp.ts");
@@ -252,6 +253,35 @@ describe("Antigravity runtime", () => {
     } finally {
       if (previous === undefined) delete process.env.MODUS_AGY_CAPTURE;
       else process.env.MODUS_AGY_CAPTURE = previous;
+      resetAntigravityProbeCacheForTests();
+    }
+  });
+
+  test("evicts failed probes so signing in takes effect immediately on the next check", async () => {
+    resetAntigravityProbeCacheForTests();
+    const brokenCommand = { executable: process.execPath, prefixArgs: ["-e", "process.stderr.write('Authentication required'); process.exit(1)"] };
+    try {
+      const failed = await probeAntigravity(brokenCommand);
+      expect(failed.authenticated).toBe(false);
+      expect(failed.detail).toContain("sign in with Google");
+      // Second call must re-run instead of returning the exact cached failed object.
+      const retried = await probeAntigravity(brokenCommand);
+      expect(retried).not.toBe(failed);
+      expect(retried.authenticated).toBe(false);
+    } finally {
+      resetAntigravityProbeCacheForTests();
+    }
+  });
+
+  test("surfaces Antigravity model discovery failures instead of an empty model list", async () => {
+    resetAntigravityProbeCacheForTests();
+    const previous = process.env.ANTIGRAVITY_CLI_PATH;
+    process.env.ANTIGRAVITY_CLI_PATH = process.execPath;
+    try {
+      await expect(fetchProviderModels("antigravity")).rejects.toThrow(/Antigravity|acp|sign in|probe/i);
+    } finally {
+      if (previous === undefined) delete process.env.ANTIGRAVITY_CLI_PATH;
+      else process.env.ANTIGRAVITY_CLI_PATH = previous;
       resetAntigravityProbeCacheForTests();
     }
   });

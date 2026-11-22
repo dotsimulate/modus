@@ -138,7 +138,9 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
   // Antigravity: the signed-in plan's models, read from a throwaway ACP session.
   // No offline fallback: the list depends on the account's tier.
   if (provider === "antigravity") {
-    return (await probeAntigravity()).models;
+    const probe = await probeAntigravity();
+    if (!probe.authenticated) throw new Error(probe.detail);
+    return probe.models;
   }
 
   // Muse Code: the host's catalog over MSP `model/list`. No offline fallback,

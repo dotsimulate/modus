@@ -342,14 +342,17 @@ export function AgentConfig({
               className={dropdownClassName}
               value={antigravityControls.mode ?? ""}
               options={[{ value: "default" }, { value: "accept-edits" }, { value: "auto" }, { value: "plan" }]}
-              placeholder="default"
+              placeholder="profile default"
               searchPlaceholder="search mode..."
               onChange={(mode) => updateAntigravityControls({
                 mode: (mode || undefined) as NonNullable<NonNullable<AgentConfigState["providerControls"]>["antigravity"]>["mode"],
               })}
             />
           </label>
-          <label className="agent-config-field">
+          <label
+            className="agent-config-field"
+            title="Adds --sandbox to agy acp; auto mode turns the terminal sandbox on by itself."
+          >
             <span>sandbox</span>
             <SearchDropdown
               className={dropdownClassName}

@@ -194,7 +194,12 @@ export function probeAntigravity(command = resolveAntigravityCommand()): Promise
   }
   const promise = runProbe(command);
   probeCache = { at: Date.now(), key, promise };
-  promise.catch(() => { if (probeCache?.promise === promise) probeCache = null; });
+  // Cache successful probes for PROBE_TTL_MS, but evict failed/unauthenticated
+  // results once settled so a fresh `agy` sign-in takes effect immediately.
+  promise.then(
+    (result) => { if (!result.authenticated && probeCache?.promise === promise) probeCache = null; },
+    () => { if (probeCache?.promise === promise) probeCache = null; },
+  );
   return promise;
 }
 

@@ -201,9 +201,10 @@ profile file. The file uses the same `{ "mcpServers": { ... } }` shape as
 may be `"default"` (Antigravity asks Modus before commands and file edits),
 `"accept-edits"` (before commands only), `"auto"` (only before commands it judges
 risky; also turns on Antigravity's terminal sandbox), or `"plan"`; `sandbox: true`
-launches `agy acp --sandbox`. Changes apply on the next turn by restarting the ACP
-child and loading the same Antigravity session. Tool lists, toggles, `maxTurns`,
-and the permission policy apply without a restart.
+launches `agy acp --sandbox`. `mode` changes apply live on the next turn via
+`session/set_mode`; changing `sandbox` or workspace roots restarts the ACP child
+and resumes the same Antigravity session. Tool lists, toggles, `maxTurns`, and
+the permission policy apply without a restart.
 
 **`providerControls.grokBuild`**: Optional Grok Build ACP controls. `mode` may
 be `"default"`, `"auto"`, `"plan"`, or `"always-approve"`; `sandbox` names a
