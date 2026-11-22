@@ -41,8 +41,12 @@ describe("shared tool restrictions", () => {
     for (const tool of ["run_command", "manage_task", "read_file", "write_file", "edit_file", "search_web", "schedule", "ask_question"]) {
       expect(toolRestriction(tool, allowed, ANTIGRAVITY_TOOL_ALIASES)).toBeNull();
     }
-    // Agent is not in that profile, so subagents stay off.
+    // Agent and Workflow are not in that profile, so subagents and workflows stay off.
     expect(toolRestriction("invoke_subagent", allowed, ANTIGRAVITY_TOOL_ALIASES)?.kind).toBe("allowlist");
+    expect(toolRestriction("run_workflow", allowed, ANTIGRAVITY_TOOL_ALIASES)?.kind).toBe("allowlist");
+    expect(toolRestriction("run_workflow", config({ disallowedTools: ["Workflow"] }), ANTIGRAVITY_TOOL_ALIASES))
+      .toEqual({ kind: "disallowed", entry: "Workflow" });
+    expect(toolRestriction("run_workflow", config({ tools: ["Workflow"] }), ANTIGRAVITY_TOOL_ALIASES)).toBeNull();
   });
 
   test("the same list allows the Grok Build and Muse Code tools it names", () => {

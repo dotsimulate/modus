@@ -56,7 +56,7 @@ export const ANTIGRAVITY_TOOL_GROUPS: ToolGroup[] = [
   { label: "files", tools: ["read_file", "write_file", "edit_file"] },
   { label: "exec", tools: ["run_command", "manage_task", "schedule"] },
   { label: "web", tools: ["search_web"] },
-  { label: "agents", tools: ["invoke_subagent", "define_subagent", "manage_subagents", "send_message", "swarm"] },
+  { label: "agents", tools: ["invoke_subagent", "define_subagent", "manage_subagents", "send_message", "run_workflow", "swarm"] },
   { label: "resources", tools: ["list_resources", "read_resource"] },
   { label: "interaction", tools: ["ask_question"] },
 ];

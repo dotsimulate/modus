@@ -121,6 +121,7 @@ function reduceErrorEvent(s: ReducerState, m: any, ts: number): ReducerState {
   const content = providerErrorDisplayText(m);
   return {
     ...s,
+    ...clearedTurnState(),
     status: "error",
     messages: [...s.messages, { id: nextMsgId(), role: "system", content, timestamp: ts }],
     streamFeed: appendFeed(s.streamFeed, content),

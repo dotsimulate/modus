@@ -10,7 +10,7 @@ export const ANTIGRAVITY_TOOL_GROUPS = [
   { label: "files", tools: ["read_file", "write_file", "edit_file"] },
   { label: "exec", tools: ["run_command", "manage_task", "schedule"] },
   { label: "web", tools: ["search_web"] },
-  { label: "agents", tools: ["invoke_subagent", "define_subagent", "manage_subagents", "send_message", "swarm"] },
+  { label: "agents", tools: ["invoke_subagent", "define_subagent", "manage_subagents", "send_message", "run_workflow", "swarm"] },
   { label: "resources", tools: ["list_resources", "read_resource"] },
   { label: "interaction", tools: ["ask_question"] },
 ] as const;
@@ -32,6 +32,7 @@ export const ANTIGRAVITY_TOOL_ALIASES: Record<string, string[]> = {
   WebSearch: ["search_web"],
   WebFetch: ["search_web"],
   Agent: ["invoke_subagent", "define_subagent", "manage_subagents", "send_message", "swarm"],
+  Workflow: ["run_workflow"],
   CronCreate: ["schedule"],
   CronDelete: ["schedule"],
   CronList: ["schedule"],
@@ -57,6 +58,7 @@ export const ANTIGRAVITY_SLASH_COMMANDS: NonNullable<ProviderCapabilities["slash
   { command: "/teamwork", label: "Teamwork", description: "Invoke a team of agents to tackle a large project", argumentHint: "<project>" },
   { command: "/learn", label: "Learn", description: "Capture reusable skills or rules from recent work" },
   { command: "/boost", label: "Boost", description: "Invoke the Boost multi-agent orchestrator for complex tasks", argumentHint: "<task>" },
+  { command: "/thinking", label: "Thinking", description: "Toggle live thinking display in the transcript", argumentHint: "[on|off]" },
   { command: "/swarm", label: "Swarm", description: "Several agents in parallel on one task (preview, quota heavy)", argumentHint: "<task>" },
 ];
 

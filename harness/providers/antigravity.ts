@@ -810,17 +810,10 @@ function emitTurnError(ctx: TurnContext, message: string): void {
   session.status = "error";
   session.error = message;
   updateSessionStatus(session.sessionId, "error");
-  ctx.emitEvent({
-    type: "result",
-    subtype: "error",
-    error: message,
-    harness_duration_ms: Date.now() - session.turnStartedAt,
-    input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    num_turns: 0,
-    total_cost_usd: 0,
-  });
+  // `type: "error"` is always promoted to durable storage and reconstructed on
+  // reload (`event-persistence.ts`, `session-history.ts`); a `result/error`
+  // with no assistant turn is dropped on reload.
+  ctx.broadcastEvent({ type: "error", error: message });
   ctx.emitEvent({ type: "done" });
 }
 
@@ -1240,11 +1233,13 @@ async function concludeTurn(
     ctx.emitEvent({ type: "done" });
     return;
   }
-  flushAssistantRound(ctx, state);
   if (state.tools.size === 0 && isAntigravityVerificationNotice(state.turnText)) {
+    state.thinking = "";
+    state.text = "";
     emitTurnError(ctx, ANTIGRAVITY_VERIFICATION_MESSAGE);
     return;
   }
+  flushAssistantRound(ctx, state);
   finishTurn(ctx, state, "success", result);
   watchAfterTurn(ctx, state, client);
 }
@@ -1302,6 +1297,7 @@ async function runTurn(
     await concludeTurn(ctx, state, turnAbortController, turnClient, result);
   } catch (error) {
     if (turnAbortController.signal.aborted) {
+      flushAssistantRound(ctx, state);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
       ctx.emitEvent({ type: "done" });

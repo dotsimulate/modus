@@ -796,34 +796,43 @@ describe("Antigravity provider", () => {
     await provider.dispose?.(session);
   });
 
-  test("turns Google's unverified-account notice into an actionable error", async () => {
+  test("turns Google's unverified-account notice into an actionable durable error", async () => {
     const { provider, session, ctx, events } = makeHarness({});
     session.initialContent = "hello from an unverified account";
     provider.startTurn(ctx);
-    await waitFor(() => events.some((event) => event.type === "result"));
-    expect(events.find((event) => event.type === "result")).toMatchObject({ subtype: "error", error: ANTIGRAVITY_VERIFICATION_MESSAGE });
+    await waitFor(() => events.some((event) => event.type === "done"));
+    expect(events.find((event) => event.type === "error")).toEqual({ type: "error", error: ANTIGRAVITY_VERIFICATION_MESSAGE });
+    expect(events.some((event) => event.type === "assistant")).toBe(false);
     expect(session.status).toBe("error");
     expect(session.error).toBe(ANTIGRAVITY_VERIFICATION_MESSAGE);
+    const { reconstructSessionTurns } = await import("../../session-history");
+    const rebuilt = reconstructSessionTurns(events.map((event, index) => ({
+      seq: index + 1,
+      type: event.type,
+      subtype: event.subtype ?? null,
+      data: JSON.stringify(event),
+      created_at: 1_000 + index,
+    })));
+    expect(rebuilt.some((turn) => turn.role === "system" && turn.text === ANTIGRAVITY_VERIFICATION_MESSAGE)).toBe(true);
     await provider.dispose?.(session);
   });
 
-  test("reports a model the account does not offer instead of running another", async () => {
+  test("reports a model the account does not offer as a durable error instead of running another", async () => {
     const { provider, session, ctx, events } = makeHarness({ model: "gemini-4-carbon" });
     provider.startTurn(ctx);
-    await waitFor(() => events.some((event) => event.type === "result"));
-    const result = events.find((event) => event.type === "result");
-    expect(result.subtype).toBe("error");
-    expect(result.error).toContain('does not offer model "gemini-4-carbon"');
-    expect(result.error).toContain("gemini-4-hydrogen-high");
+    await waitFor(() => events.some((event) => event.type === "done"));
+    const error = events.find((event) => event.type === "error");
+    expect(error?.error).toContain('does not offer model "gemini-4-carbon"');
+    expect(error?.error).toContain("gemini-4-hydrogen-high");
     await provider.dispose?.(session);
     await waitFor(() => session.osPids.size === 0);
   });
 
-  test("rejects a custom (replacement) profile prompt it cannot deliver", async () => {
+  test("rejects a custom (replacement) profile prompt as a durable error", async () => {
     const { provider, session, ctx, events } = makeHarness({ profile: { prompt: "Replace everything.", promptMode: "custom" } });
     provider.startTurn(ctx);
-    await waitFor(() => events.some((event) => event.type === "result"));
-    expect(events.find((event) => event.type === "result").error).toContain("cannot deliver a custom profile prompt");
+    await waitFor(() => events.some((event) => event.type === "done"));
+    expect(events.find((event) => event.type === "error")?.error).toContain("cannot deliver a custom profile prompt");
     await provider.dispose?.(session);
   });
 
