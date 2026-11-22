@@ -548,6 +548,7 @@ function ProfileForm({
           compact
           provider={provider}
           builtInGroups={providerCapabilities[provider]?.builtInToolGroups}
+          toolAliases={providerCapabilities[provider]?.toolAliases}
         />
       </div>
 

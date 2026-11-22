@@ -37,9 +37,10 @@ function extractTouchedFiles(events: EventRow[]): string[] {
     if (!Array.isArray(content)) continue;
     for (const block of content) {
       if (block.type !== "tool_use") continue;
-      if (block.name === "Write" || block.name === "Edit") {
-        const fp = block.input?.file_path;
-        if (typeof fp === "string") files.add(fp);
+      const name = typeof block.name === "string" ? block.name.toLowerCase() : "";
+      if (name === "write" || name === "edit" || name === "write_file" || name === "edit_file" || name === "search_replace") {
+        const fp = block.input?.file_path ?? block.input?.path ?? block.input?.Path ?? block.input?.TargetFile;
+        if (typeof fp === "string" && fp.trim()) files.add(fp);
       }
     }
   }

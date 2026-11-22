@@ -115,6 +115,8 @@ describe("tool names across providers", () => {
       .toEqual([{ oldString: "a", newString: "b" }, { oldString: "", newString: "c" }]);
     expect(toolEditHunks({ ReplacementChunks: [{ TargetContent: "x", ReplacementContent: "y" }] }))
       .toEqual([{ oldString: "x", newString: "y" }]);
+    expect(toolEditHunks({ Path: "a.ts", Target: "old line", Replacement: "new line" }))
+      .toEqual([{ oldString: "old line", newString: "new line" }]);
     expect(toolEditHunks({ Path: "a.txt" })).toEqual([]);
   });
 });

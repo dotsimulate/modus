@@ -93,12 +93,14 @@ function displayToolName(name: string): string {
 /** Arguments worth putting in a headline, most specific first. */
 const SUMMARY_KEYS = [
   "file_path", "filePath", "target_file", "target_directory", "directory", "path", "notebook_path",
-  "command", "cmd", "script",
-  "pattern", "query", "url", "prompt", "description", "skill", "name",
+  "Path", "TargetFile", "AbsolutePath",
+  "command", "cmd", "script", "CommandLine",
+  "pattern", "query", "Query", "url", "prompt", "Prompt", "description", "Description", "Role", "skill", "name",
 ];
 
 const PATH_KEYS = new Set([
   "file_path", "filePath", "target_file", "target_directory", "directory", "path", "notebook_path",
+  "Path", "TargetFile", "AbsolutePath",
 ]);
 
 /**
@@ -141,8 +143,10 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     case "read":
     case "readfile": {
       const p = filePath || truncate(shortPath(input.path as string ?? ""), 80);
-      const offset = input.offset as number | undefined;
-      const limit = input.limit as number | undefined;
+      const offset = (typeof input.offset === "number" ? input.offset : typeof input.StartLine === "number" ? input.StartLine : undefined);
+      const limit = typeof input.limit === "number" ? input.limit : undefined;
+      const endLine = typeof input.EndLine === "number" ? input.EndLine : undefined;
+      if (offset && endLine) return `${p} :${offset}-${endLine}`;
       if (offset && limit) return `${p} :${offset}-${offset + limit}`;
       if (offset) return `${p} :${offset}`;
       if (limit) return `${p} (${limit} lines)`;
@@ -156,6 +160,7 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     case "write":
     case "writefile":
     case "edit":
+    case "editfile":
     case "searchreplace":
     case "multiedit":
     case "notebookedit":
@@ -166,6 +171,7 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     case "powershell":
     case "shell":
     case "exec":
+    case "runcommand":
     case "runterminalcmd":
     case "runterminalcommand": {
       return truncate(toolInputCommand(input), 80);
@@ -188,12 +194,13 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     case "openpagewithfind":
       return truncate(input.url as string, 60);
     case "websearch":
+    case "searchweb":
     case "xsearch":
     case "xkeywordsearch":
     case "xsemanticsearch":
     case "xusersearch":
     case "xthreadfetch":
-      return truncate(input.query as string, 60);
+      return truncate((input.query ?? input.Query) as string, 60);
     case "mcptoolcall": {
       const server = input.server as string | undefined;
       const tool = input.tool as string | undefined;
@@ -203,7 +210,9 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     case "agent":
     case "task":
     case "workflow":
-      return truncate(input.description as string ?? input.prompt as string, 60);
+    case "invokesubagent":
+    case "runworkflow":
+      return truncate((input.Role ?? input.Description ?? input.description ?? input.Prompt ?? input.prompt) as string, 60);
     case "todowrite":
     case "updateplan": {
       const todos = input.todos ?? input.plan;
@@ -220,6 +229,7 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     case "skill":
       return input.skill as string ?? "";
     case "askuserquestion":
+    case "askquestion":
       return truncate((input.questions as { question?: string }[] | undefined)?.[0]?.question, 60);
     case "toolsearch":
       return truncate(input.query as string, 60);
@@ -239,6 +249,7 @@ export function summaryShowsPath(name: string, input: Record<string, unknown>): 
     case "write":
     case "writefile":
     case "edit":
+    case "editfile":
     case "searchreplace":
     case "multiedit":
     case "notebookedit":
@@ -282,10 +293,12 @@ function readRange(input: Record<string, unknown>): { line?: number; endLine?: n
     typeof input.offset === "number" ? input.offset
     : typeof input.line === "number" ? input.line
     : typeof input.start_line === "number" ? input.start_line
+    : typeof input.StartLine === "number" ? input.StartLine
     : undefined;
   const endLine =
     typeof input.endLine === "number" ? input.endLine
     : typeof input.end_line === "number" ? input.end_line
+    : typeof input.EndLine === "number" ? input.EndLine
     : line !== undefined && typeof input.limit === "number" ? line + Math.max(0, input.limit - 1)
     : undefined;
   return { line, endLine };
@@ -732,7 +745,7 @@ export const ToolCallView = memo(function ToolCallView({
     <div className="tool-call-detail tool-call-detail--read">
       <ToolResultImages tool={tool} />
       {tool.result ? (
-        <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
+        <ReadOutput result={tool.result} offset={readLines.line ?? (tool.input.offset as number | undefined)} />
       ) : null}
     </div>
   ) : (

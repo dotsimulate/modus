@@ -258,9 +258,9 @@ export function ConfigBar({
         ? summarizeGeminiTools(agentConfig.toolStates, profileTools, availableTools)
       : `${toolCount} tools`;
 
-  // The newest completed turn is the session's current usage. Providers outside
-  // the Claude and PI families report no context figures at all, so these stay
-  // null and the readouts drop out rather than showing a made-up number.
+  // The newest completed turn is the session's current usage. Providers that
+  // report no context figures leave these null so the readout drops out rather
+  // than showing a made-up number.
   const latestUsage = getLatestAssistantUsage(messages ?? []);
   const contextPercent = formatContextPercent(latestUsage);
   const contextRatio = contextFillRatio(latestUsage);

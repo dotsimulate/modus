@@ -70,6 +70,16 @@ describe("one case per tool, whatever the spelling", () => {
     expect(summarize("open_page", { url: "https://example.com/a" })).toBe("https://example.com/a");
     expect(summarize("web_fetch", { url: "https://example.com/b" })).toBe("https://example.com/b");
   });
+
+  test("Antigravity PascalCase tools summarize cleanly and mark edit_file as a path", () => {
+    expect(summarize("read_file", { Path: "D:/proj/a.ts", StartLine: 10, EndLine: 40 })).toBe("D:/proj/a.ts :10-40");
+    expect(summarize("edit_file", { Path: "D:/proj/a.ts", Target: "old", Replacement: "new" })).toBe("D:/proj/a.ts");
+    expect(summaryShowsPath("edit_file", { Path: "D:/proj/a.ts", Target: "old", Replacement: "new" })).toBe(true);
+    expect(summarize("run_command", { CommandLine: "bun test tests/providers/antigravity.test.ts", WaitMsBeforeAsync: 5000 }))
+      .toBe("bun test tests/providers/antigravity.test.ts");
+    expect(summarize("search_web", { query: "agent client protocol" })).toBe("agent client protocol");
+    expect(summarize("ask_question", { questions: [{ question: "Which mode?" }] })).toBe("Which mode?");
+  });
 });
 
 describe("path headline placement", () => {

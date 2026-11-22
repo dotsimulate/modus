@@ -96,4 +96,26 @@ describe("Grok file tool names in extractFileEdits", () => {
       { filePath: "src/b.ts", type: "write", content: "hello" },
     ]);
   });
+
+  test("Antigravity edit_file (Target/Replacement) and write_file (Path/Content) carry full diff content", () => {
+    const edits = extractFileEdits([
+      {
+        id: "ag-1",
+        name: "edit_file",
+        status: "completed",
+        input: { Path: "src/c.ts", Target: "before", Replacement: "after\nmore" },
+      },
+      {
+        id: "ag-2",
+        name: "write_file",
+        status: "completed",
+        input: { Path: "src/d.ts", Content: "created" },
+      },
+    ] as any);
+    expect(edits).toEqual([
+      { filePath: "src/c.ts", type: "edit", oldString: "before", newString: "after\nmore" },
+      { filePath: "src/d.ts", type: "write", content: "created" },
+    ]);
+    expect(countChanges(edits)).toEqual({ additions: 3, deletions: 1 });
+  });
 });

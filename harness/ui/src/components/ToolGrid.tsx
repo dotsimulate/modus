@@ -86,12 +86,24 @@ export function ToolGrid(props: Props) {
     }
 
     const current = states[tool] ?? "inherit";
+    const effective = effectiveToolState(tool, states, props.toolAliases);
     const updated = { ...states };
 
     if (mode === "baseline") {
-      // Two-state: on ↔ off (no inherit)
-      if (current === "on") {
-        delete updated[tool]; // remove = off
+      // Two-state: on ↔ off (no inherit). When a tool is enabled via a shared
+      // alias (e.g. Claude `Bash` covering Antigravity `run_command`), resolve
+      // the current baseline into native tool pills before toggling it off.
+      if (effective === "on") {
+        if (current === "on") {
+          delete updated[tool];
+        } else {
+          const resolved: ToolStates = {};
+          for (const t of allTools) {
+            if (t !== tool && effectiveToolState(t, states, props.toolAliases) === "on") resolved[t] = "on";
+          }
+          onChange(resolved);
+          return;
+        }
       } else {
         updated[tool] = "on";
       }
@@ -108,13 +120,15 @@ export function ToolGrid(props: Props) {
   };
 
   const enabledCount = mode === "baseline"
-    ? Object.values(states).filter((s) => s === "on").length
+    ? (overrideCount === 0
+        ? allTools.length
+        : allTools.filter((t) => effectiveToolState(t, states, props.toolAliases) === "on").length)
     : allTools.filter((t) => isToolEnabled(t, effectiveToolState(t, states, props.toolAliases), profileTools, props.toolAliases)).length;
 
   const totalLabel = mode === "permission"
     ? `${overrideCount} exception${overrideCount === 1 ? "" : "s"}`
     : mode === "baseline"
-      ? `${enabledCount || "all"} tools`
+      ? (overrideCount === 0 ? "all tools" : `${enabledCount} tools`)
       : `${enabledCount}/${allTools.length} tools`;
 
   const resetLabel = mode === "baseline" ? "clear" : "reset";
@@ -139,6 +153,7 @@ export function ToolGrid(props: Props) {
             <div className="tool-grid-pills">
               {group.tools.map((tool) => {
                 const state = states[tool] ?? "inherit";
+                const effective = effectiveToolState(tool, states, props.toolAliases);
                 const isMcp = tool.startsWith("mcp__");
                 const displayName = isMcp ? mcpToolDisplayName(tool) : tool;
 
@@ -146,13 +161,13 @@ export function ToolGrid(props: Props) {
                 let isOverride: boolean;
 
                 if (mode === "baseline") {
-                  enabled = overrideCount === 0 || state === "on";
-                  isOverride = state === "on";
+                  enabled = overrideCount === 0 || effective === "on";
+                  isOverride = effective === "on";
                 } else if (mode === "permission") {
                   enabled = state !== "off";
                   isOverride = state !== "inherit";
                 } else {
-                  enabled = isToolEnabled(tool, effectiveToolState(tool, states, props.toolAliases), profileTools, props.toolAliases);
+                  enabled = isToolEnabled(tool, effective, profileTools, props.toolAliases);
                   isOverride = state !== "inherit";
                 }
 

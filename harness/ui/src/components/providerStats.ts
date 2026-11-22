@@ -3,9 +3,8 @@ import { isCodexProvider } from "../tools";
 
 /**
  * Context fill as a whole-number percentage, or null when the provider does not
- * report it. Only the Claude and PI families carry the figures today, so a null
- * here means "unreported", never "empty" — callers omit the readout rather than
- * showing a fabricated 0%.
+ * report it. A null here means "unreported", never "empty" — callers omit the
+ * readout rather than showing a fabricated 0%.
  */
 export function formatContextPercent(meta: TurnMeta | null | undefined): string | null {
   if (!meta?.contextWindow) return null;

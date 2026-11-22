@@ -102,12 +102,14 @@ const PI_TOOLS: Record<string, ToolMapping> = {
   replace: { op: "edit", confidence: "explicit", pathFields: ["file_path", "path"] },
 };
 
-// Gemini tools
+// Gemini & Antigravity tools (Antigravity spells its arguments in PascalCase)
 const GEMINI_TOOLS: Record<string, ToolMapping> = {
-  read_file:       { op: "read",  confidence: "explicit", pathFields: ["path", "file_path"] },
-  write_file:      { op: "write", confidence: "explicit", pathFields: ["path", "file_path"] },
-  grep_search:     { op: "grep",  confidence: "explicit", pathFields: ["path", "directory"] },
-  list_directory:  { op: "ls",    confidence: "explicit", pathFields: ["path", "directory"] },
+  read_file:       { op: "read",    confidence: "explicit", pathFields: ["path", "file_path", "Path", "TargetFile", "AbsolutePath"] },
+  write_file:      { op: "write",   confidence: "explicit", pathFields: ["path", "file_path", "Path", "TargetFile", "AbsolutePath"] },
+  edit_file:       { op: "edit",    confidence: "explicit", pathFields: ["path", "file_path", "Path", "TargetFile", "AbsolutePath"] },
+  run_command:     { op: "command", confidence: "derived",  pathFields: [] },
+  grep_search:     { op: "grep",    confidence: "explicit", pathFields: ["path", "directory"] },
+  list_directory:  { op: "ls",      confidence: "explicit", pathFields: ["path", "directory"] },
 };
 
 // Merged lookup — order doesn't matter since tool names don't collide
@@ -189,7 +191,7 @@ function extractTouchesFromEvent(
 
     // For command tools, also parse the command string
     if (mapping.op === "command") {
-      const cmd = (input.command as string) ?? "";
+      const cmd = (input.command ?? input.CommandLine) as string ?? "";
       for (const p of extractPathsFromCommand(cmd)) {
         const normalized = normalizePath(p, cwd);
         if (normalized) filePaths.push(normalized);

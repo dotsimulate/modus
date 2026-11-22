@@ -52,8 +52,9 @@ export type ToolEditHunk = { oldString: string; newString: string };
 
 /**
  * Every replacement an edit call carries: Claude `old_string`/`new_string`, a
- * MultiEdit-style `edits` array, or Antigravity `ReplacementChunks` of
- * `TargetContent`/`ReplacementContent`. Empty when the input carries none.
+ * MultiEdit-style `edits` array, Antigravity `edit_file` (`Target`/`Replacement`),
+ * or Antigravity `ReplacementChunks` of `TargetContent`/`ReplacementContent`.
+ * Empty when the input carries none.
  */
 export function toolEditHunks(input: Record<string, unknown> | undefined): ToolEditHunk[] {
   if (!input) return [];
@@ -72,6 +73,9 @@ export function toolEditHunks(input: Record<string, unknown> | undefined): ToolE
   }
   if (typeof input.old_string === "string" || typeof input.new_string === "string") {
     return [{ oldString: text(input.old_string), newString: text(input.new_string) }];
+  }
+  if (typeof input.Target === "string" || typeof input.Replacement === "string") {
+    return [{ oldString: text(input.Target), newString: text(input.Replacement) }];
   }
   return [];
 }
