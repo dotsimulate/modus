@@ -34,6 +34,7 @@
     "@hono/node-server": "2.1.6",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@opentelemetry/core": "2.9.0",
+    "@opentelemetry/instrumentation-http": "0.222.0",
     "@opentelemetry/propagator-jaeger": "2.9.0",
     "@protobufjs/utf8": "1.1.1",
     "@simple-git/argv-parser": "2.0.1",
