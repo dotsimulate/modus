@@ -9,6 +9,7 @@ import {
   backgroundTaskFinished,
   backgroundTaskStarted,
   commandLineText,
+  endsWithFinalResponse,
   stepIsWake,
   timerSeconds,
 } from "../../providers/antigravity-transcript";
@@ -136,6 +137,21 @@ describe("agy conversation record", () => {
     appendFileSync(path, `${line.slice(40)}\n${JSON.stringify({ step_index: 113, source: "MODEL" })}\n`);
     expect(tail.read().map((step) => step.step_index)).toEqual([112, 113]);
     expect(tail.read()).toEqual([]);
+  });
+
+  test("recognizes when a batch of steps ends with a final model response", () => {
+    expect(endsWithFinalResponse([
+      finished,
+      { source: "MODEL", type: "PLANNER_RESPONSE", content: "all green" },
+    ])).toBe(true);
+    expect(endsWithFinalResponse([
+      finished,
+      { source: "MODEL", type: "PLANNER_RESPONSE", tool_calls: [{ name: "write_file" }] },
+    ])).toBe(false);
+    expect(endsWithFinalResponse([
+      { source: "MODEL", type: "PLANNER_RESPONSE", content: "done" },
+      finished,
+    ])).toBe(false);
   });
 
   test("starts from the beginning of a record that does not exist yet", () => {

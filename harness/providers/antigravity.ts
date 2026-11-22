@@ -36,6 +36,7 @@ import {
   backgroundTaskStarted,
   backgroundTasksStopped,
   commandLineText,
+  endsWithFinalResponse,
   isSystemMessage,
   timerSeconds,
 } from "./antigravity-transcript";
@@ -75,6 +76,10 @@ type BackgroundTask = {
   startedAt: number;
   /** A `schedule` timer's length; agy records no finish for a timer. */
   timerMs?: number;
+  /** True for `TimerCondition: "any"` timers that cancel on any wake message. */
+  cancelOnSystemMessage?: boolean;
+  /** Long-running daemon command/cron (`IsDaemon: true`) that must not hold turns open. */
+  daemon?: boolean;
   done: boolean;
   /** Modus stopped waiting on it at the hold limit. */
   released: boolean;
@@ -120,13 +125,26 @@ type AntigravityState = {
   maxTurnsReached: boolean;
   /** Mid-turn prompts in flight; the turn is not finished until they settle. */
   steering: Set<Promise<unknown>>;
-  steerUsage: { input: number; output: number; total: number };
+  steerUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  /** Latest context-window metrics reported by ACP `usage_update` (agy 1.5.8+). */
+  contextWindow?: number;
+  contextTokensUsed?: number;
   /** The prompt has returned and the turn is waiting on agy's background work. */
   holding: boolean;
+  /** agy 1.5.10+ streamed post-wake activity natively while held, so no wake prompt is needed. */
+  streamedDuringHold: boolean;
+  /** Timestamp of the latest streamed update received while holding. */
+  lastHoldStreamAt: number;
+  /** Transcript shows a final post-wake model reply during an unprompted hold stream. */
+  holdFinalResponseSeen: boolean;
   /** The user spoke during the hold, so background commands no longer keep it open. */
   holdReleased: boolean;
   holdLimitMs: number;
   holdPollMs: number;
+  /** Grace window to let agy 1.5.10+ start streaming natively before sending a wake prompt. */
+  wakeGraceMs: number;
+  /** Quiet window after an unprompted hold stream when transcript has no final step yet. */
+  holdStreamSettleMs: number;
   /** How far agy's record may trail what it does: a timer's firing, or a command's background step. */
   transcriptLagMs: number;
   /** How often an idle session checks agy's record for work agy started on its own. */
@@ -138,6 +156,8 @@ type AntigravityState = {
   tasks: Map<string, BackgroundTask>;
   /** How many `run_command` calls with each command line agy's record shows this turn. */
   commandCalls: Map<string, number>;
+  /** Recorded `schedule` calls this turn, in order, for daemon/TimerCondition metadata. */
+  scheduleCalls: Array<{ daemon: boolean; cancelOnSystemMessage: boolean }>;
   /** Stops watching an idle session's record; set while a watch runs. */
   stopIdleWatch: (() => void) | null;
   cleanupLegacyPlugin: ((executable: string) => Promise<void>) | undefined;
@@ -177,11 +197,29 @@ function numberValue(...values: unknown[]): number {
 }
 
 /** `session/prompt` returns `usage` with camelCase token counts; plan usage has no dollar cost. */
-export function antigravityUsage(result: any): { input: number; output: number; total: number } {
+export function antigravityUsage(result: any): {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+} {
   const usage = asObject(result?.usage ?? result?._meta?.usage);
   const input = numberValue(usage.inputTokens, usage.input_tokens);
   const output = numberValue(usage.outputTokens, usage.output_tokens);
-  return { input, output, total: numberValue(usage.totalTokens, usage.total_tokens, input + output) };
+  const cacheRead = numberValue(usage.cachedReadTokens, usage.cache_read_tokens, usage.cacheReadInputTokens);
+  const cacheWrite = numberValue(usage.cachedWriteTokens, usage.cache_write_tokens, usage.cacheCreationInputTokens);
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    total: numberValue(usage.totalTokens, usage.total_tokens, input + output),
+  };
+}
+
+export function isDaemonToolInput(input: Record<string, unknown>): boolean {
+  return input.IsDaemon === true || input.IsDaemon === "true";
 }
 
 function controlsFrom(ctx: TurnContext): AntigravityControls {
@@ -468,11 +506,19 @@ function withReadImage(
 function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): void {
   const update = params?.update ?? params;
   const type = update?.sessionUpdate ?? update?.session_update;
-  // Mode changes matter even between turns; everything else belongs to a turn
-  // (session/load also replays history as updates, which must not re-render).
+  // Mode and context-window updates matter even between turns; everything else
+  // belongs to a turn (`session/load` also replays history as updates, which must not re-render).
   if (type === "current_mode_update" && typeof update.currentModeId === "string") {
     state.currentModeId = update.currentModeId;
     ctx.notifyConfigChange({ providerControls: { antigravity: { ...controlsFrom(ctx), mode: update.currentModeId } } });
+    return;
+  }
+  if (type === "usage_update") {
+    const size = numberValue(update?.size);
+    if (size > 0) state.contextWindow = size;
+    if (typeof update?.used === "number" && Number.isFinite(update.used) && update.used >= 0) {
+      state.contextTokensUsed = update.used;
+    }
     return;
   }
   if (!state.turnActive) return;
@@ -480,6 +526,10 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
   if (type === "agent_message_chunk") {
     const text = update?.content?.text;
     if (typeof text !== "string") return;
+    if (state.holding) {
+      state.streamedDuringHold = true;
+      state.lastHoldStreamAt = Date.now();
+    }
     state.lastWasTool = false;
     state.text += text;
     state.turnText += text;
@@ -495,6 +545,10 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
   if (type === "agent_thought_chunk") {
     const thinking = update?.content?.text;
     if (typeof thinking !== "string") return;
+    if (state.holding) {
+      state.streamedDuringHold = true;
+      state.lastHoldStreamAt = Date.now();
+    }
     state.lastWasTool = false;
     state.thinking += thinking;
     ctx.emitEvent({
@@ -506,9 +560,16 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     return;
   }
   if (type === "tool_call" || type === "tool_call_update") {
+    const callId = String(update.toolCallId ?? update.tool_call_id ?? "");
+    const existed = !!callId && state.tools.has(callId);
     const tool = emitToolStart(ctx, state, update);
+    if (state.holding && !existed) {
+      state.streamedDuringHold = true;
+      state.lastHoldStreamAt = Date.now();
+    }
     const status = update.status;
     if (!tool.resultEmitted && (status === "completed" || status === "failed")) {
+      if (state.holding && state.streamedDuringHold) state.lastHoldStreamAt = Date.now();
       tool.resultEmitted = true;
       const output = status === "completed"
         ? withReadImage(antigravityToolOutput(update), tool, ctx.session.cwd ?? ctx.opts.cwd ?? process.cwd())
@@ -580,6 +641,10 @@ function handlePermission(
   if (params?.sessionId !== state.providerSessionId) {
     try { client.respond(rpcId, { outcome: { outcome: "cancelled" } }); } catch {}
     return;
+  }
+  if (state.holding) {
+    state.streamedDuringHold = true;
+    state.lastHoldStreamAt = Date.now();
   }
   const call = params?.toolCall ?? {};
   const { name: toolName, input } = normalizeAntigravityToolCall(call);
@@ -702,7 +767,8 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
 
   // agy keeps its own Google sign-in; ACP lists auth methods even when signed
   // in, so Modus never calls `authenticate` and never drives an OAuth flow.
-  await client.request("initialize", ANTIGRAVITY_INITIALIZE_PARAMS, 60_000);
+  const initResult = await client.request("initialize", ANTIGRAVITY_INITIALIZE_PARAMS, 60_000);
+  const supportsResume = initResult?.agentCapabilities?.sessionCapabilities?.resume != null;
 
   client.addSensitiveValues(resolvedServers.flatMap((server) => [
     ...(server.headers ?? []), ...(server.env ?? []),
@@ -716,7 +782,18 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
   };
   let created: any;
   if (resume && state.providerSessionId) {
-    created = await client.request("session/load", { ...sessionParams, sessionId: state.providerSessionId }, 60_000);
+    const resumeParams = { ...sessionParams, sessionId: state.providerSessionId };
+    if (supportsResume) {
+      try {
+        created = await client.request("session/resume", resumeParams, 60_000);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/method not found|unsupported|unknown method|-32601/i.test(message)) throw error;
+        created = await client.request("session/load", resumeParams, 60_000);
+      }
+    } else {
+      created = await client.request("session/load", resumeParams, 60_000);
+    }
     if (created?.sessionId && created.sessionId !== state.providerSessionId) {
       throw new Error(`Antigravity refused resume target ${state.providerSessionId} and returned ${created.sessionId}`);
     }
@@ -825,6 +902,8 @@ function finishTurn(
 ): void {
   const { session } = ctx;
   const usage = antigravityUsage(result);
+  const cacheRead = usage.cacheRead + state.steerUsage.cacheRead;
+  const cacheWrite = usage.cacheWrite + state.steerUsage.cacheWrite;
   ctx.emitEvent({
     type: "result",
     subtype,
@@ -833,6 +912,10 @@ function finishTurn(
     harness_duration_ms: Date.now() - session.turnStartedAt,
     input_tokens: usage.input + state.steerUsage.input,
     output_tokens: usage.output + state.steerUsage.output,
+    ...(cacheRead > 0 ? { cache_read_tokens: cacheRead } : {}),
+    ...(cacheWrite > 0 ? { cache_write_tokens: cacheWrite } : {}),
+    ...(state.contextWindow ? { context_window: state.contextWindow } : {}),
+    ...(state.contextTokensUsed != null ? { context_tokens_used: state.contextTokensUsed } : {}),
     total_tokens: usage.total + state.steerUsage.total,
     // Model calls, as Claude counts them: one per tool batch, plus the final
     // reply unless the limit cut the turn off before it.
@@ -877,6 +960,8 @@ async function steerTurn(ctx: TurnContext, state: AntigravityState, content: Mes
       const usage = antigravityUsage(result);
       state.steerUsage.input += usage.input;
       state.steerUsage.output += usage.output;
+      state.steerUsage.cacheRead += usage.cacheRead;
+      state.steerUsage.cacheWrite += usage.cacheWrite;
       state.steerUsage.total += usage.total;
     },
     (error) => {
@@ -905,6 +990,8 @@ async function steerTurn(ctx: TurnContext, state: AntigravityState, content: Mes
  */
 export const ANTIGRAVITY_HOLD_LIMIT_MS = 30 * 60_000;
 const HOLD_POLL_MS = 500;
+const WAKE_GRACE_MS = 250;
+const HOLD_STREAM_SETTLE_MS = 2_000;
 /** agy writes a step when the step completes, so its record trails what it does. */
 const TRANSCRIPT_LAG_MS = 10_000;
 const IDLE_WATCH_MS = 2_000;
@@ -917,7 +1004,16 @@ export const ANTIGRAVITY_EXITED_DURING_HOLD =
 
 function backgroundCommands(state: AntigravityState): ToolState[] {
   return [...state.tools.values()].filter((tool) =>
-    ANTIGRAVITY_SHELL_TOOLS.has(tool.name) && !tool.resultEmitted && !tool.released);
+    ANTIGRAVITY_SHELL_TOOLS.has(tool.name) && !tool.resultEmitted && !tool.released && !isDaemonToolInput(tool.input));
+}
+
+function unquoteRecordedArg(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || trimmed === "true" || trimmed === "false") {
+    try { return JSON.parse(trimmed); } catch {}
+  }
+  return trimmed;
 }
 
 function commandName(tool: ToolState): string {
@@ -943,11 +1039,15 @@ function beginTurnState(state: AntigravityState): void {
   state.rounds = 0;
   state.lastWasTool = false;
   state.maxTurnsReached = false;
-  state.steerUsage = { input: 0, output: 0, total: 0 };
+  state.steerUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
   state.holding = false;
+  state.streamedDuringHold = false;
+  state.lastHoldStreamAt = 0;
+  state.holdFinalResponseSeen = false;
   state.holdReleased = false;
   state.tasks.clear();
   state.commandCalls.clear();
+  state.scheduleCalls = [];
   state.transcript = state.providerSessionId
     ? new AntigravityTranscriptTail(state.transcriptPath(state.providerSessionId))
     : null;
@@ -980,27 +1080,48 @@ function readTranscript(ctx: TurnContext, state: AntigravityState, since: number
   const finished: ToolState[] = [];
   for (const step of steps) {
     for (const call of Array.isArray(step.tool_calls) ? step.tool_calls : []) {
-      if (!ANTIGRAVITY_SHELL_TOOLS.has(String(call?.name))) continue;
-      const line = commandLineText(asObject(call?.args).CommandLine);
-      state.commandCalls.set(line, (state.commandCalls.get(line) ?? 0) + 1);
+      const name = String(call?.name ?? "");
+      if (ANTIGRAVITY_SHELL_TOOLS.has(name)) {
+        const line = commandLineText(asObject(call?.args).CommandLine);
+        state.commandCalls.set(line, (state.commandCalls.get(line) ?? 0) + 1);
+      } else if (name === "schedule") {
+        const args = asObject(call?.args);
+        const rawDaemon = unquoteRecordedArg(args.IsDaemon);
+        const rawCondition = unquoteRecordedArg(args.TimerCondition);
+        state.scheduleCalls.push({
+          daemon: rawDaemon === true || rawDaemon === "true",
+          cancelOnSystemMessage: rawCondition === "any",
+        });
+      }
     }
     const started = backgroundTaskStarted(step);
     if (started && !state.tasks.has(started.taskId)) {
       const seconds = timerSeconds(started.description);
+      const isScheduleTask = seconds !== null || /^Cron:/i.test(started.description);
+      const scheduleMeta = isScheduleTask ? state.scheduleCalls.shift() : undefined;
+      const toolId = isScheduleTask ? undefined : tieTaskToCommand(state, started.description);
+      const tiedTool = toolId ? state.tools.get(toolId) : undefined;
       state.tasks.set(started.taskId, {
         taskId: started.taskId,
         description: started.description,
-        toolId: seconds === null ? tieTaskToCommand(state, started.description) : undefined,
+        toolId,
         startedAt: typeof step.created_at === "string" ? Date.parse(step.created_at) : NaN,
         ...(seconds === null ? {} : { timerMs: seconds * 1_000 }),
+        cancelOnSystemMessage: isScheduleTask ? (scheduleMeta ? scheduleMeta.cancelOnSystemMessage : true) : false,
+        daemon: isScheduleTask
+          ? !!scheduleMeta?.daemon
+          : (tiedTool ? isDaemonToolInput(tiedTool.input) : false),
         done: false,
         released: false,
       });
     }
     if (isSystemMessage(step)) {
-      // agy's timers end at the first message that wakes it (`TimerCondition: any`);
-      // no recorded timer has fired after one.
-      for (const task of state.tasks.values()) if (task.timerMs !== undefined) task.done = true;
+      state.holdFinalResponseSeen = false;
+      // Only timers configured with `TimerCondition: "any"` cancel on any wake message;
+      // timers with default `"never"` keep running until their own deadline.
+      for (const task of state.tasks.values()) {
+        if (task.timerMs !== undefined && task.cancelOnSystemMessage) task.done = true;
+      }
       if (backgroundTasksStopped(step)) {
         for (const task of state.tasks.values()) task.done = true;
         for (const tool of backgroundCommands(state)) tool.released = true;
@@ -1030,20 +1151,24 @@ function readTranscript(ctx: TurnContext, state: AntigravityState, since: number
     });
     finished.push(tool);
   }
+  if (state.holding && state.streamedDuringHold && endsWithFinalResponse(steps)) {
+    state.holdFinalResponseSeen = true;
+  }
   return { woke: agyWoke(steps, since), finished };
 }
 
 type HeldWork = { tasks: BackgroundTask[]; commands: ToolState[] };
 
 /**
- * What keeps a held turn open: tasks agy started and has not finished, timers
- * until their deadline, and commands agy's record does not account for. With
- * no record, ACP is all Modus has; with one, a command it does not show in the
- * background is waited on only for as long as the record can trail.
+ * What keeps a held turn open: non-daemon tasks agy started and has not
+ * finished, timers until their deadline, and non-daemon commands agy's record
+ * does not account for. With no record, ACP is all Modus has; with one, a
+ * command it does not show in the background is waited on only for as long as
+ * the record can trail.
  */
 function heldWork(state: AntigravityState, holdStartedAt: number): HeldWork {
   const now = Date.now();
-  const tasks = [...state.tasks.values()].filter((task) => !task.done && !task.released
+  const tasks = [...state.tasks.values()].filter((task) => !task.done && !task.released && !task.daemon
     && (task.timerMs === undefined || !Number.isFinite(task.startedAt)
       || now < task.startedAt + task.timerMs + state.transcriptLagMs));
   const tied = new Set([...state.tasks.values()].map((task) => task.toolId));
@@ -1082,6 +1207,8 @@ function promptAfterWake(ctx: TurnContext, state: AntigravityState, client: Grok
       const usage = antigravityUsage(result);
       state.steerUsage.input += usage.input;
       state.steerUsage.output += usage.output;
+      state.steerUsage.cacheRead += usage.cacheRead;
+      state.steerUsage.cacheWrite += usage.cacheWrite;
       state.steerUsage.total += usage.total;
     },
     (error) => {
@@ -1096,8 +1223,9 @@ type HoldOutcome = "settled" | "woke" | "released" | "limit" | "stopped" | "exit
 
 /**
  * Wait on agy's background work after a prompt returned. Ends when agy wakes
- * (Modus then prompts it), when nothing is left running, when the user stops
- * the turn or sends a message, or at the hold limit.
+ * (letting agy 1.5.10+ stream natively if it does, or prompting older agy to
+ * reconnect the stream), when nothing is left running, when the user stops the
+ * turn or sends a message, or at the hold limit.
  */
 async function holdForBackgroundWork(
   ctx: TurnContext,
@@ -1107,10 +1235,14 @@ async function holdForBackgroundWork(
 ): Promise<HoldOutcome> {
   const since = Date.now();
   state.holding = true;
+  state.streamedDuringHold = false;
+  state.lastHoldStreamAt = 0;
+  state.holdFinalResponseSeen = false;
   try {
     // Brings the ledger up to date before naming what is held, and catches a wake as the prompt returned.
     const first = readTranscript(ctx, state, since);
     let woke = first.woke;
+    let wakeDetectedAt: number | null = null;
     const running = backgroundCommands(state);
     // agy wakes whenever a background task finishes. The finish can reach Modus
     // over ACP before agy records the wake step, so a command this hold waits
@@ -1126,17 +1258,32 @@ async function holdForBackgroundWork(
         "info",
       );
     }
+    const openNonDaemonTools = () => [...state.tools.values()].some((tool) =>
+      !tool.resultEmitted && !tool.released && !isDaemonToolInput(tool.input));
     for (;;) {
       if (turnAbortController.signal.aborted || state.disposed || state.maxTurnsReached) return "stopped";
       if (state.client !== client || !client.running) return "exited";
       if (ctx.session.pendingDispatch.length) state.holdReleased = true;
       if (state.holdReleased) return "released";
-      if (woke || running.some((tool) => tool.resultEmitted)) {
-        promptAfterWake(ctx, state, client, finished());
-        return "woke";
-      }
       const left = heldWork(state, since);
-      if (!left.tasks.length && !left.commands.length && !state.pendingRpcPermissions.size && !state.steering.size) return "settled";
+      if (state.streamedDuringHold) {
+        // agy 1.5.10+ streams post-wake work without needing a synthetic prompt.
+        // Settle once all tasks, tools, and approvals are done and the reply completes.
+        const idleAfterStream = !left.tasks.length && !left.commands.length
+          && !openNonDaemonTools()
+          && !state.pendingRpcPermissions.size && !state.steering.size;
+        if (idleAfterStream && (state.holdFinalResponseSeen || Date.now() - state.lastHoldStreamAt >= state.holdStreamSettleMs)) {
+          return "settled";
+        }
+      } else if (woke || running.some((tool) => tool.resultEmitted)) {
+        wakeDetectedAt ??= Date.now();
+        if (Date.now() - wakeDetectedAt >= state.wakeGraceMs) {
+          promptAfterWake(ctx, state, client, finished());
+          return "woke";
+        }
+      } else if (!left.tasks.length && !left.commands.length && !state.pendingRpcPermissions.size && !state.steering.size) {
+        return "settled";
+      }
       if (Date.now() - since >= state.holdLimitMs) {
         for (const task of left.tasks) task.released = true;
         for (const tool of backgroundCommands(state)) tool.released = true;
@@ -1218,6 +1365,12 @@ async function concludeTurn(
       emitTurnError(ctx, ANTIGRAVITY_EXITED_DURING_HOLD);
       return;
     }
+    if (outcome === "released" && state.steering.size > 0) {
+      // The user steered during the hold; await the steered prompt and re-check
+      // whether it left new background work running.
+      state.holdReleased = false;
+      continue;
+    }
     if (outcome !== "woke") break;
   }
   while (state.steering.size) await Promise.allSettled([...state.steering]);
@@ -1282,9 +1435,11 @@ async function runTurn(
           + "while a prompt is open, so Modus opened this turn with one.",
         "info",
       );
+    } else {
+      // The harness keeps only a queue-time row; this is the message's transcript turn.
+      // Synthesized wake continuations are not user prompts (see docs/providers.md).
+      ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
     }
-    // The harness keeps only a queue-time row; this is the message's transcript turn.
-    ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
     emitInit(ctx, state);
     beginTurnState(state);
     state.turnActive = true;
@@ -1344,6 +1499,8 @@ export function createAntigravityProvider(options?: {
   /** Test seams: how long a turn waits on background commands, and how often it checks. */
   holdLimitMs?: number;
   holdPollMs?: number;
+  wakeGraceMs?: number;
+  holdStreamSettleMs?: number;
   /** Test seams: how far agy's record may trail it, and how often an idle session reads it. */
   transcriptLagMs?: number;
   idleWatchMs?: number;
@@ -1397,17 +1554,23 @@ export function createAntigravityProvider(options?: {
         lastWasTool: false,
         maxTurnsReached: false,
         steering: new Set(),
-        steerUsage: { input: 0, output: 0, total: 0 },
+        steerUsage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         holding: false,
+        streamedDuringHold: false,
+        lastHoldStreamAt: 0,
+        holdFinalResponseSeen: false,
         holdReleased: false,
         holdLimitMs: options?.holdLimitMs ?? ANTIGRAVITY_HOLD_LIMIT_MS,
         holdPollMs: options?.holdPollMs ?? HOLD_POLL_MS,
+        wakeGraceMs: options?.wakeGraceMs ?? WAKE_GRACE_MS,
+        holdStreamSettleMs: options?.holdStreamSettleMs ?? HOLD_STREAM_SETTLE_MS,
         transcriptLagMs: options?.transcriptLagMs ?? TRANSCRIPT_LAG_MS,
         idleWatchMs: options?.idleWatchMs ?? IDLE_WATCH_MS,
         transcriptPath: options?.transcriptPath ?? ((id) => antigravityTranscriptPath(id)),
         transcript: null,
         tasks: new Map(),
         commandCalls: new Map(),
+        scheduleCalls: [],
         stopIdleWatch: null,
         cleanupLegacyPlugin,
       };

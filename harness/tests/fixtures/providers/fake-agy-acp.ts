@@ -166,20 +166,28 @@ lines.on("line", (line) => {
   if (capture) appendFileSync(capture, `${JSON.stringify(message)}\n`);
 
   if (message.method === "initialize") {
+    const resumeCap = process.env.MODUS_AGY_SUPPORTS_RESUME === "1" ? { sessionCapabilities: { resume: {} } } : {};
     send({
       jsonrpc: "2.0",
       id: message.id,
       result: {
         protocolVersion: 1,
-        agentCapabilities: { loadSession: true, promptCapabilities: { image: true, audio: false, embeddedContext: true } },
+        agentCapabilities: {
+          loadSession: true,
+          ...resumeCap,
+          promptCapabilities: { image: true, audio: false, embeddedContext: true },
+        },
         agentInfo: { name: "Antigravity ACP Server", version: "fake" },
         authMethods: [{ id: "oauth-personal", name: "Log in with Google" }],
       },
     });
     return;
   }
-  if (message.method === "session/new" || message.method === "session/load") {
+  if (message.method === "session/new" || message.method === "session/load" || message.method === "session/resume") {
     send({ jsonrpc: "2.0", id: message.id, result: sessionResult });
+    if (process.env.MODUS_AGY_EMIT_USAGE_UPDATE === "1") {
+      update({ sessionUpdate: "usage_update", size: 1_000_000, used: 12_345 });
+    }
     return;
   }
   if (message.method === "session/close") {
@@ -313,6 +321,35 @@ lines.on("line", (line) => {
           finish();
         };
       }, 300);
+      return;
+    }
+    if (text.includes("daemon-cmd")) {
+      const input = { CommandLine: "bun run dev", WaitMsBeforeAsync: 500, IsDaemon: true };
+      const task = `${SESSION}/task-${stepIndex + 2}`;
+      callStep("run_command", input);
+      update({ sessionUpdate: "tool_call", ...commandCall("call-daemon", input), status: "in_progress" });
+      backgroundStep(task, input.CommandLine);
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "dev server running" } });
+      step("MODEL", "PLANNER_RESPONSE", "dev server running");
+      finish();
+      return;
+    }
+    if (text.includes("native-wake")) {
+      // agy 1.5.10+: streams post-wake updates and approvals without waiting for another prompt.
+      const input = { CommandLine: "bun test", WaitMsBeforeAsync: 500 };
+      const task = `${SESSION}/task-${stepIndex + 2}`;
+      callStep("run_command", input);
+      update({ sessionUpdate: "tool_call", ...commandCall("call-native-bg", input), status: "in_progress" });
+      backgroundStep(task, input.CommandLine);
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "running tests" } });
+      step("MODEL", "PLANNER_RESPONSE", "running tests");
+      finish();
+      setTimeout(() => {
+        commandResult("call-native-bg", input, true, "Command exited with code 0.\n\nall green");
+        finishStep(task, "Command exited with code 0.\n\nall green");
+        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " — all green" } });
+        step("MODEL", "PLANNER_RESPONSE", "all green");
+      }, 100);
       return;
     }
     if (text.includes("background") || text.includes("server")) {

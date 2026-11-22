@@ -169,6 +169,23 @@ export function agyWoke(steps: AntigravityTranscriptStep[], since: number): bool
     (isSystemMessage(step) && index > lastResponse) || (step.source === "MODEL" && stepIsWake(step, since)));
 }
 
+/**
+ * Whether steps read in order end with a completed model reply (no pending
+ * tool calls) after any system message. Used to recognize when agy 1.5.10+
+ * finished a post-wake run that streamed without a wake prompt.
+ */
+export function endsWithFinalResponse(steps: AntigravityTranscriptStep[]): boolean {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]!;
+    if (isSystemMessage(step)) return false;
+    if (isModelResponse(step)) {
+      const calls = Array.isArray(step.tool_calls) ? step.tool_calls : [];
+      return calls.length === 0;
+    }
+  }
+  return false;
+}
+
 /** agy records tool arguments as JSON text, so a command line can arrive quoted. */
 export function commandLineText(value: unknown): string {
   if (typeof value !== "string") return "";

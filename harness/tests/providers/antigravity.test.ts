@@ -68,6 +68,8 @@ function makeHarness(options: {
     command: fixtureCommand,
     holdLimitMs: options.holdLimitMs,
     holdPollMs: 20,
+    wakeGraceMs: 40,
+    holdStreamSettleMs: 120,
     transcriptLagMs: 200,
     idleWatchMs: 20,
     transcriptPath: () => transcript,
@@ -528,10 +530,63 @@ describe("Antigravity provider", () => {
     const reopened = events.findIndex((event) => event.subtype === "provider_message"
       && event.content.startsWith("Antigravity started working again after the last turn ended"));
     expect(reopened).toBeGreaterThan(events.indexOf(results[0]));
-    expect(events[reopened + 1]).toMatchObject({ type: "user", subtype: "prompt", message: { content: ANTIGRAVITY_WAKE_PROMPT } });
+    // Synthesized wake continuations must not be emitted as user/prompt bubbles.
+    expect(events.some((event) => event.subtype === "prompt" && event.message?.content === ANTIGRAVITY_WAKE_PROMPT)).toBe(false);
     const prompts = capturedRequests(capture).filter((entry) => entry.method === "session/prompt");
     expect(prompts.map((entry) => entry.params.prompt[0].text)).toEqual(["look in the background after the hold", ANTIGRAVITY_WAKE_PROMPT]);
     expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("does not hold a turn open for an IsDaemon:true background command", async () => {
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", holdLimitMs: 2_000 });
+    session.initialContent = "start a daemon-cmd";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"), 1_000);
+    expect(events.some((event) => event.subtype === "provider_message")).toBe(false);
+    expect(events.find((event) => event.type === "result")).toMatchObject({ subtype: "success", result: "dev server running" });
+    expect(session.status).toBe("idle");
+    await provider.dispose?.(session);
+  });
+
+  test("does not inject a wake prompt when agy 1.5.10+ streams post-wake output natively", async () => {
+    const capture = join(testRoot, `native-wake-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture });
+    session.initialContent = "run native-wake test";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const prompts = capturedRequests(capture).filter((entry) => entry.method === "session/prompt");
+    expect(prompts.map((entry) => entry.params.prompt[0].text)).toEqual(["run native-wake test"]);
+    expect(events.find((event) => event.type === "result")).toMatchObject({
+      subtype: "success",
+      result: "running tests — all green",
+    });
+    await provider.dispose?.(session);
+  });
+
+  test("reports ACP usage_update context window and cached token counts, and prefers session/resume when advertised", async () => {
+    const capture = join(testRoot, `resume-usage-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({
+      permissionPolicy: "bypass",
+      capture,
+      profile: { env: { MODUS_AGY_EMIT_USAGE_UPDATE: "1", MODUS_AGY_SUPPORTS_RESUME: "1" } },
+    });
+    session.initialContent = "read-unasked";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    expect(events.find((event) => event.type === "result")).toMatchObject({
+      subtype: "success",
+      cache_read_tokens: 50,
+      context_window: 1_000_000,
+      context_tokens_used: 12_345,
+    });
+    // Force a respawn so the next turn reconnects via session/resume instead of session/load.
+    provider.updateConfig!(session, { additionalDirectories: [testRoot] });
+    provider.sendMessage(ctx, "read-unasked");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    const methods = capturedRequests(capture).map((entry) => entry.method);
+    expect(methods).toContain("session/resume");
+    expect(methods).not.toContain("session/load");
     await provider.dispose?.(session);
   });
 
