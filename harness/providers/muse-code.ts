@@ -471,8 +471,9 @@ function handleApproval(
     subtype: "permission_request",
     requestId,
     toolName,
-    input,
-    interactive: true,
+    toolInput: input,
+    interactive: false,
+    decisionReason: `${toolName} requires approval`,
   });
 }
 

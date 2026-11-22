@@ -51,7 +51,8 @@ function inputSummary(toolName: string, input: Record<string, unknown>): string 
     case "shell": {
       const command = toolInputCommand(input) ?? "";
       // Antigravity asks before a command leaves its terminal sandbox.
-      return input.BypassSandbox === true && command ? `${command}\n(runs outside the sandbox)` : command;
+      const bypassSandbox = input.BypassSandbox === true || input.BypassSandbox === "true";
+      return bypassSandbox && command ? `${command}\n(runs outside the sandbox)` : command;
     }
     case "read":
     case "write":

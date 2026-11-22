@@ -623,8 +623,12 @@ function handlePermission(
     subtype: "permission_request",
     requestId,
     toolName,
-    input,
-    interactive: true,
+    toolInput: input,
+    ...(toolCallId != null ? { toolUseID: String(toolCallId) } : {}),
+    interactive: false,
+    decisionReason: sandboxEscape
+      ? "Command requests running outside the terminal sandbox"
+      : `${toolName} requires approval`,
   });
 }
 

@@ -461,13 +461,16 @@ function handlePermission(
       ctx.emitEvent({ type: "system", subtype: "permission_resolved", requestId, behavior: response.behavior });
     },
   });
+  const toolCallId = params?.toolCall?.toolCallId ?? params?.toolCall?.tool_call_id;
   ctx.emitEvent({
     type: "system",
     subtype: "permission_request",
     requestId,
     toolName,
-    input,
-    interactive: true,
+    toolInput: input,
+    ...(toolCallId != null ? { toolUseID: String(toolCallId) } : {}),
+    interactive: false,
+    decisionReason: `${toolName} requires approval`,
   });
 }
 

@@ -371,7 +371,21 @@ describe("Antigravity provider", () => {
     provider.startTurn(ctx);
     await waitFor(() => events.some((event) => event.subtype === "permission_request"));
     const request = events.find((event) => event.subtype === "permission_request");
-    expect(request).toMatchObject({ toolName: "run_command", input: { BypassSandbox: true }, interactive: true });
+    expect(request).toMatchObject({
+      toolName: "run_command",
+      toolInput: { BypassSandbox: true },
+      toolUseID: "call-command",
+      interactive: false,
+    });
+    expect(request.decisionReason).toContain("sandbox");
+    const { createInitialState, reduceEvent } = await import("../../ui/src/eventReducer");
+    const reduced = reduceEvent(createInitialState(session.sessionId), request, 1);
+    expect(reduced.pendingPermissions).toHaveLength(1);
+    expect(reduced.pendingPermissions[0]).toMatchObject({
+      toolName: "run_command",
+      toolInput: { CommandLine: "cmd /c echo hi", BypassSandbox: true },
+      interactive: false,
+    });
     session.pendingPermissions.get(request.requestId).resolve({ behavior: "deny" });
     await waitFor(() => events.some((event) => event.type === "result"));
     expect(capturedRequests(capture).find((entry) => entry.id === "permission-command")?.result?.outcome?.optionId).toBe("deny");
@@ -647,7 +661,12 @@ describe("Antigravity provider", () => {
     provider.startTurn(ctx);
     await waitFor(() => events.some((event) => event.subtype === "permission_request"));
     const request = events.find((event) => event.subtype === "permission_request");
-    expect(request).toMatchObject({ toolName: "write_file", input: { Path: "hello.txt", Content: "hydrogen" } });
+    expect(request).toMatchObject({
+      toolName: "write_file",
+      toolInput: { Path: "hello.txt", Content: "hydrogen" },
+      toolUseID: "call-write",
+      interactive: false,
+    });
     session.pendingPermissions.get(request.requestId).resolve({ behavior: "allow" });
     await waitFor(() => events.some((event) => event.type === "result"));
 

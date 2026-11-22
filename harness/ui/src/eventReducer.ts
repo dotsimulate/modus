@@ -359,7 +359,7 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
     const perm: PendingPermission = {
       requestId: m.requestId,
       toolName: m.toolName,
-      toolInput: m.toolInput ?? {},
+      toolInput: m.toolInput ?? m.input ?? {},
       toolUseID: m.toolUseID,
       interactive: !!m.interactive,
       decisionReason: m.decisionReason,

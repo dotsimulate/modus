@@ -317,6 +317,8 @@ lines.on("line", (line) => {
     provider.startTurn(ctx);
     await waitFor(() => events.some((event) => event.subtype === "permission_request"));
     const request = events.find((event) => event.subtype === "permission_request");
+    expect(request).toMatchObject({ interactive: false });
+    expect(request.toolInput).toBeDefined();
     session.sessionApprovals.add(request.toolName);
     session.pendingPermissions.get(request.requestId).resolve({ behavior: "allow" });
     await waitFor(() => events.some((event) => event.type === "result" && event.subtype === "success"));
