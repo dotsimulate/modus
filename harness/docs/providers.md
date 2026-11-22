@@ -329,10 +329,14 @@ skill tools; every other provider does. See `skills`.
 
 Modus starts one `agy acp` child per active session: the Agent Client Protocol
 server that ships inside Google's Antigravity CLI. It initializes ACP, creates or
-resumes (`session/resume` when advertised, otherwise `session/load`) the
-provider-native Antigravity session, and keeps that process warm for follow-up
+resumes the provider-native Antigravity session, and keeps that process warm for follow-up
 turns. Text, thought, tool, permission, usage, context-window, cancellation,
 image, model, mode, and MCP data use native ACP messages.
+
+A reconnect uses `session/resume` when agy advertises it and this process has
+already read the plan's model list; otherwise it uses `session/load`. The stable
+ACP resume reply carries no model list, so a session reopened after a backend
+restart reattaches with `session/load`, which does.
 
 Install the Antigravity CLI, then run `agy` once in a terminal and sign in with
 Google. That sign-in, and the plan behind it, is what Modus sessions run on:

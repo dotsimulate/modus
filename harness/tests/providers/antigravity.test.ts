@@ -638,6 +638,51 @@ describe("Antigravity provider", () => {
     await provider.dispose?.(session);
   });
 
+  test("keeps the model list it already read when a session/resume reply carries none", async () => {
+    const capture = join(testRoot, `resume-no-models-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({
+      model: "gemini-4-hydrogen",
+      effort: "high",
+      permissionPolicy: "bypass",
+      capture,
+      profile: { env: { MODUS_AGY_SUPPORTS_RESUME: "1", MODUS_AGY_RESUME_WITHOUT_MODELS: "1" } },
+    });
+    session.initialContent = "read-unasked";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    provider.updateConfig!(session, { additionalDirectories: [testRoot] });
+    provider.sendMessage(ctx, "read-unasked");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    expect(events.filter((event) => event.type === "result").map((event) => event.subtype)).toEqual(["success", "success"]);
+    expect(capturedRequests(capture).map((entry) => entry.method)).toContain("session/resume");
+    await provider.dispose?.(session);
+  });
+
+  test("reattaches with session/load when no model list has been read yet", async () => {
+    const capture = join(testRoot, `cold-resume-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({
+      model: "gemini-4-hydrogen",
+      effort: "high",
+      permissionPolicy: "bypass",
+      capture,
+      profile: { env: { MODUS_AGY_SUPPORTS_RESUME: "1", MODUS_AGY_RESUME_WITHOUT_MODELS: "1" } },
+    });
+    session.initialContent = "read-unasked";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    // A backend restart leaves no model list; resume would return none either.
+    session._providerState.availableModels = [];
+    provider.updateConfig!(session, { additionalDirectories: [testRoot] });
+    provider.sendMessage(ctx, "read-unasked");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    expect(events.filter((event) => event.type === "result").map((event) => event.subtype)).toEqual(["success", "success"]);
+    const methods = capturedRequests(capture).map((entry) => entry.method);
+    expect(methods).toContain("session/load");
+    expect(methods).not.toContain("session/resume");
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    await provider.dispose?.(session);
+  });
+
   test("asks the user about a write agy makes after it wakes", async () => {
     const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "ask" });
     session.initialContent = "look in the background";

@@ -184,7 +184,12 @@ lines.on("line", (line) => {
     return;
   }
   if (message.method === "session/new" || message.method === "session/load" || message.method === "session/resume") {
-    send({ jsonrpc: "2.0", id: message.id, result: sessionResult });
+    // The stable ACP schema gives a resume response modes but no model list.
+    const { models: _models, ...withoutModels } = sessionResult;
+    const result = message.method === "session/resume" && process.env.MODUS_AGY_RESUME_WITHOUT_MODELS === "1"
+      ? withoutModels
+      : sessionResult;
+    send({ jsonrpc: "2.0", id: message.id, result });
     if (process.env.MODUS_AGY_EMIT_USAGE_UPDATE === "1") {
       update({ sessionUpdate: "usage_update", size: 1_000_000, used: 12_345 });
     }

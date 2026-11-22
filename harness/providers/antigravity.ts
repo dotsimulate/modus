@@ -789,7 +789,10 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
   let created: any;
   if (resume && state.providerSessionId) {
     const resumeParams = { ...sessionParams, sessionId: state.providerSessionId };
-    if (supportsResume) {
+    // The stable ACP `session/resume` response carries modes but no model list,
+    // and `applyModel` needs one. Resume only when this provider already read
+    // the list; a cold reattach (after a backend restart) uses `session/load`.
+    if (supportsResume && state.availableModels.length > 0) {
       try {
         created = await client.request("session/resume", resumeParams, 60_000);
       } catch (error) {
