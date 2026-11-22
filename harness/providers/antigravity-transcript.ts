@@ -175,15 +175,10 @@ export function agyWoke(steps: AntigravityTranscriptStep[], since: number): bool
  * finished a post-wake run that streamed without a wake prompt.
  */
 export function endsWithFinalResponse(steps: AntigravityTranscriptStep[]): boolean {
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const step = steps[i]!;
-    if (isSystemMessage(step)) return false;
-    if (isModelResponse(step)) {
-      const calls = Array.isArray(step.tool_calls) ? step.tool_calls : [];
-      return calls.length === 0;
-    }
-  }
-  return false;
+  const last = steps[steps.length - 1];
+  if (!last || !isModelResponse(last)) return false;
+  const calls = Array.isArray(last.tool_calls) ? last.tool_calls : [];
+  return calls.length === 0;
 }
 
 /** agy records tool arguments as JSON text, so a command line can arrive quoted. */

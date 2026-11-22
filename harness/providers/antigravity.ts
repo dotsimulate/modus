@@ -548,6 +548,7 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     if (state.holding) {
       state.streamedDuringHold = true;
       state.lastHoldStreamAt = Date.now();
+      state.holdFinalResponseSeen = false;
     }
     state.lastWasTool = false;
     state.thinking += thinking;
@@ -566,10 +567,14 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
     if (state.holding && !existed) {
       state.streamedDuringHold = true;
       state.lastHoldStreamAt = Date.now();
+      state.holdFinalResponseSeen = false;
     }
     const status = update.status;
     if (!tool.resultEmitted && (status === "completed" || status === "failed")) {
-      if (state.holding && state.streamedDuringHold) state.lastHoldStreamAt = Date.now();
+      if (state.holding && state.streamedDuringHold) {
+        state.lastHoldStreamAt = Date.now();
+        if (!isDaemonToolInput(tool.input)) state.holdFinalResponseSeen = false;
+      }
       tool.resultEmitted = true;
       const output = status === "completed"
         ? withReadImage(antigravityToolOutput(update), tool, ctx.session.cwd ?? ctx.opts.cwd ?? process.cwd())
@@ -645,6 +650,7 @@ function handlePermission(
   if (state.holding) {
     state.streamedDuringHold = true;
     state.lastHoldStreamAt = Date.now();
+    state.holdFinalResponseSeen = false;
   }
   const call = params?.toolCall ?? {};
   const { name: toolName, input } = normalizeAntigravityToolCall(call);
@@ -1151,8 +1157,8 @@ function readTranscript(ctx: TurnContext, state: AntigravityState, since: number
     });
     finished.push(tool);
   }
-  if (state.holding && state.streamedDuringHold && endsWithFinalResponse(steps)) {
-    state.holdFinalResponseSeen = true;
+  if (state.holding && state.streamedDuringHold && steps.length > 0) {
+    state.holdFinalResponseSeen = endsWithFinalResponse(steps);
   }
   return { woke: agyWoke(steps, since), finished };
 }
@@ -1268,11 +1274,17 @@ async function holdForBackgroundWork(
       const left = heldWork(state, since);
       if (state.streamedDuringHold) {
         // agy 1.5.10+ streams post-wake work without needing a synthetic prompt.
-        // Settle once all tasks, tools, and approvals are done and the reply completes.
+        // When agy's transcript exists, require a completed final PLANNER_RESPONSE
+        // (with no tool calls) rather than a short quiet timer — LLM thinking
+        // between tool calls or after a chained background task easily exceeds 2s.
+        // Fall back to the quiet window only when no transcript record exists.
         const idleAfterStream = !left.tasks.length && !left.commands.length
           && !openNonDaemonTools()
           && !state.pendingRpcPermissions.size && !state.steering.size;
-        if (idleAfterStream && (state.holdFinalResponseSeen || Date.now() - state.lastHoldStreamAt >= state.holdStreamSettleMs)) {
+        const settled = state.transcript?.exists
+          ? state.holdFinalResponseSeen
+          : Date.now() - state.lastHoldStreamAt >= state.holdStreamSettleMs;
+        if (idleAfterStream && settled) {
           return "settled";
         }
       } else if (woke || running.some((tool) => tool.resultEmitted)) {

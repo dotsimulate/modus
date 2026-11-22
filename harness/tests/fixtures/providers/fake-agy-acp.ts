@@ -334,6 +334,48 @@ lines.on("line", (line) => {
       finish();
       return;
     }
+    if (text.includes("native-wake-chain")) {
+      // agy 1.5.10+ multi-step post-wake run with slow LLM gaps (> holdStreamSettleMs)
+      // and a chained second background task; Modus must hold until the final reply.
+      const first = { CommandLine: "bun test", WaitMsBeforeAsync: 500 };
+      const task1 = `${SESSION}/task-${stepIndex + 2}`;
+      callStep("run_command", first);
+      update({ sessionUpdate: "tool_call", ...commandCall("call-native-chain-1", first), status: "in_progress" });
+      backgroundStep(task1, first.CommandLine);
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "waiting on task 1" } });
+      step("MODEL", "PLANNER_RESPONSE", "waiting on task 1");
+      finish();
+      setTimeout(() => {
+        commandResult("call-native-chain-1", first, true, "Command exited with code 0.\n\ntask 1 ok");
+        finishStep(task1, "Command exited with code 0.\n\ntask 1 ok");
+        update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "checking status" } });
+        const checkCall = { toolCallId: "call-native-read", name: "read_file", kind: "read", title: "note.txt", rawInput: { Path: "note.txt" } };
+        callStep("read_file", checkCall.rawInput);
+        update({ sessionUpdate: "tool_call", ...checkCall, status: "in_progress" });
+        update({ sessionUpdate: "tool_call_update", ...checkCall, status: "completed" });
+        step("MODEL", "GENERIC", "read ok");
+        // Slow LLM gap (> holdStreamSettleMs = 120ms) before launching task 2.
+        setTimeout(() => {
+          const second = { CommandLine: "tsc --noEmit", WaitMsBeforeAsync: 500 };
+          const task2 = `${SESSION}/task-${stepIndex + 2}`;
+          callStep("run_command", second);
+          update({ sessionUpdate: "tool_call", ...commandCall("call-native-chain-2", second), status: "in_progress" });
+          backgroundStep(task2, second.CommandLine);
+          update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " waiting on task 2" } });
+          step("MODEL", "PLANNER_RESPONSE", "waiting on task 2");
+          // Task 2 runs longer than holdStreamSettleMs, then finishes with a slow LLM TTFT gap.
+          setTimeout(() => {
+            commandResult("call-native-chain-2", second, true, "Command exited with code 0.\n\ntask 2 ok");
+            finishStep(task2, "Command exited with code 0.\n\ntask 2 ok");
+            setTimeout(() => {
+              update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: " — chained done" } });
+              step("MODEL", "PLANNER_RESPONSE", "chained done");
+            }, 220);
+          }, 220);
+        }, 220);
+      }, 60);
+      return;
+    }
     if (text.includes("native-wake")) {
       // agy 1.5.10+: streams post-wake updates and approvals without waiting for another prompt.
       const input = { CommandLine: "bun test", WaitMsBeforeAsync: 500 };

@@ -152,6 +152,10 @@ describe("agy conversation record", () => {
       { source: "MODEL", type: "PLANNER_RESPONSE", content: "done" },
       finished,
     ])).toBe(false);
+    expect(endsWithFinalResponse([
+      { source: "MODEL", type: "PLANNER_RESPONSE", content: "waiting" },
+      { source: "MODEL", type: "GENERIC", content: "tool output" },
+    ])).toBe(false);
   });
 
   test("starts from the beginning of a record that does not exist yet", () => {

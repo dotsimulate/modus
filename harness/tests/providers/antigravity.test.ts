@@ -594,6 +594,24 @@ describe("Antigravity provider", () => {
     await provider.dispose?.(session);
   });
 
+  test("holds across chained background tasks and slow LLM gaps during native post-wake streaming", async () => {
+    const capture = join(testRoot, `native-wake-chain-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture });
+    session.initialContent = "run native-wake-chain test";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    const prompts = capturedRequests(capture).filter((entry) => entry.method === "session/prompt");
+    expect(prompts.map((entry) => entry.params.prompt[0].text)).toEqual(["run native-wake-chain test"]);
+    expect(events.filter((event) => event.type === "result")).toHaveLength(1);
+    expect(events.find((event) => event.type === "result")).toMatchObject({
+      subtype: "success",
+      result: "waiting on task 1 waiting on task 2 — chained done",
+    });
+    expect(events.some((event) => event.subtype === "tool_result"
+      && event.message?.content?.[0]?.tool_use_id === "call-native-read")).toBe(true);
+    await provider.dispose?.(session);
+  });
+
   test("reports ACP usage_update context window and cached token counts, and prefers session/resume when advertised", async () => {
     const capture = join(testRoot, `resume-usage-${crypto.randomUUID()}.jsonl`);
     const { provider, session, ctx, events } = makeHarness({
