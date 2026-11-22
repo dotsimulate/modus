@@ -527,7 +527,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
 
     notifyConfigChange(patch: Record<string, unknown>) {
       if (!isCurrentProviderSession()) return;
-      updateSessionConfig(session.sessionId, patch);
+      updateSessionConfig(session.sessionId, patch, { fromProvider: true });
     },
 
     rekeySession(newId: string) {
@@ -763,6 +763,8 @@ function configEventPayload(config: {
   model?: string;
   effort?: string;
   maxTurns?: number | null;
+  tools?: string[];
+  disallowedTools?: string[];
   toolStates?: Record<string, string>;
   providerControls?: Record<string, unknown>;
   permissionPolicy?: PermissionPolicy | null;
@@ -774,6 +776,8 @@ function configEventPayload(config: {
     model: config.model ?? "",
     effort: config.effort ?? "",
     maxTurns: config.maxTurns,
+    ...(config.tools?.length ? { tools: config.tools } : {}),
+    ...(config.disallowedTools?.length ? { disallowedTools: config.disallowedTools } : {}),
     toolStates: config.toolStates ?? {},
     providerControls: config.providerControls ?? {},
     permissionPolicy: config.permissionPolicy ?? undefined,
@@ -2231,6 +2235,7 @@ export function updateSessionConfig(
     loadProjectSettings?: boolean;
     additionalDirectories?: string[];
   },
+  options?: { fromProvider?: boolean },
 ): boolean {
   sessionId = resolveSessionAlias(sessionId);
   const session = activeSessions.get(sessionId);
@@ -2268,8 +2273,11 @@ export function updateSessionConfig(
   const normalizedDisallowedTools = config.disallowedTools && config.disallowedTools.length > 0
     ? config.disallowedTools
     : undefined;
-  const normalizedProviderControls = config.providerControls && Object.keys(config.providerControls).length > 0
-    ? config.providerControls
+  const mergedProviderControls = options?.fromProvider && config.providerControls
+    ? { ...(session._configOverrides.providerControls ?? {}), ...config.providerControls }
+    : config.providerControls;
+  const normalizedProviderControls = mergedProviderControls && Object.keys(mergedProviderControls).length > 0
+    ? mergedProviderControls
     : undefined;
   // Persist config overrides so follow-up turns include them
   if (config.provider !== undefined) session._configOverrides.provider = undefined;
@@ -2281,23 +2289,41 @@ export function updateSessionConfig(
   if (config.providerControls !== undefined) session._configOverrides.providerControls = normalizedProviderControls;
   if (config.permissionPolicy !== undefined) session._configOverrides.permissionPolicy = config.permissionPolicy ?? undefined;
   if (config.loadProjectSettings !== undefined) session._configOverrides.loadProjectSettings = config.loadProjectSettings;
-  if (session.status === "idle") {
+  // Provider-initiated notifications (`notifyConfigChange`) report state the
+  // provider already adopted; do not feed them back into `updateConfig`.
+  if (session.status === "idle" && !options?.fromProvider) {
     session._provider.updateConfig?.(session, {
       ...config,
       tools: config.tools !== undefined ? config.tools : undefined,
       disallowedTools: config.disallowedTools !== undefined ? config.disallowedTools : undefined,
     });
   }
-  session.seq++;
-  addEvent(session.sessionId, session.seq, "system", "config_updated", JSON.stringify({
+  const effectiveConfig = configEventPayload({
+    provider: session.provider,
+    model: config.model !== undefined ? config.model : (session.model ?? ""),
+    effort: session._configOverrides.effort ?? profileDef?.effort ?? "",
+    maxTurns: session._configOverrides.maxTurns ?? profileDef?.maxTurns,
+    tools: session._configOverrides.tools,
+    disallowedTools: session._configOverrides.disallowedTools,
+    toolStates: session._configOverrides.toolStates ?? {},
+    providerControls: session._configOverrides.providerControls ?? profileDef?.providerControls ?? {},
+    permissionPolicy: session._configOverrides.permissionPolicy ?? profileDef?.permissionPolicy,
+  });
+  const configEvent = {
     type: "system",
     subtype: "config_updated",
     model: session.model,
-    config: configEventPayload(config),
+    config: effectiveConfig,
     cwd: session.cwd,
     additionalDirectories: session.additionalDirectories,
-    loadProjectSettings: config.loadProjectSettings,
-  }));
+    loadProjectSettings: session._configOverrides.loadProjectSettings ?? profileDef?.loadProjectSettings,
+  };
+  if (options?.fromProvider) {
+    persistAndBroadcastEvent(session, configEvent);
+  } else {
+    session.seq++;
+    addEvent(session.sessionId, session.seq, "system", "config_updated", JSON.stringify(configEvent));
+  }
   return true;
 }
 

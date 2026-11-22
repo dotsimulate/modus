@@ -141,7 +141,10 @@ const sessionResult = {
     ],
     currentModelId: "gemini-4-argon-medium",
   },
-  modes: { currentModeId: "default", availableModes: [{ id: "default" }, { id: "accept-edits" }, { id: "auto" }, { id: "plan" }] },
+  modes: {
+    currentModeId: process.env.MODUS_AGY_DEFAULT_MODE || "default",
+    availableModes: [{ id: "default" }, { id: "accept-edits" }, { id: "auto" }, { id: "plan" }],
+  },
   configOptions: [
     {
       id: "model",

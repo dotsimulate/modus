@@ -113,7 +113,11 @@ function makeHarness(options: {
       description: "test",
       prompt: "",
       ...(options.profile ?? {}),
-      env: { MODUS_AGY_TRANSCRIPT: transcript, ...(options.capture ? { MODUS_AGY_CAPTURE: options.capture } : {}) },
+      env: {
+        MODUS_AGY_TRANSCRIPT: transcript,
+        ...(options.capture ? { MODUS_AGY_CAPTURE: options.capture } : {}),
+        ...((options.profile?.env as Record<string, string> | undefined) ?? {}),
+      },
     },
     emitEvent(event: any) { events.push(event); },
     broadcastEvent(event: any) { events.push(event); },
@@ -581,14 +585,74 @@ describe("Antigravity provider", () => {
     await provider.dispose?.(session);
   });
 
-  test("applies tool and turn-limit changes without relaunching agy", async () => {
-    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass" });
+  test("applies tool, turn-limit, and mode changes without relaunching agy, and respawns for sandbox or extra roots", async () => {
+    const capture = join(testRoot, `live-mode-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({ permissionPolicy: "bypass", capture });
     session.initialContent = "read-unasked";
     provider.startTurn(ctx);
     await waitFor(() => events.some((event) => event.type === "result"));
+    const firstPid = session._providerState.pid;
     provider.updateConfig!(session, { tools: ["Read"], toolStates: { Bash: "off" }, maxTurns: 3 });
     expect(session._providerState.restartBeforeNextTurn).toBe(false);
+    // Changing ACP mode alone applies live via session/set_mode on the next turn.
+    session._configOverrides.providerControls = { antigravity: { mode: "plan" } };
+    provider.updateConfig!(session, { providerControls: { antigravity: { mode: "plan" } } });
+    expect(session._providerState.restartBeforeNextTurn).toBe(false);
+    provider.sendMessage(ctx, "read-unasked");
+    expect(session.status).toBe("starting");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 2);
+    expect(session._providerState.pid).toBe(firstPid);
+    expect(capturedRequests(capture).filter((entry) => entry.method === "session/set_mode").map((entry) => entry.params.modeId))
+      .toEqual(["plan"]);
+    // Clearing mode back to unset reverts ACP to default instead of leaving it in plan.
+    session._configOverrides.providerControls = { antigravity: {} };
+    provider.updateConfig!(session, { providerControls: { antigravity: {} } });
+    provider.sendMessage(ctx, "read-unasked");
+    await waitFor(() => events.filter((event) => event.type === "result").length === 3);
+    expect(session._providerState.pid).toBe(firstPid);
+    expect(capturedRequests(capture).filter((entry) => entry.method === "session/set_mode").map((entry) => entry.params.modeId))
+      .toEqual(["plan", "default"]);
+    // Sandbox flag and additionalDirectories require respawning agy acp.
     provider.updateConfig!(session, { providerControls: { antigravity: { sandbox: true } } });
+    expect(session._providerState.restartBeforeNextTurn).toBe(true);
+    session._providerState.restartBeforeNextTurn = false;
+    provider.updateConfig!(session, { additionalDirectories: [testRoot] });
+    expect(session._providerState.restartBeforeNextTurn).toBe(true);
+    await provider.dispose?.(session);
+  });
+
+  test("honors agy's own auto default mode for BypassSandbox gating and init reporting", async () => {
+    const capture = join(testRoot, `auto-default-${crypto.randomUUID()}.jsonl`);
+    const { provider, session, ctx, events } = makeHarness({
+      permissionPolicy: "bypass",
+      capture,
+      profile: { env: { MODUS_AGY_DEFAULT_MODE: "auto" } },
+    });
+    session.initialContent = "bypass the sandbox";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.subtype === "permission_request"));
+    const init = events.find((event) => event.subtype === "init");
+    expect(init?.config?.providerControls?.antigravity?.mode).toBe("auto");
+    const request = events.find((event) => event.subtype === "permission_request");
+    expect(request).toMatchObject({ toolName: "run_command", toolInput: { BypassSandbox: true }, interactive: false });
+    session.pendingPermissions.get(request.requestId).resolve({ behavior: "deny" });
+    await waitFor(() => events.some((event) => event.type === "result"));
+    await provider.dispose?.(session);
+  });
+
+  test("switchProfile resets model and effort when the new profile omits them", async () => {
+    const { provider, session, ctx, events } = makeHarness({
+      permissionPolicy: "bypass",
+      model: "gemini-4-hydrogen",
+      effort: "high",
+    });
+    session.initialContent = "read-unasked";
+    provider.startTurn(ctx);
+    await waitFor(() => events.some((event) => event.type === "result"));
+    expect(session.model).toBe("gemini-4-hydrogen-high");
+    provider.switchProfile!(session, { ...ctx, opts: {}, profile: { description: "plain", prompt: "" } }, "full");
+    expect(session._providerState.model).toBeUndefined();
+    expect(session._providerState.effort).toBeUndefined();
     expect(session._providerState.restartBeforeNextTurn).toBe(true);
     await provider.dispose?.(session);
   });

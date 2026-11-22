@@ -97,6 +97,12 @@ type AntigravityState = {
   /** Model entries the live ACP session offers; refreshed on every connect. */
   availableModels: AntigravityModelEntry[];
   currentModelId?: string;
+  /** Mode the live ACP session actually reports (`default`, `auto`, `accept-edits`, `plan`). */
+  currentModeId?: string;
+  /** Whether the running `agy acp` process was launched with `--sandbox`. */
+  sandboxFlag: boolean;
+  /** Whether Modus explicitly applied a mode override on this session. */
+  modeOverrideApplied: boolean;
   model?: string;
   effort?: string;
   restartBeforeNextTurn: boolean;
@@ -207,8 +213,8 @@ export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask
  * the policy alone: Antigravity's own default is to pause for approval, and
  * Google's safety monitors flag sandbox escapes.
  */
-export function sandboxRequested(controls: AntigravityControls): boolean {
-  return controls.sandbox === true || controls.mode === "auto";
+export function sandboxRequested(controls: AntigravityControls, currentModeId?: string): boolean {
+  return controls.sandbox === true || (controls.mode ?? currentModeId) === "auto";
 }
 
 export function requestsSandboxBypass(input: Record<string, unknown>): boolean {
@@ -465,6 +471,7 @@ function handleUpdate(ctx: TurnContext, state: AntigravityState, params: any): v
   // Mode changes matter even between turns; everything else belongs to a turn
   // (session/load also replays history as updates, which must not re-render).
   if (type === "current_mode_update" && typeof update.currentModeId === "string") {
+    state.currentModeId = update.currentModeId;
     ctx.notifyConfigChange({ providerControls: { antigravity: { ...controlsFrom(ctx), mode: update.currentModeId } } });
     return;
   }
@@ -545,7 +552,7 @@ function reportUnaskedRestrictedTool(ctx: TurnContext, state: AntigravityState, 
   const key = tool.name.toLowerCase();
   if (state.unaskedNoticed.has(key)) return;
   state.unaskedNoticed.add(key);
-  const mode = controlsFrom(ctx).mode ?? "default";
+  const mode = controlsFrom(ctx).mode ?? state.currentModeId ?? "default";
   const blocked = describeToolRestriction(tool.name, restriction, ANTIGRAVITY_CAPABILITIES.toolAliases)
     .replace(/^Modus blocked `[^`]+`: /, "");
   const asks = ANTIGRAVITY_MODE_ASKS[mode];
@@ -580,7 +587,7 @@ function handlePermission(
   if (toolCallId != null) state.askedToolIds.add(String(toolCallId));
   const options = Array.isArray(params?.options) ? params.options : [];
   const resolved = antigravityToolDecision(ctx, toolName);
-  const sandboxEscape = requestsSandboxBypass(input) && sandboxRequested(controlsFrom(ctx));
+  const sandboxEscape = requestsSandboxBypass(input) && sandboxRequested(controlsFrom(ctx), state.currentModeId);
   let decision = resolved.decision;
   if (resolved.decision === "deny") {
     noticeToolDenied(ctx, state.noticedDenials, toolName, resolved.restriction, ANTIGRAVITY_CAPABILITIES);
@@ -632,14 +639,17 @@ function handlePermission(
   });
 }
 
-function recordSessionModels(state: AntigravityState, result: any): void {
+function recordSessionModels(ctx: TurnContext, state: AntigravityState, result: any): void {
   const models = result?.models;
   if (Array.isArray(models?.availableModels)) {
     state.availableModels = models.availableModels
       .filter((entry: any) => typeof entry?.modelId === "string")
       .map((entry: any) => ({ modelId: entry.modelId, name: typeof entry.name === "string" ? entry.name : undefined }));
   }
-  if (typeof models?.currentModelId === "string") state.currentModelId = models.currentModelId;
+  if (typeof models?.currentModelId === "string") {
+    state.currentModelId = models.currentModelId;
+    if (!ctx.session.model) ctx.session.model = models.currentModelId;
+  }
 }
 
 async function connect(ctx: TurnContext, state: AntigravityState, resume: boolean): Promise<void> {
@@ -663,6 +673,7 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
     label: "Antigravity ACP",
   });
   state.client = client;
+  state.sandboxFlag = !!controls.sandbox;
   state.restartBeforeNextTurn = false;
   client.onNotification((method, params) => {
     if (state.client !== client) return;
@@ -716,29 +727,63 @@ async function connect(ctx: TurnContext, state: AntigravityState, resume: boolea
     state.providerSessionId = providerSessionId;
     ctx.setProviderSessionId(providerSessionId);
   }
-  recordSessionModels(state, created);
+  recordSessionModels(ctx, state, created);
+  if (typeof created?.modes?.currentModeId === "string") {
+    state.currentModeId = created.modes.currentModeId;
+  }
   if (controls.mode && state.providerSessionId) {
     await client.request("session/set_mode", { sessionId: state.providerSessionId, modeId: controls.mode }, 30_000);
+    state.currentModeId = controls.mode;
+    state.modeOverrideApplied = true;
+  } else {
+    state.modeOverrideApplied = false;
   }
 }
 
 /** Apply the requested model and thinking level before each turn. */
-async function applyModel(client: GrokAcpClient, state: AntigravityState): Promise<void> {
+async function applyModel(ctx: TurnContext, client: GrokAcpClient, state: AntigravityState): Promise<void> {
   if (!state.providerSessionId) return;
-  const requested = state.model ?? (state.effort ? state.currentModelId : undefined);
+  const requested = state.model ?? ctx.profile?.model ?? (state.effort ? state.currentModelId : undefined);
   if (!requested) return;
   const modelId = resolveAntigravityModelId(state.availableModels, requested, state.effort);
   if (!modelId) {
     const offered = state.availableModels.map((entry) => entry.modelId).join(", ");
     throw new Error(`Antigravity does not offer model "${requested}" on this account.${offered ? ` Available: ${offered}.` : ""}`);
   }
-  if (modelId === state.currentModelId) return;
+  if (modelId === state.currentModelId) {
+    ctx.session.model = modelId;
+    return;
+  }
   await client.request("session/set_model", { sessionId: state.providerSessionId, modelId }, 30_000);
   state.currentModelId = modelId;
+  ctx.session.model = modelId;
+}
+
+/** Apply mode changes live via ACP without relaunching the `agy acp` process. */
+async function applyMode(ctx: TurnContext, client: GrokAcpClient, state: AntigravityState): Promise<void> {
+  if (!state.providerSessionId) return;
+  const desired = controlsFrom(ctx).mode;
+  if (desired) {
+    if (desired === state.currentModeId) return;
+    await client.request("session/set_mode", { sessionId: state.providerSessionId, modeId: desired }, 30_000);
+    state.currentModeId = desired;
+    state.modeOverrideApplied = true;
+    return;
+  }
+  if (state.modeOverrideApplied && state.currentModeId && state.currentModeId !== "default") {
+    await client.request("session/set_mode", { sessionId: state.providerSessionId, modeId: "default" }, 30_000);
+    state.currentModeId = "default";
+    state.modeOverrideApplied = false;
+  }
 }
 
 function emitInit(ctx: TurnContext, state: AntigravityState): void {
   const model = state.currentModelId ?? state.model ?? ctx.opts.model ?? ctx.profile?.model ?? "";
+  const baseControls = ctx.session._configOverrides.providerControls ?? ctx.opts.providerControls ?? ctx.profile?.providerControls ?? {};
+  const agControls = asObject(asObject(baseControls).antigravity);
+  const providerControls = state.currentModeId && !agControls.mode
+    ? { ...baseControls, antigravity: { ...agControls, mode: state.currentModeId } }
+    : baseControls;
   ctx.emitEvent({
     type: "system",
     subtype: "init",
@@ -752,7 +797,7 @@ function emitInit(ctx: TurnContext, state: AntigravityState): void {
       effort: state.effort ?? ctx.opts.effort ?? ctx.profile?.effort ?? "",
       maxTurns: ctx.session._configOverrides.maxTurns ?? ctx.opts.maxTurns,
       toolStates: ctx.session._configOverrides.toolStates ?? ctx.opts.toolStates ?? {},
-      providerControls: ctx.session._configOverrides.providerControls ?? ctx.opts.providerControls ?? {},
+      providerControls,
     },
     cwd: ctx.session.cwd,
     additionalDirectories: ctx.session.additionalDirectories,
@@ -1212,6 +1257,8 @@ function dispatchQueued(ctx: TurnContext, state: AntigravityState): void {
   session.preview = contentPreview(next);
   session.abortController = new AbortController();
   state.abortController = session.abortController;
+  session.status = "starting";
+  updateSessionStatus(session.sessionId, "starting");
   session.turnStartedAt = Date.now();
   void runTurn(ctx, state, next, { resume: true });
 }
@@ -1231,7 +1278,8 @@ async function runTurn(
     await connect(ctx, state, options.resume);
     turnClient = state.client;
     if (!turnClient) throw new Error("Antigravity client closed during connection");
-    await applyModel(turnClient, state);
+    await applyModel(ctx, turnClient, state);
+    await applyMode(ctx, turnClient, state);
     if (options.wake) {
       emitProviderNotice(
         ctx,
@@ -1339,6 +1387,8 @@ export function createAntigravityProvider(options?: {
         tools: new Map(),
         pendingRpcPermissions: new Map(),
         availableModels: [],
+        sandboxFlag: false,
+        modeOverrideApplied: false,
         model: ctx.opts.model ?? ctx.profile?.model,
         effort: ctx.opts.effort ?? ctx.profile?.effort,
         restartBeforeNextTurn: false,
@@ -1379,6 +1429,8 @@ export function createAntigravityProvider(options?: {
       state.abortController = ctx.session.abortController;
       ctx.session.initialContent = content;
       ctx.session.preview = contentPreview(content);
+      ctx.session.status = "starting";
+      updateSessionStatus(ctx.session.sessionId, "starting");
       ctx.session.turnStartedAt = Date.now();
       void runTurn(ctx, state, content, { resume: true });
     },
@@ -1414,16 +1466,22 @@ export function createAntigravityProvider(options?: {
       const state = getState(session);
       if (typeof config.model === "string") state.model = config.model || undefined;
       if (typeof config.effort === "string") state.effort = config.effort || undefined;
-      // Tools, tool states, maxTurns, and the permission policy are read from the
-      // session on every decision, so they apply without relaunching agy. The
-      // controls carry the --sandbox launch flag and the session mode.
-      if (config.providerControls) state.restartBeforeNextTurn = true;
+      // Tools, tool states, maxTurns, permission policy, and ACP mode apply
+      // without relaunching agy (`session/set_mode` runs before the next turn).
+      // Only launch flags (--sandbox) and workspace roots require a respawn.
+      if (config.providerControls !== undefined) {
+        const nextSandbox = Boolean(asObject(asObject(config.providerControls).antigravity).sandbox);
+        if (nextSandbox !== state.sandboxFlag) state.restartBeforeNextTurn = true;
+      }
+      if (config.additionalDirectories !== undefined || config.cwd !== undefined) {
+        state.restartBeforeNextTurn = true;
+      }
     },
 
     switchProfile(session, ctx) {
       const state = getState(session);
-      state.model = ctx.opts.model ?? ctx.profile?.model ?? state.model;
-      state.effort = ctx.opts.effort ?? ctx.profile?.effort ?? state.effort;
+      state.model = ctx.opts.model ?? ctx.profile?.model;
+      state.effort = ctx.opts.effort ?? ctx.profile?.effort;
       state.restartBeforeNextTurn = true;
     },
 
